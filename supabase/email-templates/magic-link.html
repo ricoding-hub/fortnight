@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inicia sesión en Fortnight</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAFAFA; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Main Container -->
+        <table width="100%" max-width="480" border="0" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04); border: 1px solid #F0F0F0;">
+          
+          <!-- Modern Minimalist Header -->
+          <tr>
+            <td align="center" style="padding: 48px 32px 16px;">
+              <img src="{{ .SiteURL }}/favicon.png" alt="Fortnight App" width="72" height="72" style="display: block; margin: 0 auto 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);" />
+              <h1 style="color: #111827; font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.02em;">Inicia sesión en Fortnight</h1>
+            </td>
+          </tr>
+          
+          <!-- Content Body -->
+          <tr>
+            <td align="center" style="padding: 0 32px 40px;">
+              <p style="color: #4B5563; font-size: 16px; line-height: 1.6; margin: 0 0 32px;">
+                Toma el control de tu quincena y proyecta tu futuro financiero. Haz clic en el siguiente enlace para entrar a tu cuenta. ✨
+              </p>
+              
+              <!-- Clean CTA Button -->
+              <table border="0" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
+                <tr>
+                  <td align="center" style="border-radius: 12px; background-color: #6366F1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.1);">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; padding: 14px 28px; font-family: -apple-system, sans-serif; font-size: 15px; color: #FFFFFF; text-decoration: none; font-weight: 600; letter-spacing: 0.2px;">
+                      Entrar a mi cuenta
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <div style="margin-top: 32px; padding: 16px; background-color: #F9FAFB; border-radius: 12px; border: 1px solid #F3F4F6;">
+                <p style="color: #9CA3C4; font-size: 12px; line-height: 1.5; margin: 0;">
+                  O usa este enlace seguro:<br>
+                  <a href="{{ .ConfirmationURL }}" style="color: #6366F1; text-decoration: none; word-break: break-all;">{{ .ConfirmationURL }}</a>
+                </p>
+              </div>
+            </td>
+          </tr>
+          
+          <!-- Modern Footer with Mascot -->
+          <tr>
+            <td align="center" style="background-color: #FAFBFF; border-top: 1px solid #F3F4F6; padding: 24px 32px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td width="50" align="left" valign="middle">
+                    <img src="{{ .SiteURL }}/richeto.png" alt="Richeto Mascot" width="48" style="display: block; border-radius: 8px;" />
+                  </td>
+                  <td align="left" valign="middle" style="padding-left: 16px;">
+                    <p style="color: #111827; font-size: 14px; font-weight: 600; margin: 0 0 4px;">Ricoding</p>
+                    <p style="color: #6B7280; font-size: 12px; margin: 0; line-height: 1.4;">
+                      Si no pediste este acceso, ignora el mensaje.<br>Richeto protege tus datos. 🔒
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+        </table>
+        
+        <!-- Bottom Unsubscribe / Legal -->
+        <p style="color: #9CA3C4; font-size: 12px; margin: 24px 0 0; text-align: center;">
+          © 2026 Ricoding. Todos los derechos reservados.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
