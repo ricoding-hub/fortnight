@@ -141,3 +141,43 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.vscode/
+*.swp
+*.swo
+
+# Vercel
+.vercel
+
+# vite-plugin-pwa dev output
+dev-dist/
+
+# Local env files (.env.example stays committed via the rule above)
+*.local
+
+# ── Project-specific ──────────────────────────────────────────
+
+# AI agent / Antigravity data (generated, not source)
+.gemini/
+.claude/
+
+# Dev-only scripts (icon generation, one-off utilities)
+scripts/
+
+# Supabase local dev
+supabase/.branches/
+supabase/.temp/
+
+# TypeScript incremental build info
+*.tsbuildinfo
