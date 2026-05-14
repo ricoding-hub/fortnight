@@ -1,0 +1,214 @@
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useToast } from '@/hooks/useToast'
+import type { Account, AccountType } from '@/types'
+import type { NewAccount, AccountPatch } from '@/hooks/useAccounts'
+
+/**
+ * Add a new account (`type` fixed by which section opened the form) or edit
+ * an existing one's details. Balance is edited inline on the card, not here.
+ */
+export type AccountFormMode =
+  | { kind: 'create'; type: AccountType }
+  | { kind: 'edit'; account: Account }
+
+interface AccountFormModalProps {
+  mode: AccountFormMode
+  onClose: () => void
+  onCreate: (account: NewAccount) => Promise<void>
+  onUpdate: (id: string, patch: AccountPatch) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}
+
+const isDay = (v: string) => {
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 1 && n <= 31
+}
+
+const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) >= 0
+
+// The form holds raw strings; values are coerced to the schema's types on submit.
+const accountSchema = z.object({
+  name: z.string().trim().min(1, 'Escribe un nombre'),
+  balance: z.string().refine(isMoney, 'Monto inválido'),
+  credit_limit: z
+    .string()
+    .refine((v) => v === '' || isMoney(v), 'Monto inválido'),
+  cut_day: z.string().refine((v) => v === '' || isDay(v), 'Día entre 1 y 31'),
+  payment_due_day: z
+    .string()
+    .refine((v) => v === '' || isDay(v), 'Día entre 1 y 31'),
+})
+
+type AccountFormValues = z.infer<typeof accountSchema>
+
+export function AccountFormModal({
+  mode,
+  onClose,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: AccountFormModalProps) {
+  const toast = useToast()
+  const isCreate = mode.kind === 'create'
+  const type: AccountType = isCreate ? mode.type : mode.account.type
+  const isCredit = type === 'credit'
+  const [submitError, setSubmitError] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<AccountFormValues>({
+    resolver: zodResolver(accountSchema),
+    defaultValues:
+      mode.kind === 'create'
+        ? {
+            name: '',
+            balance: '',
+            credit_limit: '',
+            cut_day: '',
+            payment_due_day: '',
+          }
+        : {
+            name: mode.account.name,
+            balance: String(mode.account.balance),
+            credit_limit:
+              mode.account.credit_limit != null
+                ? String(mode.account.credit_limit)
+                : '',
+            cut_day:
+              mode.account.cut_day != null ? String(mode.account.cut_day) : '',
+            payment_due_day:
+              mode.account.payment_due_day != null
+                ? String(mode.account.payment_due_day)
+                : '',
+          },
+  })
+
+  const num = (s: string) => (s.trim() === '' ? null : Number(s))
+
+  async function onSubmit(values: AccountFormValues) {
+    setSubmitError(false)
+    const creditFields = {
+      credit_limit: isCredit ? num(values.credit_limit) : null,
+      cut_day: isCredit ? num(values.cut_day) : null,
+      payment_due_day: isCredit ? num(values.payment_due_day) : null,
+    }
+    try {
+      if (mode.kind === 'create') {
+        await onCreate({
+          name: values.name.trim(),
+          type,
+          balance: Number(values.balance),
+          ...creditFields,
+        })
+        toast.success('Cuenta creada', `La cuenta ${values.name.trim()} fue creada`)
+      } else {
+        await onUpdate(mode.account.id, {
+          name: values.name.trim(),
+          ...creditFields,
+        })
+        toast.success('Cuenta actualizada', 'Los cambios han sido guardados')
+      }
+      onClose()
+    } catch {
+      setSubmitError(true)
+      toast.error('Error al guardar', 'Hubo un problema al guardar la cuenta')
+    }
+  }
+
+  async function handleDelete() {
+    if (mode.kind !== 'edit') return
+    if (!window.confirm(`¿Eliminar ${mode.account.name}?`)) return
+    setSubmitError(false)
+    try {
+      await onDelete(mode.account.id)
+      toast.success('Cuenta eliminada', `La cuenta ${mode.account.name} fue eliminada`)
+      onClose()
+    } catch {
+      setSubmitError(true)
+      toast.error('Error al eliminar', 'Hubo un problema al eliminar la cuenta')
+    }
+  }
+
+  const title = isCreate
+    ? `Nueva cuenta de ${isCredit ? 'crédito' : 'débito'}`
+    : 'Editar cuenta'
+
+  return (
+    <Modal open title={title} onClose={onClose}>
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+        <Input
+          label="Nombre"
+          placeholder={isCredit ? 'Tarjeta Nu' : 'Cuenta de débito'}
+          error={errors.name?.message}
+          {...register('name')}
+        />
+
+        {isCreate && (
+          <Input
+            label={isCredit ? 'Deuda actual' : 'Saldo'}
+            inputMode="decimal"
+            placeholder="0"
+            error={errors.balance?.message}
+            {...register('balance')}
+          />
+        )}
+
+        {isCredit && (
+          <>
+            <Input
+              label="Límite de crédito"
+              inputMode="decimal"
+              placeholder="Opcional"
+              error={errors.credit_limit?.message}
+              {...register('credit_limit')}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Día de corte"
+                inputMode="numeric"
+                placeholder="1–31"
+                error={errors.cut_day?.message}
+                {...register('cut_day')}
+              />
+              <Input
+                label="Día límite de pago"
+                inputMode="numeric"
+                placeholder="1–31"
+                error={errors.payment_due_day?.message}
+                {...register('payment_due_day')}
+              />
+            </div>
+          </>
+        )}
+
+        {submitError && (
+          <p className="text-xs text-debt">
+            No se pudo guardar. Intenta de nuevo.
+          </p>
+        )}
+
+        <Button type="submit" loading={isSubmitting} className="mt-1">
+          {isCreate ? 'Crear cuenta' : 'Guardar cambios'}
+        </Button>
+
+        {mode.kind === 'edit' && (
+          <button
+            type="button"
+            onClick={() => void handleDelete()}
+            className="h-12 rounded-xl text-sm font-medium text-debt transition-colors hover:bg-debt/8"
+          >
+            Eliminar cuenta
+          </button>
+        )}
+      </form>
+    </Modal>
+  )
+}
