@@ -86,13 +86,16 @@
 }
 
 html {
+  height: 100%;
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
 body {
+  height: 100%;
   margin: 0;
   background-color: var(--color-bg);
   color: var(--color-text);
@@ -101,6 +104,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
 }
 
 /* ── Custom scrollbar ── */
@@ -122,6 +126,11 @@ body {
 /* iPhone home-indicator safe padding */
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* iPhone status bar safe padding (needed with black-translucent) */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
 }
 
 /* Glass-morphism card */

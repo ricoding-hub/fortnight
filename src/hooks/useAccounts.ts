@@ -89,11 +89,23 @@ export function useAccounts() {
    * Quick balance update. Records the delta as an 'adjustment' transaction;
    * the DB trigger then moves the account balance, so history is preserved
    * and we never write the balance column directly.
+   *
+   * We apply an optimistic update immediately so the UI reflects the new
+   * balance without waiting for the DB trigger → realtime → re-fetch cycle.
    */
   async function updateBalance(account: Account, newBalance: number) {
     if (!user) throw new Error('Not authenticated')
     const diff = newBalance - account.balance
     if (diff === 0) return
+
+    // Optimistic: update local state immediately
+    const now = new Date().toISOString()
+    setData((prev) =>
+      prev.map((a) =>
+        a.id === account.id ? { ...a, balance: newBalance, updated_at: now } : a,
+      ),
+    )
+
     const { error: err } = await supabase.from('transactions').insert({
       user_id: user.id,
       account_id: account.id,
@@ -101,7 +113,16 @@ export function useAccounts() {
       type: 'adjustment',
       date: new Date().toISOString().slice(0, 10),
     })
-    if (err) throw err
+
+    if (err) {
+      // Revert optimistic update on failure
+      setData((prev) =>
+        prev.map((a) =>
+          a.id === account.id ? { ...a, balance: account.balance, updated_at: account.updated_at } : a,
+        ),
+      )
+      throw err
+    }
   }
 
   return {
