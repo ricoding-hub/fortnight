@@ -88,6 +88,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -247,6 +249,11 @@ body {
 
 @keyframes progress-fill {
   from { width: 0%; }
+}
+
+@keyframes richeto-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.04); }
 }
 
 /* ═══════════════════════════════════════════════════════════════

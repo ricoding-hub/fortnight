@@ -32,7 +32,7 @@ export function Select({
         ref={ref}
         id={selectId}
         className={clsx(
-          'h-12 rounded-xl border bg-bg-elevated px-4 text-sm text-text',
+          'h-12 rounded-xl border bg-bg-elevated px-4 text-base text-text',
           'transition-all duration-[--duration-fast]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary',
           error

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { BottomNav } from '@/components/BottomNav'
 import { Sidebar } from '@/components/Sidebar'
+import { Richeto } from '@/components/Richeto'
 
 /**
  * App shell for protected routes.
@@ -23,6 +24,7 @@ export function Layout() {
         </div>
       </div>
       <BottomNav />
+      <Richeto />
     </div>
   )
 }

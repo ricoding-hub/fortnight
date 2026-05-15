@@ -28,7 +28,7 @@ export function Input({
         ref={ref}
         id={inputId}
         className={clsx(
-          'h-12 rounded-xl border bg-bg-elevated px-4 text-sm text-text',
+          'h-12 rounded-xl border bg-bg-elevated px-4 text-base text-text',
           'placeholder:text-text-tertiary',
           'transition-all duration-[--duration-fast]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary',

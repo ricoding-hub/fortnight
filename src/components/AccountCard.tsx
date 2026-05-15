@@ -106,7 +106,7 @@ export function AccountCard({
             aria-label="Nuevo saldo"
             aria-invalid={invalid || undefined}
             className={clsx(
-              'h-10 w-24 rounded-xl border bg-bg-elevated px-3 text-sm tabular-nums text-text',
+              'h-10 w-24 rounded-xl border bg-bg-elevated px-3 text-base tabular-nums text-text',
               'transition-all duration-[--duration-fast]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
               invalid ? 'border-debt ring-1 ring-debt/20' : 'border-border',

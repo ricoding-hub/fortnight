@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/hooks/useToast'
 import type { UserConfig } from '@/types'
 import type { ConfigPatch } from '@/hooks/useConfig'
 
@@ -39,6 +40,7 @@ export function ConfigFormModal({
   onClose,
   onSave,
 }: ConfigFormModalProps) {
+  const toast = useToast()
   const [submitError, setSubmitError] = useState(false)
 
   const {
@@ -64,9 +66,11 @@ export function ConfigFormModal({
         fixed_monthly: Number(values.fixed_monthly),
         variable_monthly: Number(values.variable_monthly),
       })
+      toast.success('Supuestos guardados', 'Tu proyección se actualizó')
       onClose()
     } catch {
       setSubmitError(true)
+      toast.error('Error al guardar', 'No se pudieron actualizar los supuestos')
     }
   }
 
