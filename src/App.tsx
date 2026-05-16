@@ -7,8 +7,12 @@ import { AuthCallback } from '@/views/auth/AuthCallback'
 import { Resumen } from '@/views/Resumen'
 import { Cuentas } from '@/views/Cuentas'
 import { Movimientos } from '@/views/Movimientos'
-import { Proyeccion } from '@/views/Proyeccion'
 import { Prestamos } from '@/views/Prestamos'
+import { Profile } from '@/views/Profile'
+import { PlanLayout } from '@/views/Plan'
+import { Presupuesto } from '@/views/Plan/Presupuesto'
+import { Objetivos } from '@/views/Plan/Objetivos'
+import { Proyeccion } from '@/views/Plan/Proyeccion'
 import { ToastContainer } from '@/components/ui/Toast'
 
 function Splash({ label }: { label: string }) {
@@ -56,8 +60,16 @@ export default function App() {
             <Route path="/" element={<Resumen />} />
             <Route path="/cuentas" element={<Cuentas />} />
             <Route path="/movimientos" element={<Movimientos />} />
-            <Route path="/proyeccion" element={<Proyeccion />} />
+            <Route path="/plan" element={<PlanLayout />}>
+              <Route index element={<Navigate to="presupuesto" replace />} />
+              <Route path="presupuesto" element={<Presupuesto />} />
+              <Route path="objetivos" element={<Objetivos />} />
+              <Route path="proyeccion" element={<Proyeccion />} />
+            </Route>
+            {/* Legacy /proyeccion URL redirects into the new Plan sub-view */}
+            <Route path="/proyeccion" element={<Navigate to="/plan/proyeccion" replace />} />
             <Route path="/prestamos" element={<Prestamos />} />
+            <Route path="/perfil" element={<Profile />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

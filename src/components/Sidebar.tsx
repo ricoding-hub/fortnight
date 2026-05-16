@@ -1,7 +1,8 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { IconPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
-import { NAV_TABS } from '@/components/BottomNav'
+import { NAV_TABS } from '@/components/nav'
+import { useUiStore } from '@/store/uiStore'
 
 /**
  * Desktop sidebar navigation — visible at lg breakpoint and above.
@@ -55,13 +56,14 @@ export function Sidebar() {
       <div className="flex-1" />
 
       {/* Quick add CTA */}
-      <NavLink
-        to="/movimientos"
+      <button
+        type="button"
+        onClick={() => useUiStore.getState().openAddModal('spend')}
         className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-text-inverse shadow-card transition-all hover:bg-primary-deep hover:shadow-elevated active:scale-[0.97]"
       >
         <IconPlus size={18} />
         Agregar movimiento
-      </NavLink>
+      </button>
     </aside>
   )
 }

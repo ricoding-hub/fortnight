@@ -15,24 +15,24 @@ interface StatCardProps {
 
 const toneStyles: Record<string, { value: string; icon: string; accent: string }> = {
   asset: {
-    value: 'text-asset',
-    icon: 'bg-asset/10 text-asset',
+    value: 'text-asset-deep',
+    icon: 'bg-asset-soft text-asset-deep',
     accent: 'border-l-asset',
   },
   debt: {
-    value: 'text-debt',
-    icon: 'bg-debt/10 text-debt',
+    value: 'text-debt-deep',
+    icon: 'bg-debt-soft text-debt-deep',
     accent: 'border-l-debt',
   },
   primary: {
-    value: 'text-primary',
-    icon: 'bg-primary/10 text-primary',
+    value: 'text-primary-deep',
+    icon: 'bg-primary-soft text-primary-deep',
     accent: 'border-l-primary',
   },
   accent: {
-    value: 'text-accent-deep',
-    icon: 'bg-accent/10 text-accent-deep',
-    accent: 'border-l-accent',
+    value: 'text-lavender-deep',
+    icon: 'bg-lavender-soft text-lavender-deep',
+    accent: 'border-l-lavender',
   },
 }
 

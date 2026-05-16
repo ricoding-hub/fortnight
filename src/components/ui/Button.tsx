@@ -18,7 +18,7 @@ const variantClasses: Record<Variant, string> = {
   ghost:
     'bg-transparent text-primary hover:bg-primary/8 active:bg-primary/12 disabled:opacity-50',
   accent:
-    'gradient-accent text-text shadow-card hover:shadow-glow-accent active:scale-[0.97] disabled:opacity-50',
+    'gradient-accent text-text-inverse shadow-card hover:shadow-glow-accent active:scale-[0.97] disabled:opacity-50',
   danger:
     'bg-debt text-text-inverse shadow-card hover:bg-debt-deep hover:shadow-glow-debt active:scale-[0.97] disabled:opacity-50',
 }

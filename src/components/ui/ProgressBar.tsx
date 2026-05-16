@@ -17,8 +17,8 @@ const fillColor: Record<string, string> = {
   primary: 'bg-primary',
   asset: 'bg-asset',
   debt: 'bg-debt',
-  warning: 'bg-warning',
-  accent: 'bg-accent',
+  warning: 'bg-peach',
+  accent: 'bg-lavender',
 }
 
 export function ProgressBar({

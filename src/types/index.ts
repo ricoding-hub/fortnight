@@ -62,9 +62,72 @@ export interface Loan {
   paid_at: string | null
 }
 
+export type PayFreq = 'semanal' | 'catorcenal' | 'quincenal' | 'mensual'
+
+/* ------------------------------------------------------------------ */
+/* Plan module — budget plan + buckets + items + goals                 */
+/* ------------------------------------------------------------------ */
+
+export type PlanPreset = '50-30-20' | '70-20-10' | 'agresivo'
+
+export interface BudgetPlan {
+  id: string
+  user_id: string
+  preset: PlanPreset | string
+  updated_at: string
+  created_at: string
+}
+
+export interface BudgetBucket {
+  id: string
+  plan_id: string
+  /** Stable identifier — 'needs' | 'wants' | 'save'. */
+  slug: string
+  name: string
+  pct: number
+  color: string
+  soft_color: string
+  sort_order: number
+}
+
+export interface BudgetItem {
+  id: string
+  bucket_id: string
+  slug: string
+  name: string
+  pct: number
+  category_id: string | null
+  /** Stable icon key — see src/lib/icons.ts for the mapping. */
+  icon: string | null
+  sort_order: number
+}
+
+/** A bucket joined with its items — what the UI normally consumes. */
+export interface BucketWithItems extends BudgetBucket {
+  items: BudgetItem[]
+}
+
+export interface Goal {
+  id: string
+  user_id: string
+  name: string
+  /** Stable icon key — see src/lib/icons.ts. */
+  icon: string | null
+  color: string | null
+  target: number
+  saved: number
+  monthly: number
+  /** ISO date string. */
+  deadline: string | null
+  is_debt: boolean
+  /** ISO date string — when the goal/contributions started. */
+  started_at: string
+  created_at: string
+}
+
 export interface UserConfig {
   user_id: string
-  /** Net biweekly pay. */
+  /** Net biweekly pay — legacy field, kept for the Proyección projection logic. */
   catorcena: number
   /** Food vouchers per biweekly period. */
   vales: number
@@ -74,4 +137,17 @@ export interface UserConfig {
   variable_monthly: number
   next_pay_date: string | null
   updated_at: string
+  /** Pay cycle (added in migration 004_profile.sql). */
+  pay_freq: PayFreq
+  /** Net pay per cycle. */
+  pay_amount: number
+  /** Last known payday — anchor for `computePaydays`. */
+  pay_reference: string | null
+  /** Notification toggles. */
+  notif_payday: boolean
+  notif_due_card: boolean
+  notif_mission: boolean
+  notif_goal: boolean
+  /** UI preference — render the floating Richeto companion. */
+  pet_floating: boolean
 }

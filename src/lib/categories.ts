@@ -31,11 +31,11 @@ const ICON_BY_NAME: Record<string, Icon> = {
   Extra: IconGift,
 }
 
-// Chip tint by kind: income emerald, fixed indigo, variable amber.
+// Chip tint by kind: income mint, fixed Richeto blue, variable peach.
 const COLOR_BY_KIND: Record<CategoryKind, string> = {
-  fixed: '#6366F1',
-  variable: '#F59E0B',
-  income: '#10B981',
+  fixed: '#2A4BFF',
+  variable: '#FFB59E',
+  income: '#2BB673',
 }
 
 export const KIND_LABEL: Record<CategoryKind, string> = {

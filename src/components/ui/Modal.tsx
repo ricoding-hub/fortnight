@@ -19,9 +19,14 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
 
-  // Handle open/close animation states
+  // Mount/unmount + enter/exit animation. The synchronous setState on open
+  // is intentional: we need the panel in the DOM before scheduling the next
+  // frame to apply the entered transform — that's standard modal animation
+  // choreography and React Compiler's "no setState in effect" rule can't
+  // reason about it.
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true)
       const r1 = requestAnimationFrame(() => {
         const r2 = requestAnimationFrame(() => setEntered(true))
@@ -84,7 +89,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
       onClick={onClose}
     >
       {/* Backdrop with blur */}
-      <div className="absolute inset-0 bg-[#0F0D2E]/30 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
       {/* Panel */}
       <div

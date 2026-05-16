@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { createElement, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { IconAdjustmentsHorizontal, IconTrash } from '@tabler/icons-react'
 import { useToast } from '@/hooks/useToast'
@@ -73,9 +73,6 @@ export function TransactionRow({
     account?.type === 'credit' ? -transaction.amount : transaction.amount
   const positive = netEffect >= 0
 
-  const IconComponent = isAdjustment
-    ? IconAdjustmentsHorizontal
-    : categoryIcon(category)
   const chipColor = isAdjustment ? '#6B7194' : categoryColor(category)
 
   const title = isAdjustment
@@ -111,12 +108,16 @@ export function TransactionRow({
           !dragging && 'transition-transform duration-[--duration-normal]',
         )}
       >
-        {/* Category icon chip */}
+        {/* Category icon chip — dynamic dispatch via createElement keeps the
+            React Compiler happy about "no components created during render". */}
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{ backgroundColor: `${chipColor}18`, color: chipColor }}
         >
-          <IconComponent size={18} stroke={1.75} />
+          {createElement(
+            isAdjustment ? IconAdjustmentsHorizontal : categoryIcon(category),
+            { size: 18, stroke: 1.75 },
+          )}
         </div>
 
         {/* Title + subtitle */}

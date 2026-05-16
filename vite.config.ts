@@ -40,8 +40,8 @@ export default defineConfig({
         short_name: 'Fortnight',
         description: 'Know where you stand every payday.',
         display: 'standalone',
-        theme_color: '#6366F1',
-        background_color: '#FFFFFF',
+        theme_color: '#2A4BFF',
+        background_color: '#F7F4ED',
         start_url: '/',
         icons: [
           { src: '/favicon.png', sizes: '192x192', type: 'image/png' },

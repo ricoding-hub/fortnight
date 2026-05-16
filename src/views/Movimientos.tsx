@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import { IconPlus, IconArrowsLeftRight } from '@tabler/icons-react'
+import { IconArrowsLeftRight } from '@tabler/icons-react'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { TransactionRow } from '@/components/TransactionRow'
-import { TransactionFormModal } from '@/components/TransactionFormModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
@@ -29,13 +28,11 @@ export function Movimientos() {
   const [category, setCategory] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
 
   const {
     data: transactions,
     loading,
     error,
-    create,
     deleteTransaction,
   } = useTransactions({
     accountId: account || undefined,
@@ -181,25 +178,6 @@ export function Movimientos() {
         </div>
       )}
 
-      {/* FAB */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[480px] lg:hidden">
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          aria-label="Agregar movimiento"
-          className="pointer-events-auto absolute bottom-22 right-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-white shadow-elevated transition-all hover:bg-primary-deep hover:shadow-glow-primary active:scale-95"
-        >
-          <IconPlus size={26} />
-        </button>
-      </div>
-
-      <TransactionFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        accounts={accounts}
-        categories={categories}
-        onCreate={create}
-      />
     </div>
   )
 }
