@@ -7,8 +7,8 @@ import {
   mintToken,
   type SyncfyAccount,
   type SyncfyTransaction,
-} from './syncfy'
-import { loadCategoryMap, matchCategory } from './categoryMap'
+} from './syncfy.js'
+import { loadCategoryMap, matchCategory } from './categoryMap.js'
 
 const NINETY_DAYS = 90 * 86400
 const SEVEN_DAYS = 7 * 86400

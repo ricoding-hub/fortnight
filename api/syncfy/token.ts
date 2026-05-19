@@ -10,8 +10,8 @@
  * the same id_user.
  */
 
-import { getOrCreateUser, mintToken } from '../_lib/syncfy'
-import { isResponse, json, requireUser } from '../_lib/auth'
+import { getOrCreateUser, mintToken } from '../_lib/syncfy.js'
+import { isResponse, json, requireUser } from '../_lib/auth.js'
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
