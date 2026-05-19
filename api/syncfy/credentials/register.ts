@@ -9,9 +9,9 @@
  * immediately when the modal closes.
  */
 
-import { isResponse, json, requireUser } from '../../_lib/auth.ts'
-import { getOrCreateUser } from '../../_lib/syncfy.ts'
-import { syncCredential } from '../../_lib/sync.ts'
+import { isResponse, json, requireUser } from '../../_lib/auth'
+import { getOrCreateUser } from '../../_lib/syncfy'
+import { syncCredential } from '../../_lib/sync'
 
 interface RegisterBody {
   id_credential?: string

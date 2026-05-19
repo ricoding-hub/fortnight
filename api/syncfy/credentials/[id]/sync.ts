@@ -8,8 +8,8 @@
  * zero new rows.
  */
 
-import { isResponse, json, requireUser } from '../../../_lib/auth.ts'
-import { syncCredential } from '../../../_lib/sync.ts'
+import { isResponse, json, requireUser } from '../../../_lib/auth'
+import { syncCredential } from '../../../_lib/sync'
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)

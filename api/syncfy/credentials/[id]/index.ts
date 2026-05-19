@@ -7,12 +7,12 @@
  * `on delete set null`) so the user's transaction history is preserved.
  */
 
-import { isResponse, json, requireUser } from '../../../_lib/auth.ts'
+import { isResponse, json, requireUser } from '../../../_lib/auth'
 import {
   deleteCredential as syncfyDeleteCredential,
   getOrCreateUser,
   mintToken,
-} from '../../../_lib/syncfy.ts'
+} from '../../../_lib/syncfy'
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'DELETE') return json({ error: 'method_not_allowed' }, 405)
