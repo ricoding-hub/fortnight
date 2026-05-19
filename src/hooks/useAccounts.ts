@@ -95,6 +95,13 @@ export function useAccounts() {
    */
   async function updateBalance(account: Account, newBalance: number) {
     if (!user) throw new Error('Not authenticated')
+    // Synced accounts derive their balance from imported transactions plus
+    // the periodic reconciliation adjustment. Manual edits would drift
+    // immediately and confuse the next sync. The UI hides the editor too,
+    // but this is the defense-in-depth check.
+    if (account.source === 'syncfy') {
+      throw new Error('Cuenta sincronizada: el saldo se actualiza automáticamente.')
+    }
     const diff = newBalance - account.balance
     if (diff === 0) return
 

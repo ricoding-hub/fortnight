@@ -2,8 +2,15 @@
 // Mirrors the Supabase schema (CLAUDE.md / supabase/migrations/001_initial.sql).
 
 export type AccountType = 'debit' | 'credit'
-export type TransactionType = 'transaction' | 'adjustment'
+export type TransactionType = 'transaction' | 'adjustment' | 'sync'
 export type CategoryKind = 'fixed' | 'variable' | 'income'
+export type DataSource = 'manual' | 'syncfy'
+export type SyncfyStatus =
+  | 'active'
+  | 'token_expired'
+  | 'login_required'
+  | 'disabled'
+  | 'error'
 
 export interface Account {
   id: string
@@ -21,6 +28,13 @@ export interface Account {
   color: string | null
   created_at: string
   updated_at: string
+  /** 'manual' (default) or 'syncfy' for accounts imported via the bank-aggregation widget. */
+  source: DataSource
+  syncfy_credential_id: string | null
+  /** Syncfy's id_account when source='syncfy'; used for dedupe. */
+  external_id: string | null
+  institution_name: string | null
+  last_synced_at: string | null
 }
 
 export interface Transaction {
@@ -37,6 +51,22 @@ export interface Transaction {
   description: string | null
   date: string
   type: TransactionType
+  created_at: string
+  source: DataSource
+  /** Syncfy's id_transaction when source='syncfy'; null for manual entries. */
+  external_id: string | null
+}
+
+export interface SyncfyCredential {
+  id: string
+  user_id: string
+  syncfy_id_credential: string
+  syncfy_id_user: string
+  institution_name: string
+  institution_code: string | null
+  status: SyncfyStatus
+  last_status_message: string | null
+  last_synced_at: string | null
   created_at: string
 }
 

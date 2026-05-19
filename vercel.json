@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/((?!assets|icons|favicon|manifest).*)", "destination": "/index.html" }
+    { "source": "/((?!api|assets|icons|favicon|manifest).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

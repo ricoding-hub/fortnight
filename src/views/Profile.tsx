@@ -27,6 +27,7 @@ import { useCategories } from '@/hooks/useCategories'
 import { useToast } from '@/hooks/useToast'
 import { Card } from '@/components/ui/Card'
 import { Richeto } from '@/components/Richeto'
+import { ConnectedBanksSection } from '@/components/syncfy/ConnectedBanksSection'
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
 import type { PayFreq, UserConfig } from '@/types'
 
@@ -426,6 +427,10 @@ export function Profile() {
           <ToggleVisual checked={!!live.pet_floating} htmlFor="pet_floating" />
         </Card>
       </div>
+
+      {/* Cuentas conectadas */}
+      <SectionHeader>Cuentas conectadas</SectionHeader>
+      <ConnectedBanksSection />
 
       {/* Cuenta */}
       <SectionHeader>Cuenta</SectionHeader>

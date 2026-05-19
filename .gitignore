@@ -184,3 +184,4 @@ design_handoff_fortnight_redesign/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+.env*.local

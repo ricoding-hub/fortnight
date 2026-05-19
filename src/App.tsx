@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import { useAutoSync } from '@/hooks/useAutoSync'
 import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
@@ -25,6 +26,10 @@ function Splash({ label }: { label: string }) {
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth()
+  // Kicks off a background refresh of synced bank credentials when the
+  // session is fresh and the last sync is older than 6 hours. The hook
+  // is a no-op when there is no user.
+  useAutoSync()
   if (loading) return <Splash label="Cargando…" />
   return session ? <>{children}</> : <Navigate to="/login" replace />
 }

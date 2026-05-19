@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { IconBuildingBank } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -58,6 +59,7 @@ export function AccountFormModal({
   const isCreate = mode.kind === 'create'
   const type: AccountType = isCreate ? mode.type : mode.account.type
   const isCredit = type === 'credit'
+  const isSynced = mode.kind === 'edit' && mode.account.source === 'syncfy'
   const [submitError, setSubmitError] = useState(false)
 
   const {
@@ -144,6 +146,16 @@ export function AccountFormModal({
   return (
     <Modal open title={title} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+        {isSynced && mode.kind === 'edit' && mode.account.institution_name && (
+          <div className="flex items-start gap-2 rounded-xl bg-primary/5 p-3">
+            <IconBuildingBank size={16} className="mt-0.5 shrink-0 text-primary" />
+            <p className="text-[12px] leading-snug text-text-secondary">
+              Esta cuenta se sincroniza con <b>{mode.account.institution_name}</b>.
+              El saldo y los movimientos se actualizan automáticamente.
+            </p>
+          </div>
+        )}
+
         <Input
           label="Nombre"
           placeholder={isCredit ? 'Tarjeta Nu' : 'Cuenta de débito'}
@@ -199,7 +211,7 @@ export function AccountFormModal({
           {isCreate ? 'Crear cuenta' : 'Guardar cambios'}
         </Button>
 
-        {mode.kind === 'edit' && (
+        {mode.kind === 'edit' && !isSynced && (
           <button
             type="button"
             onClick={() => void handleDelete()}

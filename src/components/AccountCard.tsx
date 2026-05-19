@@ -6,6 +6,14 @@ import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
 import type { Account } from '@/types'
 
+function SyncedPill({ name }: { name: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-semibold text-primary">
+      {name}
+    </span>
+  )
+}
+
 interface AccountCardProps {
   account: Account
   /** Persists a new balance; the hook records the delta as an adjustment. */
@@ -35,8 +43,10 @@ export function AccountCard({
   const [invalid, setInvalid] = useState(false)
 
   const isCredit = account.type === 'credit'
+  const isSynced = account.source === 'syncfy'
 
   function startEdit() {
+    if (isSynced) return
     setValue(String(account.balance))
     setInvalid(false)
     setEditing(true)
@@ -80,9 +90,14 @@ export function AccountCard({
 
       {/* Name + cycle badge */}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-text">
-          {account.name}
-        </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-sm font-semibold text-text">
+            {account.name}
+          </p>
+          {isSynced && account.institution_name && (
+            <SyncedPill name={account.institution_name} />
+          )}
+        </div>
         {isCredit && (
           <CreditCycleBadge
             cutDay={account.cut_day}
@@ -132,24 +147,37 @@ export function AccountCard({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={startEdit}
-            className={clsx(
-              'text-sm font-bold tabular-nums transition-colors',
-              isCredit ? 'text-debt' : 'text-text',
-            )}
-          >
-            {formatMXN(account.balance)}
-          </button>
-          <button
-            type="button"
-            onClick={startEdit}
-            aria-label="Editar saldo"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text-secondary"
-          >
-            <IconPencil size={14} />
-          </button>
+          {isSynced ? (
+            <span
+              className={clsx(
+                'text-sm font-bold tabular-nums',
+                isCredit ? 'text-debt' : 'text-text',
+              )}
+            >
+              {formatMXN(account.balance)}
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={startEdit}
+                className={clsx(
+                  'text-sm font-bold tabular-nums transition-colors',
+                  isCredit ? 'text-debt' : 'text-text',
+                )}
+              >
+                {formatMXN(account.balance)}
+              </button>
+              <button
+                type="button"
+                onClick={startEdit}
+                aria-label="Editar saldo"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text-secondary"
+              >
+                <IconPencil size={14} />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => onEditDetails(account)}
