@@ -10,6 +10,7 @@ import { Cuentas } from '@/views/Cuentas'
 import { Movimientos } from '@/views/Movimientos'
 import { Prestamos } from '@/views/Prestamos'
 import { Profile } from '@/views/Profile'
+import { AcercaDe } from '@/views/AcercaDe'
 import { PlanLayout } from '@/views/Plan'
 import { Presupuesto } from '@/views/Plan/Presupuesto'
 import { Objetivos } from '@/views/Plan/Objetivos'
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="/proyeccion" element={<Navigate to="/plan/proyeccion" replace />} />
             <Route path="/prestamos" element={<Prestamos />} />
             <Route path="/perfil" element={<Profile />} />
+            <Route path="/acerca-de" element={<AcercaDe />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

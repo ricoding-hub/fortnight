@@ -31,7 +31,7 @@ import { ConnectedBanksSection } from '@/components/syncfy/ConnectedBanksSection
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
 import type { PayFreq, UserConfig } from '@/types'
 
-const APP_VERSION = '2.0.0'
+const APP_VERSION = __APP_VERSION__
 
 interface ProfileForm {
   pay_freq: PayFreq
@@ -444,7 +444,7 @@ export function Profile() {
         <ActionRow
           icon={IconInfoSquareRounded}
           label={`Acerca de Fortnight v${APP_VERSION}`}
-          onClick={() => toast.info('Fortnight', 'Tu app de finanzas personales.')}
+          onClick={() => navigate('/acerca-de')}
         />
         <ActionRow
           icon={IconLogout}
