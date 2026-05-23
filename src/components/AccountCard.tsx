@@ -98,12 +98,7 @@ export function AccountCard({
             <SyncedPill name={account.institution_name} />
           )}
         </div>
-        {isCredit && (
-          <CreditCycleBadge
-            cutDay={account.cut_day}
-            paymentDueDay={account.payment_due_day}
-          />
-        )}
+        {isCredit && <CreditCycleBadge account={account} />}
       </div>
 
       {/* Inline edit or display */}

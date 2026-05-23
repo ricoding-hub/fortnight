@@ -15,6 +15,7 @@ import {
   IconBell,
   IconCamera,
   IconFlame,
+  IconMail,
   IconLock,
   type Icon,
 } from '@tabler/icons-react'
@@ -45,6 +46,7 @@ interface ProfileForm {
   notif_due_card: boolean
   notif_mission: boolean
   notif_goal: boolean
+  notif_email: boolean
   pet_floating: boolean
 }
 
@@ -56,6 +58,7 @@ const DEFAULTS: ProfileForm = {
   notif_due_card: true,
   notif_mission: false,
   notif_goal: true,
+  notif_email: true,
   pet_floating: true,
 }
 
@@ -535,6 +538,7 @@ export function Profile() {
             color="asset"
             label="Día de pago"
             description="Te aviso para que registres tu nómina"
+            checked={!!live.notif_payday}
             {...register('notif_payday')}
           />
           <ToggleRow
@@ -542,6 +546,7 @@ export function Profile() {
             color="debt"
             label="Pago próximo"
             description="Antes de que se acumulen intereses"
+            checked={!!live.notif_due_card}
             {...register('notif_due_card')}
           />
           <ToggleRow
@@ -549,6 +554,7 @@ export function Profile() {
             color="lavender"
             label="Avance de meta"
             description="Cuando llegues a 25%, 50%, 75%"
+            checked={!!live.notif_goal}
             {...register('notif_goal')}
           />
           <ToggleRow
@@ -556,8 +562,17 @@ export function Profile() {
             color="primary"
             label="Misión diaria"
             description="Recordatorio para mantener tu racha"
-            last
+            checked={!!live.notif_mission}
             {...register('notif_mission')}
+          />
+          <ToggleRow
+            icon={IconMail}
+            color="asset"
+            label="Correo electrónico"
+            description="Richeto te avisa por email un día antes"
+            last
+            checked={!!live.notif_email}
+            {...register('notif_email')}
           />
         </Card>
       </div>
@@ -674,6 +689,7 @@ function toForm(c: UserConfig): ProfileForm {
     notif_due_card: c.notif_due_card ?? true,
     notif_mission: c.notif_mission ?? false,
     notif_goal: c.notif_goal ?? true,
+    notif_email: c.notif_email ?? true,
     pet_floating: c.pet_floating ?? true,
   }
 }
@@ -725,10 +741,11 @@ interface ToggleRowProps extends Omit<React.InputHTMLAttributes<HTMLInputElement
   label: string
   description: string
   last?: boolean
+  checked?: boolean
   ref?: React.Ref<HTMLInputElement>
 }
 
-function ToggleRow({ icon: IconEl, color, label, description, last, ref, ...inputProps }: ToggleRowProps) {
+function ToggleRow({ icon: IconEl, color, label, description, last, checked, ref, ...inputProps }: ToggleRowProps) {
   const id = `toggle-${inputProps.name}`
   return (
     <label
@@ -746,7 +763,9 @@ function ToggleRow({ icon: IconEl, color, label, description, last, ref, ...inpu
         <p className="text-[11px] text-text-tertiary">{description}</p>
       </div>
       <input ref={ref} id={id} type="checkbox" className="peer sr-only" {...inputProps} />
-      <ToggleVisualPeer />
+      {checked !== undefined
+        ? <ToggleVisual checked={checked} htmlFor={id} />
+        : <ToggleVisualPeer />}
     </label>
   )
 }

@@ -25,6 +25,11 @@ export interface Account {
   cut_day: number | null
   /** Day of month 1–31. Credit accounts only. */
   payment_due_day: number | null
+  /**
+   * Days after cut date when payment is due (e.g. 60 for Plata Card).
+   * When set, takes precedence over payment_due_day. Credit accounts only.
+   */
+  payment_grace_days: number | null
   color: string | null
   created_at: string
   updated_at: string
@@ -178,6 +183,8 @@ export interface UserConfig {
   notif_due_card: boolean
   notif_mission: boolean
   notif_goal: boolean
+  /** Global email notification opt-out (added in migration 007). */
+  notif_email: boolean
   /** UI preference — render the floating Richeto companion. */
   pet_floating: boolean
 }
@@ -189,4 +196,19 @@ export interface UserGamification {
   streak_days: number
   last_activity_date: string | null
   updated_at: string
+}
+
+export type NotificationType = 'payment_due' | 'payday' | 'goal' | 'mission'
+
+export interface Notification {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string
+  read: boolean
+  account_id: string | null
+  dedup_key: string
+  email_sent: boolean
+  created_at: string
 }

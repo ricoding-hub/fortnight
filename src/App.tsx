@@ -12,6 +12,7 @@ import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
 import { Movimientos } from '@/views/Movimientos'
 import { Profile } from '@/views/Profile'
 import { AcercaDe } from '@/views/AcercaDe'
+import { Notificaciones } from '@/views/Notificaciones'
 import { PlanLayout } from '@/views/Plan'
 import { Presupuesto } from '@/views/Plan/Presupuesto'
 import { Objetivos } from '@/views/Plan/Objetivos'
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/proyeccion" element={<Navigate to="/plan/proyeccion" replace />} />
             <Route path="/prestamos" element={<Navigate to="/cuentas/prestamos" replace />} />
             <Route path="/perfil" element={<Profile />} />
+            <Route path="/notificaciones" element={<Notificaciones />} />
             <Route path="/acerca-de" element={<AcercaDe />} />
           </Route>
 

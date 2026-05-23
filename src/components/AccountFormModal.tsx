@@ -33,6 +33,11 @@ const isDay = (v: string) => {
 
 const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) >= 0
 
+const isGraceDays = (v: string) => {
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 1 && n <= 365
+}
+
 // The form holds raw strings; values are coerced to the schema's types on submit.
 const accountSchema = z.object({
   name: z.string().trim().min(1, 'Escribe un nombre'),
@@ -44,6 +49,9 @@ const accountSchema = z.object({
   payment_due_day: z
     .string()
     .refine((v) => v === '' || isDay(v), 'Día entre 1 y 31'),
+  payment_grace_days: z
+    .string()
+    .refine((v) => v === '' || isGraceDays(v), 'Entre 1 y 365 días'),
 })
 
 type AccountFormValues = z.infer<typeof accountSchema>
@@ -62,6 +70,11 @@ export function AccountFormModal({
   const isSynced = mode.kind === 'edit' && mode.account.source === 'syncfy'
   const [submitError, setSubmitError] = useState(false)
 
+  // Due date mode: 'fixed_day' uses payment_due_day; 'grace_days' uses cut_day + payment_grace_days
+  const [dueDateMode, setDueDateMode] = useState<'fixed_day' | 'grace_days'>(
+    mode.kind === 'edit' && mode.account.payment_grace_days != null ? 'grace_days' : 'fixed_day',
+  )
+
   const {
     register,
     handleSubmit,
@@ -76,6 +89,7 @@ export function AccountFormModal({
             credit_limit: '',
             cut_day: '',
             payment_due_day: '',
+            payment_grace_days: '',
           }
         : {
             name: mode.account.name,
@@ -90,6 +104,10 @@ export function AccountFormModal({
               mode.account.payment_due_day != null
                 ? String(mode.account.payment_due_day)
                 : '',
+            payment_grace_days:
+              mode.account.payment_grace_days != null
+                ? String(mode.account.payment_grace_days)
+                : '',
           },
   })
 
@@ -100,7 +118,8 @@ export function AccountFormModal({
     const creditFields = {
       credit_limit: isCredit ? num(values.credit_limit) : null,
       cut_day: isCredit ? num(values.cut_day) : null,
-      payment_due_day: isCredit ? num(values.payment_due_day) : null,
+      payment_due_day: isCredit && dueDateMode === 'fixed_day' ? num(values.payment_due_day) : null,
+      payment_grace_days: isCredit && dueDateMode === 'grace_days' ? num(values.payment_grace_days) : null,
     }
     try {
       if (mode.kind === 'create') {
@@ -182,22 +201,55 @@ export function AccountFormModal({
               error={errors.credit_limit?.message}
               {...register('credit_limit')}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Día de corte"
+              inputMode="numeric"
+              placeholder="1–31"
+              error={errors.cut_day?.message}
+              {...register('cut_day')}
+            />
+
+            {/* Due date mode selector */}
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
+                Fecha límite de pago
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['fixed_day', 'grace_days'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDueDateMode(m)}
+                    className={
+                      'rounded-xl py-2.5 text-[12px] font-bold transition-all ' +
+                      (dueDateMode === m
+                        ? 'bg-primary text-white shadow-[0_4px_10px_rgba(42,75,255,0.3)]'
+                        : 'bg-bg-secondary text-text-secondary')
+                    }
+                  >
+                    {m === 'fixed_day' ? 'Día fijo' : 'Días de gracia'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {dueDateMode === 'fixed_day' ? (
               <Input
-                label="Día de corte"
+                label="Día del mes (1–31)"
                 inputMode="numeric"
-                placeholder="1–31"
-                error={errors.cut_day?.message}
-                {...register('cut_day')}
-              />
-              <Input
-                label="Día límite de pago"
-                inputMode="numeric"
-                placeholder="1–31"
+                placeholder="Ej: 25"
                 error={errors.payment_due_day?.message}
                 {...register('payment_due_day')}
               />
-            </div>
+            ) : (
+              <Input
+                label="Días desde el corte"
+                inputMode="numeric"
+                placeholder="Ej: 60 para Plata Card"
+                error={errors.payment_grace_days?.message}
+                {...register('payment_grace_days')}
+              />
+            )}
           </>
         )}
 
@@ -215,7 +267,7 @@ export function AccountFormModal({
           <button
             type="button"
             onClick={() => void handleDelete()}
-            className="h-12 rounded-xl text-sm font-medium text-debt transition-colors hover:bg-debt/8"
+            className="py-2 text-sm font-semibold text-debt"
           >
             Eliminar cuenta
           </button>

@@ -11,6 +11,7 @@ export interface NewAccount {
   credit_limit?: number | null
   cut_day?: number | null
   payment_due_day?: number | null
+  payment_grace_days?: number | null
   color?: string | null
 }
 

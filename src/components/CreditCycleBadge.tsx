@@ -1,21 +1,18 @@
-import { daysUntilDayOfMonth } from '@/lib/dates'
+import { daysUntilDayOfMonth, daysUntilPayment } from '@/lib/dates'
 import { Badge } from '@/components/ui/Badge'
+import type { Account } from '@/types'
 
 interface CreditCycleBadgeProps {
-  cutDay: number | null
-  paymentDueDay: number | null
+  account: Account
 }
 
-export function CreditCycleBadge({
-  cutDay,
-  paymentDueDay,
-}: CreditCycleBadgeProps) {
-  // Nothing to show
-  if (cutDay == null && paymentDueDay == null) return null
+export function CreditCycleBadge({ account }: CreditCycleBadgeProps) {
+  if (account.cut_day == null && account.payment_due_day == null && account.payment_grace_days == null) {
+    return null
+  }
 
-  const paymentDays = paymentDueDay != null ? daysUntilDayOfMonth(paymentDueDay) : null
+  const paymentDays = daysUntilPayment(account)
 
-  // Payment urgency drives the badge variant
   let variant: 'neutral' | 'warning' | 'danger' = 'neutral'
   if (paymentDays != null) {
     if (paymentDays <= 3) variant = 'danger'
@@ -24,16 +21,12 @@ export function CreditCycleBadge({
 
   return (
     <div className="mt-0.5 flex flex-wrap gap-1.5">
-      {/* Payment first — primary info */}
       {paymentDays != null && (
-        <Badge variant={variant}>
-          Pago en {paymentDays}d
-        </Badge>
+        <Badge variant={variant}>Pago en {paymentDays}d</Badge>
       )}
-      {/* Cut day — secondary, always neutral */}
-      {cutDay != null && (
+      {account.cut_day != null && (
         <Badge variant="neutral" className="opacity-60 text-[10px]">
-          Corte {daysUntilDayOfMonth(cutDay)}d
+          Corte {daysUntilDayOfMonth(account.cut_day)}d
         </Badge>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { IconRocket } from '@tabler/icons-react'
 import clsx from 'clsx'
@@ -31,10 +31,17 @@ export function Proyeccion() {
   const { data: plan } = useBudgetPlan()
   const { data: goals, loading } = useGoals()
 
-  // Primary goal: first non-debt savings goal, else first debt goal.
-  const defaultPrimary =
-    goals.find((g) => !g.is_debt)?.id ?? goals.find((g) => g.is_debt)?.id ?? null
-  const [primaryId, setPrimaryId] = useState<string | null>(defaultPrimary)
+  const [primaryId, setPrimaryId] = useState<string | null>(null)
+
+  // Auto-select the first goal once goals load. Uses the updater form so a
+  // manual chip selection (cur !== null) is never overwritten by a refetch.
+  useEffect(() => {
+    setPrimaryId((cur) => {
+      if (cur !== null) return cur
+      return goals.find((g) => !g.is_debt)?.id ?? goals.find((g) => g.is_debt)?.id ?? null
+    })
+  }, [goals])
+
   const primary = goals.find((g) => g.id === primaryId) ?? null
 
   const series = useMemo(() => (primary ? projectGoal(primary) : []), [primary])

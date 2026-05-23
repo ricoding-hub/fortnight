@@ -34,8 +34,9 @@ import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
 import { calculateScore } from '@/lib/score'
-import { daysUntilDayOfMonth } from '@/lib/dates'
+import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
+import { useNotifications } from '@/hooks/useNotifications'
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
@@ -70,6 +71,7 @@ export function Resumen() {
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, nextLevelXP, levelProgress } = useGamification()
+  const { unreadCount } = useNotifications()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   const [completedMissionId, setCompletedMissionId] = useState<string | null>(null)
@@ -118,9 +120,8 @@ export function Resumen() {
   }, [debtGoal])
 
   const urgent = creditAccounts
-    .filter((a) => a.payment_due_day != null)
-    .map((a) => ({ account: a, days: daysUntilDayOfMonth(a.payment_due_day!) }))
-    .filter((x) => x.days <= 5)
+    .map((a) => ({ account: a, days: daysUntilPayment(a) }))
+    .filter((x): x is { account: typeof x.account; days: number } => x.days != null && x.days <= 5)
     .sort((a, b) => a.days - b.days)
   const nextUrgent = urgent[0]
 
@@ -266,13 +267,22 @@ export function Resumen() {
         <button
           type="button"
           aria-label="Notificaciones"
-          className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-bg-elevated shadow-card transition-colors hover:bg-bg-tinted"
+          onClick={() => navigate('/notificaciones')}
+          className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-bg-elevated shadow-card transition-all hover:bg-bg-tinted active:scale-95"
         >
-          <IconBell size={18} stroke={2} className="text-text-secondary" />
-          <span
-            className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-debt"
-            style={{ boxShadow: '0 0 0 2px var(--color-bg-elevated)' }}
+          <IconBell
+            size={18}
+            stroke={2}
+            className={unreadCount > 0 ? 'text-text' : 'text-text-secondary'}
           />
+          {unreadCount > 0 && (
+            <span
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-debt px-1 font-mono text-[9px] font-extrabold text-white"
+              style={{ boxShadow: '0 0 0 2px var(--color-bg-elevated)' }}
+            >
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
       </header>
 
