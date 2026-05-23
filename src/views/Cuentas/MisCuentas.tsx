@@ -71,7 +71,7 @@ function Section({
   )
 }
 
-export function Cuentas() {
+export function MisCuentas() {
   const { data: accounts, loading, error, create, update, deleteAccount, updateBalance } =
     useAccounts()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
@@ -112,12 +112,7 @@ export function Cuentas() {
   }
 
   return (
-    <div className="flex flex-col animate-[fade-in_300ms_ease-out]">
-      <header className="px-4 pb-2 pt-4 lg:pt-2">
-        <h1 className="text-lg font-bold text-text">Cuentas</h1>
-        <p className="text-xs text-text-secondary">Gestiona tus cuentas de débito y crédito</p>
-      </header>
-
+    <div className="flex flex-col pb-24 animate-[fade-in_300ms_ease-out]">
       {accounts.length === 0 ? (
         <EmptyState
           icon={IconWallet}

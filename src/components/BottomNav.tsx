@@ -5,29 +5,20 @@ import { useUiStore } from '@/store/uiStore'
 import { NAV_TABS, type NavTab } from '@/components/nav'
 
 /**
- * Floating pill tab bar with a raised central "+" FAB — matches the design
- * handoff's TabBar (shared.jsx). Layout: Resumen · Plan · [+] · Cuentas · Préstamos
- * on mobile; the FAB also appears on tablet but the standard sidebar handles
- * navigation on desktop (≥lg).
+ * Floating pill tab bar with a raised central "+" FAB.
+ * Layout: Resumen · Cuentas · [+] · Plan · Movimientos on mobile.
+ * The sidebar handles navigation at ≥lg.
  */
 export function BottomNav() {
   const location = useLocation()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
-  // Split nav: first two (Resumen, Plan) go left of the FAB, last two
-  // (Cuentas, Préstamos) go right. Movimientos is reachable via the deep link
-  // on Resumen / kebab menu; the bottom nav prioritises the high-frequency
-  // actions per the design.
-  const leftTabs = NAV_TABS.filter((t) =>
-    t.to === '/' || t.to === '/plan',
-  )
-  const rightTabs = NAV_TABS.filter((t) =>
-    t.to === '/cuentas' || t.to === '/prestamos',
-  )
+  const leftTabs = NAV_TABS.filter((t) => t.to === '/' || t.to === '/cuentas')
+  const rightTabs = NAV_TABS.filter((t) => t.to === '/plan' || t.to === '/movimientos')
 
   return (
     <nav
-      className="fixed inset-x-0 z-40 lg:hidden"
+      className="fixed inset-x-0 z-40 px-4 lg:hidden"
       style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       aria-label="Navegación principal"
     >

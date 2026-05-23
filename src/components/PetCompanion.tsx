@@ -1,23 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useConfig } from '@/hooks/useConfig'
+import { useBudgetPlan } from '@/hooks/useBudgetPlan'
+import { useGoals } from '@/hooks/useGoals'
 import { Richeto } from '@/components/Richeto'
+import { richetoAdvice, type AdviceTip } from '@/lib/advice'
+import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
+import type { BucketWithSpend } from '@/lib/plan'
 
 /**
- * Per-route contextual messages — verbatim from
- * design_handoff_fortnight_redesign/design-files/app.jsx (`messages` map).
+ * Static per-route fallback messages — used when no smart advice tips apply
+ * (e.g. user without budget data yet).
  */
 const ROUTE_MESSAGES: Record<string, string> = {
-  '/':            '¡Hey! Si pagas Klar hoy te ahorras $340 en intereses 💸',
-  '/plan':        'Probemos el 50/30/20 — te lo dejé pre-cargado, ajusta lo que quieras 🎯',
-  '/cuentas':     'Plata está al 87%. Sugiero bajarla antes del corte 🧐',
-  '/prestamos':   'Jeremy y Ale aún te deben. ¿Les recuerdo? 😏',
+  '/':            '¿En qué te ayudo hoy?',
+  '/plan':        'Ajusta los porcentajes a tu vida — el 50/30/20 es solo el punto de partida.',
+  '/cuentas':     'Mantén tus cuentas al día; un par de segundos por aquí evita sorpresas.',
   '/movimientos': 'Cada peso contado es uno controlado.',
 }
 
-function messageFor(pathname: string): string {
+function fallbackMessage(pathname: string): string {
   if (pathname.startsWith('/plan')) return ROUTE_MESSAGES['/plan']
+  if (pathname.startsWith('/cuentas')) return ROUTE_MESSAGES['/cuentas']
   return ROUTE_MESSAGES[pathname] ?? '¿En qué te ayudo?'
+}
+
+/** Spent=0 stub until a real rollup exists (mirrors the helper from Resumen). */
+function withZeroSpend(
+  buckets: ReturnType<typeof useBudgetPlan>['data'],
+): BucketWithSpend[] {
+  if (!buckets) return []
+  return buckets.buckets.map((b) => ({
+    ...b,
+    items: b.items.map((it) => ({ ...it, spent: 0 })),
+  }))
 }
 
 /**
@@ -25,27 +41,58 @@ function messageFor(pathname: string): string {
  * bubble. Hidden on /perfil (the user is configuring Richeto there) and when
  * `pet_floating` is disabled in the profile.
  *
+ * Bubble content:
+ *   • On `/` (Home): smart advice tips from `richetoAdvice()` with carousel
+ *     (tap pet to cycle through tips).
+ *   • Other routes: static route hint.
+ *
  * Auto-opens the bubble briefly when the route changes, then collapses; tap
- * toggles it back on.
+ * toggles it back on (or cycles to next tip on Home).
  */
 export function PetCompanion() {
   const location = useLocation()
   const { data: config } = useConfig()
+  const { data: planData } = useBudgetPlan()
+  const { data: goals } = useGoals()
   const [open, setOpen] = useState(false)
+  const [tipIdx, setTipIdx] = useState(0)
 
-  // Auto-show the bubble briefly on every route change so the comment surfaces
-  // without forcing the user to tap.
+  // Smart tips — only computed on home where they make sense.
+  const tips = useMemo<AdviceTip[]>(() => {
+    if (location.pathname !== '/') return []
+    const freq: PayFreq = (config?.pay_freq ?? 'catorcenal') as PayFreq
+    const monthlyIncome = Math.round(
+      (config?.pay_amount ?? 0) * PAY_FREQS[freq].cyclesPerMonth,
+    )
+    return richetoAdvice(withZeroSpend(planData), monthlyIncome, goals)
+  }, [location.pathname, config, planData, goals])
+
+  // Auto-show on route change; reset carousel position.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpen(true)
-    const t = window.setTimeout(() => setOpen(false), 4000)
+    setTipIdx(0)
+    const t = window.setTimeout(() => setOpen(false), 4500)
     return () => window.clearTimeout(t)
   }, [location.pathname])
 
   if (location.pathname.startsWith('/perfil')) return null
   if (config && config.pet_floating === false) return null
 
-  const message = messageFor(location.pathname)
+  const tip = tips.length > 0 ? tips[tipIdx % tips.length] : null
+
+  function handleTap() {
+    // If closed → open. If open and there are multiple tips → cycle.
+    if (!open) {
+      setOpen(true)
+      return
+    }
+    if (tip && tips.length > 1) {
+      setTipIdx((i) => i + 1)
+      return
+    }
+    setOpen(false)
+  }
 
   return (
     <div
@@ -56,13 +103,50 @@ export function PetCompanion() {
       }}
     >
       {open && (
-        <div className="pointer-events-auto max-w-[220px] rounded-2xl rounded-br-[4px] bg-bg-elevated px-3.5 py-2.5 text-[12.5px] font-semibold leading-snug text-text shadow-lift animate-[fn-pop_280ms_cubic-bezier(0.4,1.6,0.5,1)]">
-          {message}
+        <div
+          className="pointer-events-auto relative max-w-[240px] overflow-hidden rounded-2xl rounded-br-[4px] bg-bg-elevated px-3.5 py-2.5 text-text shadow-lift animate-[fn-pop_280ms_cubic-bezier(0.4,1.6,0.5,1)]"
+        >
+          {tip ? (
+            <>
+              <div
+                className="absolute bottom-0 left-0 top-0 w-1"
+                style={{ background: tip.color }}
+              />
+              <div className="pl-1.5">
+                <p
+                  className="mb-0.5 text-[9.5px] font-extrabold uppercase tracking-[0.08em]"
+                  style={{ color: tip.color }}
+                >
+                  Richeto sugiere
+                  {tips.length > 1 && (
+                    <span className="ml-1.5 font-mono text-text-tertiary">
+                      {(tipIdx % tips.length) + 1}/{tips.length}
+                    </span>
+                  )}
+                </p>
+                <p className="text-[12.5px] font-extrabold leading-tight">
+                  {tip.title}
+                </p>
+                <p className="mt-1 text-[11.5px] font-medium leading-snug text-text-secondary">
+                  {tip.body}
+                </p>
+                {tips.length > 1 && (
+                  <p className="mt-1.5 text-[10px] font-semibold text-text-tertiary">
+                    Toca a Richeto para el siguiente
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-[12.5px] font-semibold leading-snug">
+              {fallbackMessage(location.pathname)}
+            </p>
+          )}
         </div>
       )}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleTap}
         aria-label="Richeto, tu asistente"
         aria-expanded={open}
         className="pointer-events-auto cursor-pointer border-none bg-transparent p-0 transition-transform active:scale-90"

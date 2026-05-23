@@ -19,14 +19,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
-import { useConfig } from '@/hooks/useConfig'
-import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
 
 import { Card } from '@/components/ui/Card'
 import { SkeletonStatCard } from '@/components/ui/Skeleton'
 import { PaydayBanner } from '@/components/PaydayBanner'
-import { RichetoAdviceCard } from '@/components/RichetoAdviceCard'
 import { ScoreSparkline } from '@/components/ScoreSparkline'
 import { Podium, type PodiumFriend } from '@/components/Podium'
 import { YourRank, type RankFriend } from '@/components/YourRank'
@@ -37,8 +34,6 @@ import { formatMXN } from '@/lib/format'
 import { calculateScore } from '@/lib/score'
 import { daysUntilDayOfMonth } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
-import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
-import type { BucketWithSpend } from '@/lib/plan'
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
@@ -47,15 +42,6 @@ import type { BucketWithSpend } from '@/lib/plan'
 function shortMonth(d: Date): string {
   const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
   return `${months[d.getMonth()]} ${d.getFullYear()}`
-}
-
-/** Attaches spent=0 to every item — PR-6 swaps for a real-spending rollup. */
-function withZeroSpend(buckets: ReturnType<typeof useBudgetPlan>['data']): BucketWithSpend[] {
-  if (!buckets) return []
-  return buckets.buckets.map((b) => ({
-    ...b,
-    items: b.items.map((it) => ({ ...it, spent: 0 })),
-  }))
 }
 
 /** Derive a 7-point sparkline from the current score (placeholder for score_history). */
@@ -80,8 +66,6 @@ export function Resumen() {
   const { data: accounts, loading, error } = useAccounts()
   const { active: activeLoans } = useLoans()
   const { data: recentTx } = useTransactions()
-  const { data: config } = useConfig()
-  const { data: planData } = useBudgetPlan()
   const { data: goals } = useGoals()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
@@ -138,11 +122,6 @@ export function Resumen() {
   // Streak — unique tx days proxy (gamification table is out of scope for PR-4).
   const uniqueDays = new Set(recentTx.map((t) => t.date))
   const streak = uniqueDays.size
-
-  // Pay profile → monthly income (drives advice).
-  const freq: PayFreq = (config?.pay_freq ?? 'catorcenal') as PayFreq
-  const monthlyIncome = Math.round((config?.pay_amount ?? 0) * PAY_FREQS[freq].cyclesPerMonth)
-  const bucketsWithSpend = useMemo(() => withZeroSpend(planData), [planData])
 
   // Missions — starter set with progress derived from real signals.
   const missions: Mission[] = useMemo(() => {
@@ -389,13 +368,6 @@ export function Resumen() {
         </div>
       </section>
 
-      {/* ── Richeto contextual advice ── */}
-      <RichetoAdviceCard
-        buckets={bucketsWithSpend}
-        monthlyIncome={monthlyIncome}
-        goals={goals}
-      />
-
       {/* ── Score card with ring + sparkline ── */}
       <section className="px-4 pt-2">
         <Card className="p-4">
@@ -512,18 +484,6 @@ export function Resumen() {
         </>
       )}
 
-      {/* ── Misiones de la semana ── */}
-      <SectionHeader right={<span className="text-[11px] font-bold text-primary">3 activas</span>}>
-        Misiones de la semana
-      </SectionHeader>
-      <section className="px-4 pb-2">
-        <MisionesCompact
-          missions={missions}
-          onToggle={setCompletedMissionId}
-          completedId={completedMissionId}
-        />
-      </section>
-
       {/* ── Tu mes grid ── */}
       <SectionHeader>Tu mes</SectionHeader>
       <section className="grid grid-cols-2 gap-2.5 px-4 pb-2">
@@ -554,6 +514,18 @@ export function Resumen() {
           value="0 / 4"
           color="#9B7BFF"
           softColor="var(--color-lavender-soft)"
+        />
+      </section>
+
+      {/* ── Misiones de la semana ── */}
+      <SectionHeader right={<span className="text-[11px] font-bold text-primary">3 activas</span>}>
+        Misiones de la semana
+      </SectionHeader>
+      <section className="px-4 pb-2">
+        <MisionesCompact
+          missions={missions}
+          onToggle={setCompletedMissionId}
+          completedId={completedMissionId}
         />
       </section>
 

@@ -6,9 +6,10 @@ import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
 import { Resumen } from '@/views/Resumen'
-import { Cuentas } from '@/views/Cuentas'
+import { CuentasLayout } from '@/views/Cuentas'
+import { MisCuentas } from '@/views/Cuentas/MisCuentas'
+import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
 import { Movimientos } from '@/views/Movimientos'
-import { Prestamos } from '@/views/Prestamos'
 import { Profile } from '@/views/Profile'
 import { AcercaDe } from '@/views/AcercaDe'
 import { PlanLayout } from '@/views/Plan'
@@ -64,7 +65,11 @@ export default function App() {
             }
           >
             <Route path="/" element={<Resumen />} />
-            <Route path="/cuentas" element={<Cuentas />} />
+            <Route path="/cuentas" element={<CuentasLayout />}>
+              <Route index element={<Navigate to="mis" replace />} />
+              <Route path="mis" element={<MisCuentas />} />
+              <Route path="prestamos" element={<MisPrestamos />} />
+            </Route>
             <Route path="/movimientos" element={<Movimientos />} />
             <Route path="/plan" element={<PlanLayout />}>
               <Route index element={<Navigate to="presupuesto" replace />} />
@@ -72,9 +77,9 @@ export default function App() {
               <Route path="objetivos" element={<Objetivos />} />
               <Route path="proyeccion" element={<Proyeccion />} />
             </Route>
-            {/* Legacy /proyeccion URL redirects into the new Plan sub-view */}
+            {/* Legacy URLs */}
             <Route path="/proyeccion" element={<Navigate to="/plan/proyeccion" replace />} />
-            <Route path="/prestamos" element={<Prestamos />} />
+            <Route path="/prestamos" element={<Navigate to="/cuentas/prestamos" replace />} />
             <Route path="/perfil" element={<Profile />} />
             <Route path="/acerca-de" element={<AcercaDe />} />
           </Route>

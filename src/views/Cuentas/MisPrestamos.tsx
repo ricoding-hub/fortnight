@@ -97,7 +97,7 @@ function LoanRow({
   )
 }
 
-export function Prestamos() {
+export function MisPrestamos() {
   const { active, paid, loading, error, create, markPaid } = useLoans()
   const [modalOpen, setModalOpen] = useState(false)
   const [showPaid, setShowPaid] = useState(false)
@@ -128,12 +128,7 @@ export function Prestamos() {
   }
 
   return (
-    <div className="flex flex-col animate-[fade-in_300ms_ease-out]">
-      <header className="px-4 pb-2 pt-4 lg:pt-2">
-        <h1 className="text-lg font-bold text-text">Préstamos</h1>
-        <p className="text-xs text-text-secondary">Dinero que te deben</p>
-      </header>
-
+    <div className="flex flex-col pb-24 animate-[fade-in_300ms_ease-out]">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 px-4 py-2">
         <StatCard
