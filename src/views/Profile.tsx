@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import {
-  IconChevronLeft,
   IconChevronRight,
   IconCalendarEvent,
   IconInfoCircle,
@@ -15,11 +13,15 @@ import {
   IconShieldLock,
   IconInfoSquareRounded,
   IconBell,
+  IconCamera,
+  IconFlame,
+  IconLock,
   type Icon,
 } from '@tabler/icons-react'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useConfig } from '@/hooks/useConfig'
+import { useGamification } from '@/hooks/useGamification'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useLoans } from '@/hooks/useLoans'
@@ -27,7 +29,9 @@ import { useCategories } from '@/hooks/useCategories'
 import { useToast } from '@/hooks/useToast'
 import { Card } from '@/components/ui/Card'
 import { Richeto } from '@/components/Richeto'
+import { Confetti } from '@/components/Confetti'
 import { ConnectedBanksSection } from '@/components/syncfy/ConnectedBanksSection'
+import { supabase } from '@/lib/supabase'
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
 import type { PayFreq, UserConfig } from '@/types'
 
@@ -55,40 +59,134 @@ const DEFAULTS: ProfileForm = {
   pet_floating: true,
 }
 
-/** Initials for the avatar (first letter of name/email, uppercase). */
+/** First letter of name/email, uppercase. */
 function initial(s: string | null | undefined): string {
   return (s?.trim()?.[0] ?? '?').toUpperCase()
 }
 
+/** Level XP thresholds (index = level - 1). */
+const LEVEL_XP = [0, 500, 1500, 3500, 7000] as const
+function nextLevelFor(lv: number) { return LEVEL_XP[lv] ?? (LEVEL_XP[LEVEL_XP.length - 1] * 2) }
+
+/** Resize an image to max side via canvas, return a Blob. */
+async function resizeImage(file: File, maxPx = 400): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/webp', 0.85)
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+/* ─────────────────────────────────────── Achievements definition ── */
+
+interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: Icon
+  color: string
+  unlocked: boolean
+}
+
+function useAchievements(xp: number, streakDays: number, txCount: number, score: number): Achievement[] {
+  return useMemo(() => [
+    {
+      id: 'first-tx',
+      title: 'Primera transacción',
+      description: 'Registraste tu primer movimiento.',
+      icon: IconCash,
+      color: '#2BB673',
+      unlocked: txCount >= 1,
+    },
+    {
+      id: 'streak-7',
+      title: '7 días de racha',
+      description: 'Mantuviste actividad por 7 días seguidos.',
+      icon: IconFlame,
+      color: '#FF5A5F',
+      unlocked: streakDays >= 7,
+    },
+    {
+      id: 'score-5',
+      title: 'Score 5+',
+      description: 'Alcanzaste un score financiero de 5 o más.',
+      icon: IconTarget,
+      color: '#2A4BFF',
+      unlocked: score >= 5,
+    },
+    {
+      id: 'xp-500',
+      title: 'Nivel 2',
+      description: 'Ganaste 500 XP con tu consistencia.',
+      icon: IconRocket,
+      color: '#9B7BFF',
+      unlocked: xp >= 500,
+    },
+  ], [xp, streakDays, txCount, score])
+}
+
+/* ═══════════════════════════════════════════ Main component ══════ */
+
 export function Profile() {
-  const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const { data: config, update } = useConfig()
+  const { data: gami } = useGamification()
   const { data: accounts } = useAccounts()
   const { data: transactions } = useTransactions()
   const { data: loans } = useLoans()
   const { data: categories } = useCategories()
   const toast = useToast()
 
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [confettiAchievement, setConfettiAchievement] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
   const displayName =
     (user?.user_metadata?.full_name as string | undefined) ??
     user?.email?.split('@')[0] ??
     'Usuario'
   const handle = '@' + displayName.toLowerCase().replace(/[^a-z0-9_]/g, '')
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
+
+  // Achievement signals
+  const txCount = transactions.length
+  const score = useMemo(() => {
+    const credit = accounts.filter((a) => a.type === 'credit')
+    const totalDebt = credit.reduce((s, a) => s + a.balance, 0)
+    const totalLimit = credit.reduce((s, a) => s + (a.credit_limit ?? 0), 0)
+    if (totalLimit === 0) return 5
+    const utilization = totalDebt / totalLimit
+    return Math.max(1, Math.min(10, Math.round((1 - utilization) * 10)))
+  }, [accounts])
+  const achievements = useAchievements(gami.xp, gami.streak_days, txCount, score)
+
+  // Level info
+  const lv = gami.level
+  const currentLevelXP = LEVEL_XP[lv - 1] ?? 0
+  const nextXP = nextLevelFor(lv)
+  const progressPct = nextXP > currentLevelXP
+    ? Math.round(((gami.xp - currentLevelXP) / (nextXP - currentLevelXP)) * 100)
+    : 100
+
+  /* ───────── Form auto-save (unchanged logic) ───────── */
 
   const { register, reset, getValues, setValue, watch } = useForm<ProfileForm>({
     defaultValues: DEFAULTS,
   })
 
-  // Hydrate the form once config arrives — and again whenever the server's
-  // updated_at changes (so realtime updates from another device propagate).
-  // The realtime echo from our own write is harmless: reset() runs with
-  // identical values and watch() filters out non-'change' events below.
   const hydratedRef = useRef<string | null>(null)
-  // Last-saved snapshot — used to avoid re-saving identical values when the
-  // watch subscription fires after a reset or when nothing actually changed.
   const lastSavedRef = useRef<string>('')
-  // Throttle error toasts so a flapping connection doesn't spam the user.
   const lastErrorAtRef = useRef(0)
 
   useEffect(() => {
@@ -100,10 +198,6 @@ export function Profile() {
     lastSavedRef.current = JSON.stringify(form)
   }, [config, reset])
 
-  // Debounced auto-save. Guards:
-  //   • skip if the form hasn't hydrated yet (don't overwrite server with defaults)
-  //   • skip if the patch matches the last-saved snapshot (idempotent)
-  //   • dedupe error toasts to one per 5s window
   const saveTimerRef = useRef<number | null>(null)
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current)
@@ -114,7 +208,6 @@ export function Profile() {
       if (snapshot === lastSavedRef.current) return
       lastSavedRef.current = snapshot
       void update(values).catch(() => {
-        // Roll back the snapshot so the next change retries the save.
         lastSavedRef.current = ''
         const now = Date.now()
         if (now - lastErrorAtRef.current > 5000) {
@@ -129,11 +222,8 @@ export function Profile() {
     if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current)
   }, [])
 
-  // Auto-save on user input. `type === 'change'` excludes programmatic resets.
-  // React Compiler skips this hook because RHF's watch() returns a function that
-  // can't be safely memoized — known and benign.
+  // eslint-disable-next-line react-hooks/incompatible-library
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/incompatible-library
     const sub = watch((_values, { type }) => {
       if (type !== 'change') return
       scheduleSave()
@@ -141,7 +231,6 @@ export function Profile() {
     return () => sub.unsubscribe()
   }, [watch, scheduleSave])
 
-  // Live values for derived UI (monthly equivalent, upcoming paydays).
   const live = watch()
   const freq = (live.pay_freq ?? 'catorcenal') as PayFreq
   const amount = Number(live.pay_amount ?? 0)
@@ -172,6 +261,43 @@ export function Profile() {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0)
   }, [])
 
+  /* ───────── Avatar upload ───────── */
+
+  const handleAvatarChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    setUploadingAvatar(true)
+    try {
+      // Ensure bucket exists (idempotent)
+      await supabase.storage.createBucket('avatars', { public: true }).catch(() => {/* already exists */})
+
+      const blob = await resizeImage(file, 400)
+      const ext = 'webp'
+      const path = `${user.id}/${Date.now()}.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/webp' })
+      if (uploadErr) throw uploadErr
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const publicUrl = urlData.publicUrl
+
+      const { error: metaErr } = await supabase.auth.updateUser({
+        data: { avatar_url: publicUrl },
+      })
+      if (metaErr) throw metaErr
+
+      toast.success('Foto actualizada', 'Tu foto de perfil se guardó correctamente.')
+    } catch {
+      toast.error('Error al subir foto', 'Intenta con una imagen más pequeña.')
+    } finally {
+      setUploadingAvatar(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }, [user, toast])
+
+  /* ───────── Export + sign out ───────── */
+
   const handleExport = useCallback(() => {
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -183,9 +309,7 @@ export function Profile() {
       categories,
       config,
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    })
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
@@ -197,55 +321,90 @@ export function Profile() {
   }, [user, accounts, transactions, loans, categories, config])
 
   const handleSignOut = useCallback(async () => {
-    try {
-      await signOut()
-    } catch {
-      toast.error('No se pudo cerrar sesión')
-    }
+    try { await signOut() } catch { toast.error('No se pudo cerrar sesión') }
   }, [signOut, toast])
 
+  /* ───────── Render ───────── */
+
   return (
-    <div className="flex flex-col pb-6 animate-[fade-in_300ms_ease-out]">
-      {/* Header */}
-      <header className="flex items-center px-4 pb-2 pt-4 lg:pt-2">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Volver"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-elevated text-text-secondary shadow-card transition-colors hover:bg-bg-secondary"
-        >
-          <IconChevronLeft size={18} />
-        </button>
-        <h1 className="mx-auto font-display text-lg font-bold tracking-tight text-text">
-          Perfil
-        </h1>
-        <div className="w-10" />
+    <div className="flex flex-col pb-8 animate-[fade-in_300ms_ease-out]">
+      {/* ── Header (tab primario — sin botón atrás) ── */}
+      <header className="px-4 pb-2 pt-4 lg:pt-2">
+        <h1 className="font-display text-[28px] font-bold tracking-tight text-text">Perfil</h1>
+        <p className="mt-0.5 text-[12.5px] font-medium text-text-secondary">
+          Tu cuenta y preferencias
+        </p>
       </header>
 
-      {/* Profile card */}
-      <div className="px-4 pt-2">
+      {/* ── Hero card ── */}
+      <div className="px-4 pt-1">
         <div
           className="relative overflow-hidden rounded-xl p-4 text-white shadow-card"
-          style={{
-            background: 'linear-gradient(135deg, #2A4BFF 0%, #9B7BFF 100%)',
-          }}
+          style={{ background: 'linear-gradient(135deg, #2A4BFF 0%, #9B7BFF 100%)' }}
         >
           <div className="absolute -right-6 -top-8 h-32 w-32 rounded-full bg-white/10" />
           <div className="relative flex items-center gap-4">
-            <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full border-2 border-white/50 bg-white/25 font-display text-2xl font-extrabold">
-              {initial(displayName)}
+            {/* Avatar with photo upload */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="relative block h-[64px] w-[64px] overflow-hidden rounded-full border-2 border-white/50 transition-all active:scale-95"
+                aria-label="Cambiar foto de perfil"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-white/25 font-display text-2xl font-extrabold">
+                    {initial(displayName)}
+                  </span>
+                )}
+                {/* Camera overlay */}
+                <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
+                  <IconCamera size={20} stroke={2} color="#fff" />
+                </span>
+                {uploadingAvatar && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  </span>
+                )}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => void handleAvatarChange(e)}
+              />
             </div>
+
             <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-xl font-extrabold">
-                {displayName}
-              </p>
+              <p className="truncate font-display text-xl font-extrabold">{displayName}</p>
               <p className="font-mono text-xs text-white/80">{handle}</p>
               <div className="mt-1.5 flex gap-1.5">
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-white">
-                  NIVEL 1
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                  NIVEL {lv}
                 </span>
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-white">
-                  0 XP
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                  {gami.xp} XP
+                </span>
+                {gami.streak_days > 0 && (
+                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                    🔥 {gami.streak_days}d
+                  </span>
+                )}
+              </div>
+              {/* XP progress bar */}
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
+                  <div
+                    className="h-full rounded-full bg-white transition-all duration-700"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <span className="font-mono text-[9px] font-bold text-white/70 shrink-0">
+                  {gami.xp}/{nextXP}
                 </span>
               </div>
             </div>
@@ -253,11 +412,10 @@ export function Profile() {
         </div>
       </div>
 
-      {/* Tu pago */}
+      {/* ── Tu pago ── */}
       <SectionHeader>Tu pago</SectionHeader>
       <div className="px-4">
         <Card className="flex flex-col gap-4">
-          {/* Frequency grid */}
           <div>
             <Eyebrow>Frecuencia</Eyebrow>
             <div className="grid grid-cols-2 gap-1.5">
@@ -270,19 +428,14 @@ export function Profile() {
                       type="button"
                       onClick={() => handleFreqChange(key)}
                       className={
-                        'flex flex-col items-start gap-0.5 rounded-md px-3 py-2.5 text-left transition-all duration-[--duration-fast] ' +
+                        'flex flex-col items-start gap-0.5 rounded-md px-3 py-2.5 text-left transition-all active:scale-[0.97] ' +
                         (active
                           ? 'bg-primary text-white shadow-[0_4px_10px_rgba(42,75,255,0.25)]'
                           : 'bg-bg-secondary text-text hover:bg-bg-elevated')
                       }
                     >
                       <span className="text-[13px] font-extrabold">{info.label}</span>
-                      <span
-                        className={
-                          'font-mono text-[10px] font-semibold ' +
-                          (active ? 'text-white/80' : 'text-text-tertiary')
-                        }
-                      >
+                      <span className={'font-mono text-[10px] font-semibold ' + (active ? 'text-white/80' : 'text-text-tertiary')}>
                         {Math.round(info.cyclesPerYear)}/año
                       </span>
                     </button>
@@ -292,7 +445,6 @@ export function Profile() {
             </div>
           </div>
 
-          {/* Amount */}
           <div>
             <Eyebrow>Monto por {PAY_FREQS[freq].label.toLowerCase()}</Eyebrow>
             <div className="flex items-center gap-2 rounded-md bg-bg-secondary px-3.5 py-3">
@@ -315,7 +467,7 @@ export function Profile() {
         </Card>
       </div>
 
-      {/* Días de pago */}
+      {/* ── Días de pago ── */}
       <SectionHeader right={<span className="text-[11px] font-bold text-text-tertiary">auto</span>}>
         Días de pago
       </SectionHeader>
@@ -357,9 +509,7 @@ export function Profile() {
                     >
                       {isToday && <IconBell size={11} stroke={2.5} />}
                       <span className="font-mono">{fmtPayday(d)}</span>
-                      {isToday && (
-                        <span className="text-[10px] font-semibold opacity-85">· hoy</span>
-                      )}
+                      {isToday && <span className="text-[10px] font-semibold opacity-85">· hoy</span>}
                     </span>
                   )
                 })}
@@ -376,7 +526,7 @@ export function Profile() {
         </Card>
       </div>
 
-      {/* Notificaciones */}
+      {/* ── Notificaciones ── */}
       <SectionHeader>Notificaciones</SectionHeader>
       <div className="px-4">
         <Card className="overflow-hidden p-0">
@@ -412,27 +562,79 @@ export function Profile() {
         </Card>
       </div>
 
-      {/* Richeto */}
+      {/* ── Richeto ── */}
       <SectionHeader>Richeto</SectionHeader>
       <div className="px-4">
         <Card className="flex items-center gap-3">
           <Richeto size={48} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-text">Compañero flotante</p>
-            <p className="text-[11px] text-text-tertiary">
-              Richeto te acompaña en cada pantalla
-            </p>
+            <p className="text-[11px] text-text-tertiary">Richeto te acompaña en cada pantalla</p>
           </div>
           <input type="checkbox" className="sr-only" {...register('pet_floating')} id="pet_floating" />
           <ToggleVisual checked={!!live.pet_floating} htmlFor="pet_floating" />
         </Card>
       </div>
 
-      {/* Cuentas conectadas */}
+      {/* ── Logros ── */}
+      <SectionHeader>Logros</SectionHeader>
+      <div className="px-4">
+        <div className="grid grid-cols-2 gap-2.5">
+          {achievements.map((ach) => {
+            const Icon = ach.icon
+            const showConfetti = confettiAchievement === ach.id
+            return (
+              <button
+                key={ach.id}
+                type="button"
+                onClick={() => {
+                  if (!ach.unlocked) return
+                  setConfettiAchievement(ach.id)
+                  window.setTimeout(() => setConfettiAchievement(null), 2200)
+                }}
+                className={
+                  'relative overflow-hidden rounded-xl p-3.5 text-left transition-all ' +
+                  (ach.unlocked
+                    ? 'bg-bg-elevated shadow-card active:scale-[0.96]'
+                    : 'bg-bg-secondary opacity-55 cursor-default')
+                }
+              >
+                {showConfetti && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <Confetti count={20} />
+                  </div>
+                )}
+                <span
+                  className="mb-2 grid h-9 w-9 place-items-center rounded-lg"
+                  style={{ background: ach.unlocked ? ach.color + '22' : 'transparent' }}
+                >
+                  {ach.unlocked ? (
+                    <Icon size={18} stroke={2} color={ach.color} />
+                  ) : (
+                    <IconLock size={16} stroke={2} className="text-text-tertiary" />
+                  )}
+                </span>
+                <p className="text-[12px] font-extrabold text-text leading-tight">{ach.title}</p>
+                <p className="mt-0.5 text-[10.5px] text-text-tertiary leading-snug">{ach.description}</p>
+                {ach.unlocked && (
+                  <span
+                    className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-extrabold text-white"
+                    style={{ background: ach.color }}
+                  >
+                    Desbloqueado
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── Cuentas conectadas ── */}
       <SectionHeader>Cuentas conectadas</SectionHeader>
       <ConnectedBanksSection />
 
-      {/* Cuenta */}
+      {/* ── Cuenta ── */}
       <SectionHeader>Cuenta</SectionHeader>
       <div className="flex flex-col gap-2 px-4">
         <ActionRow icon={IconDownload} label="Exportar mis datos (JSON)" onClick={handleExport} />
@@ -444,7 +646,9 @@ export function Profile() {
         <ActionRow
           icon={IconInfoSquareRounded}
           label={`Acerca de Fortnight v${APP_VERSION}`}
-          onClick={() => navigate('/acerca-de')}
+          onClick={() => {
+            window.location.href = '/acerca-de'
+          }}
         />
         <ActionRow
           icon={IconLogout}
@@ -453,13 +657,13 @@ export function Profile() {
           onClick={() => void handleSignOut()}
         />
       </div>
+
+      <div className="h-8" />
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Helpers                                                            */
-/* ------------------------------------------------------------------ */
+/* ─────────────────── Helpers ─────────────── */
 
 function toForm(c: UserConfig): ProfileForm {
   return {
@@ -474,7 +678,6 @@ function toForm(c: UserConfig): ProfileForm {
   }
 }
 
-/** Parse a YYYY-MM-DD string from an `<input type="date">` to a local-noon Date. */
 function parseDateInput(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
   if (!m) return null
@@ -483,16 +686,12 @@ function parseDateInput(s: string): Date | null {
 }
 
 function sameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
+  return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
-  )
 }
 
-/* ------------------------------------------------------------------ */
-/* Small presentational primitives — local to Profile                  */
-/* ------------------------------------------------------------------ */
+/* ─────────────────── Presentational primitives ─────────────── */
 
 function SectionHeader({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
@@ -529,30 +728,18 @@ interface ToggleRowProps extends Omit<React.InputHTMLAttributes<HTMLInputElement
   ref?: React.Ref<HTMLInputElement>
 }
 
-function ToggleRow({
-  icon: Icon,
-  color,
-  label,
-  description,
-  last,
-  ref,
-  ...inputProps
-}: ToggleRowProps) {
+function ToggleRow({ icon: IconEl, color, label, description, last, ref, ...inputProps }: ToggleRowProps) {
   const id = `toggle-${inputProps.name}`
   return (
     <label
       htmlFor={id}
       className={
-        'flex cursor-pointer items-center gap-3 px-3.5 py-3.5 ' +
+        'flex cursor-pointer items-center gap-3 px-3.5 py-3.5 transition-colors hover:bg-bg-secondary active:bg-bg-secondary ' +
         (last ? '' : 'border-b border-bg-secondary')
       }
     >
-      <span
-        className={
-          'flex h-9 w-9 items-center justify-center rounded-md ' + TOGGLE_COLORS[color]
-        }
-      >
-        <Icon size={16} stroke={2} />
+      <span className={'flex h-9 w-9 items-center justify-center rounded-md ' + TOGGLE_COLORS[color]}>
+        <IconEl size={16} stroke={2} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-bold text-text">{label}</p>
@@ -564,7 +751,6 @@ function ToggleRow({
   )
 }
 
-/** Toggle visual driven by the sibling `peer` checkbox. */
 function ToggleVisualPeer() {
   return (
     <span className="relative inline-block h-[26px] w-11 shrink-0 rounded-full bg-bg-secondary transition-colors peer-checked:bg-asset">
@@ -573,7 +759,6 @@ function ToggleVisualPeer() {
   )
 }
 
-/** Toggle visual paired with an external `htmlFor` (single-card row). */
 function ToggleVisual({ checked, htmlFor }: { checked: boolean; htmlFor: string }) {
   return (
     <label
@@ -600,21 +785,17 @@ interface ActionRowProps {
   tone?: 'default' | 'debt'
 }
 
-function ActionRow({ icon: Icon, label, onClick, tone = 'default' }: ActionRowProps) {
+function ActionRow({ icon: IconEl, label, onClick, tone = 'default' }: ActionRowProps) {
   const tonal = tone === 'debt' ? 'text-debt-deep' : 'text-text'
   const iconBg = tone === 'debt' ? 'bg-debt-soft text-debt-deep' : 'bg-bg-secondary text-text-secondary'
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-md bg-bg-elevated px-3.5 py-3 text-left shadow-card transition-colors hover:bg-bg-tinted"
+      className="flex items-center gap-3 rounded-md bg-bg-elevated px-3.5 py-3 text-left shadow-card transition-all hover:bg-bg-tinted active:scale-[0.97]"
     >
-      <span
-        className={
-          'flex h-[30px] w-[30px] items-center justify-center rounded-md ' + iconBg
-        }
-      >
-        <Icon size={16} stroke={2} />
+      <span className={'flex h-[30px] w-[30px] items-center justify-center rounded-md ' + iconBg}>
+        <IconEl size={16} stroke={2} />
       </span>
       <span className={'flex-1 text-[13px] font-bold ' + tonal}>{label}</span>
       <IconChevronRight size={14} className="text-text-tertiary" />

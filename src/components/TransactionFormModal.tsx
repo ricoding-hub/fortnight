@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import {
   IconBackspace,
   IconCheck,
@@ -9,6 +9,7 @@ import clsx from 'clsx'
 import { Confetti } from '@/components/Confetti'
 import { Richeto } from '@/components/Richeto'
 import { useToast } from '@/hooks/useToast'
+import { useGamification, XP_PER_TX } from '@/hooks/useGamification'
 import { categoryIcon } from '@/lib/categories'
 import type { Account, Category } from '@/types'
 import type { NewTransaction } from '@/hooks/useTransactions'
@@ -36,14 +37,12 @@ const MAX_AMOUNT_LEN = 8
 const today = () => new Date().toISOString().slice(0, 10)
 
 /**
- * Bottom-sheet add-movement modal (PR-5).
+ * Bottom-sheet add-movement modal.
  *
- * Step 0: direction toggle → big amount display → category grid → account chips
- *         → custom numpad → submit button. Validation is inline (no error toasts
- *         on each invalid state — submit is disabled until valid).
- *
- * Step 1: success state with confetti, Richeto 120px, +15 XP feedback,
- *         and "Listo" button that closes the sheet.
+ * Layout fix: panel is max-h-[88svh] with:
+ *  - Sticky header (close X + title) — always visible
+ *  - Scrollable body (direction toggle, amount, categories, accounts)
+ *  - Sticky footer (numpad + submit) — always at bottom, reachable on any device
  */
 export function TransactionFormModal({
   open,
@@ -54,6 +53,7 @@ export function TransactionFormModal({
   initialDirection = 'spend',
 }: TransactionFormModalProps) {
   const toast = useToast()
+  const { addXP } = useGamification()
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
   const [step, setStep] = useState<0 | 1>(0)
@@ -62,7 +62,8 @@ export function TransactionFormModal({
   const [categoryId, setCategoryId] = useState<string>('')
   const [accountId, setAccountId] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
-  const panelRef = useRef<HTMLDivElement>(null)
+  // Wobble state: which field needs attention
+  const [wobbleField, setWobbleField] = useState<'category' | 'account' | null>(null)
 
   /* ------------ open / close animation ------------ */
 
@@ -94,6 +95,7 @@ export function TransactionFormModal({
     setAccountId(accounts[0]?.id ?? '')
     setDirection(initialDirection)
     setSubmitting(false)
+    setWobbleField(null)
   }, [open, accounts, initialDirection])
 
   /* ------------ scroll lock + ESC ------------ */
@@ -126,13 +128,12 @@ export function TransactionFormModal({
     const kinds = direction === 'spend' ? (['variable', 'fixed'] as const) : (['income'] as const)
     return categories
       .filter((c) => (kinds as readonly string[]).includes(c.kind))
-      .slice(0, direction === 'spend' ? 6 : 6)
+      .slice(0, 6)
   }, [categories, direction])
 
   const selectedAccount = accounts.find((a) => a.id === accountId)
   const isCredit = selectedAccount?.type === 'credit'
   const amountValid = amount !== '' && Number(amount) > 0 && !Number.isNaN(Number(amount))
-  const valid = amountValid && categoryId !== '' && accountId !== '' && !submitting
 
   /* ------------ handlers ------------ */
 
@@ -150,11 +151,19 @@ export function TransactionFormModal({
     setAmount((v) => v + k)
   }
 
+  function triggerWobble(field: 'category' | 'account') {
+    setWobbleField(field)
+    window.setTimeout(() => setWobbleField(null), 550)
+  }
+
   async function handleSubmit() {
-    if (!valid) return
+    if (submitting) return
+    // Validation with wobble feedback
+    if (!categoryId) { triggerWobble('category'); return }
+    if (!accountId) { triggerWobble('account'); return }
+    if (!amountValid) return
     setSubmitting(true)
     const magnitude = Math.abs(Number(amount))
-    // Debit: spend lowers the balance. Credit: spend raises the debt.
     const sign =
       direction === 'spend' ? (isCredit ? 1 : -1) : isCredit ? -1 : 1
     try {
@@ -165,6 +174,7 @@ export function TransactionFormModal({
         date: today(),
       })
       setStep(1)
+      void addXP(XP_PER_TX)
     } catch {
       toast.error('Error al guardar', 'Ocurrió un problema al registrar el movimiento')
       setSubmitting(false)
@@ -185,26 +195,27 @@ export function TransactionFormModal({
     >
       <div className="absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
+      {/* Panel: flex column with max height so it never extends off-screen */}
       <div
-        ref={panelRef}
         className={clsx(
-          'relative w-full max-w-[480px] bg-bg shadow-lift outline-none transition-transform duration-300 ease-[cubic-bezier(0.4,1.6,0.5,1)]',
-          'rounded-t-[28px] px-[18px] pt-[18px]',
+          'relative w-full max-w-[480px] bg-bg shadow-lift outline-none',
+          'rounded-t-[28px] flex flex-col overflow-hidden',
+          'max-h-[88svh]',
+          'transition-transform duration-300 ease-[cubic-bezier(0.4,1.6,0.5,1)]',
           entered ? 'translate-y-0' : 'translate-y-full',
         )}
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Nuevo movimiento"
       >
-        {/* Header */}
-        <div className="mb-2.5 flex items-center justify-between">
+        {/* ── Sticky header: always visible ── */}
+        <div className="shrink-0 flex items-center justify-between px-[18px] pt-[18px] pb-2.5">
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="grid h-[34px] w-[34px] place-items-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:bg-bg-tinted"
+            className="grid h-[34px] w-[34px] place-items-center rounded-full bg-bg-secondary text-text-secondary transition-all active:scale-90 hover:bg-bg-tinted"
           >
             <IconX size={18} stroke={2} />
           </button>
@@ -215,207 +226,171 @@ export function TransactionFormModal({
         </div>
 
         {step === 0 ? (
-          <Step0
-            direction={direction}
-            onChangeDirection={(d) => {
-              setDirection(d)
-              setCategoryId('')
-            }}
-            amount={amount}
-            visibleCategories={visibleCategories}
-            categoryId={categoryId}
-            onPickCategory={setCategoryId}
-            accounts={accounts}
-            accountId={accountId}
-            onPickAccount={setAccountId}
-            onNumpad={pushKey}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-            valid={valid}
-            accent={accent}
-          />
-        ) : (
-          <Step1Success
-            amount={amount}
-            direction={direction}
-            onClose={onClose}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
+          <>
+            {/* ── Scrollable body ── */}
+            <div className="flex-1 overflow-y-auto px-[18px] flex flex-col gap-3 pb-2 min-h-0">
+              {/* Direction toggle */}
+              <div className="grid grid-cols-2 rounded-full bg-bg-secondary p-1">
+                {(['spend', 'receive'] as Direction[]).map((d) => {
+                  const active = direction === d
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => {
+                        setDirection(d)
+                        setCategoryId('')
+                      }}
+                      className={clsx(
+                        'rounded-full px-3 py-2.5 text-[13px] font-extrabold transition-all active:scale-[0.97]',
+                        active
+                          ? 'bg-bg-elevated text-text shadow-[0_2px_6px_rgba(26,31,54,0.06)]'
+                          : 'text-text-secondary',
+                      )}
+                    >
+                      {d === 'spend' ? 'Gasto' : 'Ingreso'}
+                    </button>
+                  )
+                })}
+              </div>
 
-/* ------------------------------------------------------------------ */
-/* Step 0 — form                                                       */
-/* ------------------------------------------------------------------ */
+              {/* Amount display */}
+              <div className="pb-1 pt-3 text-center">
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-text-tertiary">
+                  {direction === 'spend' ? 'Gastando' : 'Recibiendo'}
+                </p>
+                <p
+                  className="mt-1 font-display text-[48px] font-bold leading-none transition-colors"
+                  style={{ color: amount ? accent.color : 'var(--color-text-tertiary)' }}
+                >
+                  {direction === 'spend' ? '−' : '+'}${amount ? Number(amount).toLocaleString('en-US') : '0'}
+                </p>
+              </div>
 
-interface Step0Props {
-  direction: Direction
-  onChangeDirection: (d: Direction) => void
-  amount: string
-  visibleCategories: Category[]
-  categoryId: string
-  onPickCategory: (id: string) => void
-  accounts: Account[]
-  accountId: string
-  onPickAccount: (id: string) => void
-  onNumpad: (k: (typeof NUMPAD_KEYS)[number]) => void
-  onSubmit: () => void
-  submitting: boolean
-  valid: boolean
-  accent: (typeof ACCENTS)[Direction]
-}
-
-function Step0({
-  direction,
-  onChangeDirection,
-  amount,
-  visibleCategories,
-  categoryId,
-  onPickCategory,
-  accounts,
-  accountId,
-  onPickAccount,
-  onNumpad,
-  onSubmit,
-  submitting,
-  valid,
-  accent,
-}: Step0Props) {
-  const displayAmount = amount ? Number(amount).toLocaleString('en-US') : '0'
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Direction toggle */}
-      <div className="grid grid-cols-2 rounded-full bg-bg-secondary p-1">
-        {(['spend', 'receive'] as Direction[]).map((d) => {
-          const active = direction === d
-          return (
-            <button
-              key={d}
-              type="button"
-              onClick={() => onChangeDirection(d)}
-              className={clsx(
-                'rounded-full px-3 py-2.5 text-[13px] font-extrabold transition-all',
-                active
-                  ? 'bg-bg-elevated text-text shadow-[0_2px_6px_rgba(26,31,54,0.06)]'
-                  : 'text-text-secondary',
-              )}
-            >
-              {d === 'spend' ? 'Gasto' : 'Ingreso'}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Amount display */}
-      <div className="pb-2 pt-5 text-center">
-        <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-text-tertiary">
-          {direction === 'spend' ? 'Gastando' : 'Recibiendo'}
-        </p>
-        <p
-          className="mt-1 font-display text-[54px] font-bold leading-none transition-colors"
-          style={{ color: amount ? accent.color : 'var(--color-text-tertiary)' }}
-        >
-          {direction === 'spend' ? '−' : '+'}${displayAmount}
-        </p>
-      </div>
-
-      {/* Category grid */}
-      <div className="grid grid-cols-3 gap-2">
-        {visibleCategories.length === 0 ? (
-          <p className="col-span-3 text-center text-xs text-text-tertiary">
-            Sin categorías disponibles.
-          </p>
-        ) : (
-          visibleCategories.map((c) => (
-            <CategoryButton
-              key={c.id}
-              category={c}
-              selected={categoryId === c.id}
-              onPick={() => onPickCategory(c.id)}
-              accentColor={accent.color}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Account chips */}
-      <div>
-        <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-text-tertiary">
-          Cuenta
-        </p>
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {accounts.map((a) => {
-            const sel = accountId === a.id
-            return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => onPickAccount(a.id)}
+              {/* Category grid */}
+              <div
                 className={clsx(
-                  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-extrabold transition-colors',
-                  sel ? 'text-white' : 'bg-bg-elevated text-text shadow-card',
+                  'grid grid-cols-3 gap-2 rounded-lg transition-all',
+                  wobbleField === 'category' && 'animate-[fn-wobble_500ms_ease-in-out]',
                 )}
-                style={sel ? { background: 'var(--color-text)' } : undefined}
               >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: a.color ?? 'var(--color-primary)' }}
-                />
-                {a.name}
+                {visibleCategories.length === 0 ? (
+                  <p className="col-span-3 text-center text-xs text-text-tertiary">
+                    Sin categorías disponibles.
+                  </p>
+                ) : (
+                  visibleCategories.map((c) => (
+                    <CategoryButton
+                      key={c.id}
+                      category={c}
+                      selected={categoryId === c.id}
+                      onPick={() => setCategoryId(c.id)}
+                      accentColor={accent.color}
+                    />
+                  ))
+                )}
+              </div>
+
+              {/* Account chips */}
+              <div
+                className={clsx(
+                  'rounded-lg transition-all',
+                  wobbleField === 'account' && 'animate-[fn-wobble_500ms_ease-in-out]',
+                )}
+              >
+                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-text-tertiary">
+                  Cuenta
+                </p>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {accounts.map((a) => {
+                    const sel = accountId === a.id
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setAccountId(a.id)}
+                        className={clsx(
+                          'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-extrabold transition-all active:scale-[0.96]',
+                          sel ? 'text-white' : 'bg-bg-elevated text-text shadow-card',
+                        )}
+                        style={sel ? { background: 'var(--color-text)' } : undefined}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: a.color ?? 'var(--color-primary)' }}
+                        />
+                        {a.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sticky footer: numpad + submit ── */}
+            <div
+              className="shrink-0 flex flex-col gap-2 px-[18px] pt-2 border-t border-bg-secondary"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
+            >
+              {/* Numpad */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {NUMPAD_KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => pushKey(k)}
+                    aria-label={k === '⌫' ? 'Borrar' : `Tecla ${k}`}
+                    className="rounded-md bg-bg-elevated py-3 font-mono text-xl font-semibold text-text shadow-card transition-all active:scale-95 active:bg-primary/10"
+                  >
+                    {k === '⌫' ? (
+                      <IconBackspace size={20} stroke={2} className="mx-auto" />
+                    ) : (
+                      k
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Submit */}
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                className={clsx(
+                  'w-full rounded-md py-3.5 text-[15px] font-extrabold transition-all',
+                  amountValid && categoryId && accountId
+                    ? 'text-white active:scale-[0.98]'
+                    : 'cursor-not-allowed bg-bg-secondary text-text-tertiary',
+                )}
+                style={
+                  amountValid && categoryId && accountId
+                    ? {
+                        background: accent.color,
+                        boxShadow: `0 12px 28px ${accent.shadow}`,
+                      }
+                    : undefined
+                }
+              >
+                {submitting
+                  ? 'Guardando…'
+                  : direction === 'spend'
+                    ? 'Registrar gasto'
+                    : 'Registrar ingreso'}
               </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Numpad */}
-      <div className="grid grid-cols-3 gap-2">
-        {NUMPAD_KEYS.map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => onNumpad(k)}
-            aria-label={k === '⌫' ? 'Borrar' : `Tecla ${k}`}
-            className="rounded-md bg-bg-elevated py-3.5 font-mono text-xl font-semibold text-text shadow-card transition-all active:scale-95 active:bg-bg-tinted"
+            </div>
+          </>
+        ) : (
+          <div
+            className="flex-1 overflow-y-auto px-[18px]"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
           >
-            {k === '⌫' ? (
-              <IconBackspace size={20} stroke={2} className="mx-auto" />
-            ) : (
-              k
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Submit */}
-      <button
-        type="button"
-        disabled={!valid}
-        onClick={onSubmit}
-        className={clsx(
-          'w-full rounded-md py-3.5 text-[15px] font-extrabold transition-all',
-          valid
-            ? 'text-white active:scale-[0.98]'
-            : 'cursor-not-allowed bg-bg-secondary text-text-tertiary',
+            <Step1Success
+              amount={amount}
+              direction={direction}
+              onClose={onClose}
+            />
+          </div>
         )}
-        style={
-          valid
-            ? {
-                background: accent.color,
-                boxShadow: `0 12px 28px ${accent.shadow}`,
-              }
-            : undefined
-        }
-      >
-        {submitting
-          ? 'Guardando…'
-          : direction === 'spend'
-            ? 'Registrar gasto'
-            : 'Registrar ingreso'}
-      </button>
+      </div>
     </div>
   )
 }
@@ -438,8 +413,8 @@ function CategoryButton({
       type="button"
       onClick={onPick}
       className={clsx(
-        'flex flex-col items-center gap-1.5 rounded-md border-2 px-1.5 py-2.5 transition-all',
-        selected ? 'text-white' : 'border-transparent bg-bg-elevated text-text shadow-card',
+        'flex flex-col items-center gap-1.5 rounded-md border-2 px-1.5 py-2.5 transition-all active:scale-[0.95]',
+        selected ? 'text-white' : 'border-transparent bg-bg-elevated text-text shadow-card hover:border-[currentColor]/20',
       )}
       style={
         selected
@@ -448,7 +423,7 @@ function CategoryButton({
       }
     >
       <span
-        className="grid h-[34px] w-[34px] place-items-center rounded-md"
+        className="grid h-[34px] w-[34px] place-items-center rounded-md transition-all"
         style={{
           background: selected ? 'rgba(255,255,255,0.25)' : color + '22',
         }}
@@ -463,10 +438,6 @@ function CategoryButton({
     </button>
   )
 }
-
-/* ------------------------------------------------------------------ */
-/* Step 1 — success                                                    */
-/* ------------------------------------------------------------------ */
 
 function Step1Success({
   amount,
@@ -493,7 +464,7 @@ function Step1Success({
         {direction === 'spend' ? 'Gasto' : 'Ingreso'} de{' '}
         <b className="text-text">${formatted}</b> registrado.
         <br />
-        <span className="text-primary font-extrabold">+15 XP</span> · Sigue tu racha
+        <span className="font-extrabold text-lavender">+{XP_PER_TX} XP</span> · Sigue tu racha
       </p>
       <button
         type="button"

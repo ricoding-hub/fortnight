@@ -20,11 +20,13 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
+import { useGamification } from '@/hooks/useGamification'
 
 import { Card } from '@/components/ui/Card'
 import { SkeletonStatCard } from '@/components/ui/Skeleton'
 import { PaydayBanner } from '@/components/PaydayBanner'
 import { ScoreSparkline } from '@/components/ScoreSparkline'
+import { Confetti } from '@/components/Confetti'
 import { Podium, type PodiumFriend } from '@/components/Podium'
 import { YourRank, type RankFriend } from '@/components/YourRank'
 import { MisionesCompact, type Mission } from '@/components/MisionesCompact'
@@ -67,9 +69,11 @@ export function Resumen() {
   const { active: activeLoans } = useLoans()
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
+  const { data: gami, nextLevelXP, levelProgress } = useGamification()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   const [completedMissionId, setCompletedMissionId] = useState<string | null>(null)
+  const [logrosConfetti, setLogrosConfetti] = useState(false)
 
   /* --------------------------------- derived */
 
@@ -78,6 +82,7 @@ export function Resumen() {
     user?.email?.split('@')[0] ??
     'amigo'
   const avatarInitial = (displayName[0] ?? '?').toUpperCase()
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
 
   const debitAccounts = accounts.filter((a) => a.type === 'debit')
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
@@ -212,19 +217,25 @@ export function Resumen() {
           aria-label="Abrir perfil"
           className="relative shrink-0 transition-transform active:scale-95"
         >
-          <span
-            className="grid h-11 w-11 place-items-center rounded-full font-display text-lg font-extrabold text-white shadow-[0_6px_14px_rgba(42,75,255,0.28)]"
-            style={{
-              background: 'linear-gradient(135deg, #2A4BFF 0%, #9B7BFF 100%)',
-            }}
-          >
-            {avatarInitial}
-          </span>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="h-11 w-11 rounded-full object-cover shadow-[0_6px_14px_rgba(42,75,255,0.28)]"
+            />
+          ) : (
+            <span
+              className="grid h-11 w-11 place-items-center rounded-full font-display text-lg font-extrabold text-white shadow-[0_6px_14px_rgba(42,75,255,0.28)]"
+              style={{ background: 'linear-gradient(135deg, #2A4BFF 0%, #9B7BFF 100%)' }}
+            >
+              {avatarInitial}
+            </span>
+          )}
           <span
             className="absolute -bottom-1 -right-1 rounded-md bg-lavender px-1.5 py-0.5 font-mono text-[9px] font-extrabold text-white"
             style={{ boxShadow: '0 0 0 2px var(--color-bg)' }}
           >
-            LV1
+            LV{gami.level}
           </span>
         </button>
 
@@ -239,15 +250,15 @@ export function Resumen() {
           <div className="mt-1 flex items-center gap-1.5">
             <div className="h-[5px] max-w-[130px] flex-1 overflow-hidden rounded-full bg-primary-soft">
               <div
-                className="h-full rounded-full"
+                className="h-full rounded-full transition-all duration-700"
                 style={{
-                  width: '0%',
+                  width: `${Math.round(levelProgress * 100)}%`,
                   background: 'linear-gradient(90deg, #2A4BFF, #9B7BFF)',
                 }}
               />
             </div>
             <span className="font-mono text-[10px] font-semibold text-text-tertiary">
-              0/500 XP
+              {gami.xp}/{nextLevelXP} XP
             </span>
           </div>
         </button>
@@ -508,13 +519,27 @@ export function Resumen() {
           color="#2A4BFF"
           softColor="var(--color-primary-soft)"
         />
-        <MiniStat
-          icon={IconTrophy}
-          label="Logros"
-          value="0 / 4"
-          color="#9B7BFF"
-          softColor="var(--color-lavender-soft)"
-        />
+        <button
+          type="button"
+          onClick={() => {
+            setLogrosConfetti(true)
+            window.setTimeout(() => setLogrosConfetti(false), 2000)
+          }}
+          className="relative text-left transition-transform active:scale-[0.96]"
+        >
+          {logrosConfetti && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
+              <Confetti count={18} />
+            </div>
+          )}
+          <MiniStat
+            icon={IconTrophy}
+            label="Logros"
+            value="0 / 4"
+            color="#9B7BFF"
+            softColor="var(--color-lavender-soft)"
+          />
+        </button>
       </section>
 
       {/* ── Misiones de la semana ── */}

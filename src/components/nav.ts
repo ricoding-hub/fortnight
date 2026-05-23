@@ -3,6 +3,7 @@ import {
   IconWallet,
   IconArrowsLeftRight,
   IconTarget,
+  IconUser,
   type Icon,
 } from '@tabler/icons-react'
 
@@ -13,13 +14,14 @@ export interface NavTab {
 }
 
 /**
- * Bottom-tab and sidebar shared nav structure.
- * Order: Resumen · Cuentas · [FAB] · Plan · Movimientos.
- * Préstamos lives inside the unified /cuentas module as a sub-tab.
+ * Full nav list — consumed by Sidebar (all items) and BottomNav (subset).
+ * Mobile bottom nav shows: Resumen · Cuentas · [FAB] · Plan · Perfil.
+ * Movimientos is sidebar-only on mobile.
  */
 export const NAV_TABS: NavTab[] = [
   { to: '/', label: 'Resumen', icon: IconHome },
   { to: '/cuentas', label: 'Cuentas', icon: IconWallet },
   { to: '/plan', label: 'Plan', icon: IconTarget },
   { to: '/movimientos', label: 'Movimientos', icon: IconArrowsLeftRight },
+  { to: '/perfil', label: 'Perfil', icon: IconUser },
 ]

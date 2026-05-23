@@ -14,7 +14,7 @@ export function BottomNav() {
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   const leftTabs = NAV_TABS.filter((t) => t.to === '/' || t.to === '/cuentas')
-  const rightTabs = NAV_TABS.filter((t) => t.to === '/plan' || t.to === '/movimientos')
+  const rightTabs = NAV_TABS.filter((t) => t.to === '/plan' || t.to === '/perfil')
 
   return (
     <nav

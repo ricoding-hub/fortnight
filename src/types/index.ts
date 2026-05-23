@@ -181,3 +181,12 @@ export interface UserConfig {
   /** UI preference — render the floating Richeto companion. */
   pet_floating: boolean
 }
+
+export interface UserGamification {
+  user_id: string
+  xp: number
+  level: number
+  streak_days: number
+  last_activity_date: string | null
+  updated_at: string
+}
