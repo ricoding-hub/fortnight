@@ -107,6 +107,14 @@ export function Resumen() {
   const scoreHistory = useMemo(() => syntheticScoreHistory(score), [score])
   const scoreTier = score >= 8 ? 'Top' : score >= 5 ? 'Mejorando' : 'En reto'
   const scoreColor = score >= 8 ? '#2BB673' : score >= 5 ? '#9B7BFF' : '#FF5A5F'
+  const scoreDelta = Math.round(scoreHistory[scoreHistory.length - 1] - scoreHistory[0])
+
+  const unlockedAchievements = [
+    recentTx.length >= 1,
+    gami.streak_days >= 7,
+    score >= 5,
+    gami.xp >= 500,
+  ].filter(Boolean).length
 
   // Mes libre de deuda — projected month/year if a debt goal exists.
   const debtGoal = goals.find((g) => g.is_debt)
@@ -125,9 +133,7 @@ export function Resumen() {
     .sort((a, b) => a.days - b.days)
   const nextUrgent = urgent[0]
 
-  // Streak — unique tx days proxy (gamification table is out of scope for PR-4).
-  const uniqueDays = new Set(recentTx.map((t) => t.date))
-  const streak = uniqueDays.size
+  const streak = gami.streak_days
 
   // Missions — starter set with progress derived from real signals.
   const missions: Mission[] = useMemo(() => {
@@ -402,8 +408,10 @@ export function Resumen() {
                 </span>
               </div>
               <p className="mb-2 text-[11.5px] font-semibold text-text-secondary">
-                <span className="font-extrabold text-asset-deep">+0</span> esta semana · meta{' '}
-                <b className="text-text">7</b>
+                <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
+                  {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
+                </span>{' '}
+                esta semana · meta <b className="text-text">7</b>
               </p>
               <ScoreSparkline data={scoreHistory} />
             </div>
@@ -545,7 +553,7 @@ export function Resumen() {
           <MiniStat
             icon={IconTrophy}
             label="Logros"
-            value="0 / 4"
+            value={`${unlockedAchievements} / 4`}
             color="#9B7BFF"
             softColor="var(--color-lavender-soft)"
           />
@@ -553,7 +561,7 @@ export function Resumen() {
       </section>
 
       {/* ── Misiones de la semana ── */}
-      <SectionHeader right={<span className="text-[11px] font-bold text-primary">3 activas</span>}>
+      <SectionHeader right={<span className="text-[11px] font-bold text-primary">{missions.length} activas</span>}>
         Misiones de la semana
       </SectionHeader>
       <section className="px-4 pb-2">

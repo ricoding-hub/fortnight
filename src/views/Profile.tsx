@@ -34,6 +34,7 @@ import { Confetti } from '@/components/Confetti'
 import { ConnectedBanksSection } from '@/components/syncfy/ConnectedBanksSection'
 import { supabase } from '@/lib/supabase'
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
+import { calculateScore } from '@/lib/score'
 import type { PayFreq, UserConfig } from '@/types'
 
 const APP_VERSION = __APP_VERSION__
@@ -164,14 +165,7 @@ export function Profile() {
 
   // Achievement signals
   const txCount = transactions.length
-  const score = useMemo(() => {
-    const credit = accounts.filter((a) => a.type === 'credit')
-    const totalDebt = credit.reduce((s, a) => s + a.balance, 0)
-    const totalLimit = credit.reduce((s, a) => s + (a.credit_limit ?? 0), 0)
-    if (totalLimit === 0) return 5
-    const utilization = totalDebt / totalLimit
-    return Math.max(1, Math.min(10, Math.round((1 - utilization) * 10)))
-  }, [accounts])
+  const score = useMemo(() => calculateScore(accounts), [accounts])
   const achievements = useAchievements(gami.xp, gami.streak_days, txCount, score)
 
   // Level info

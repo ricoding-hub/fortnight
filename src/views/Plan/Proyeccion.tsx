@@ -72,6 +72,11 @@ export function Proyeccion() {
     : series.findIndex((p) => p.value >= primary.target)
   const monthsLeft = monthsToGoal(primary)
   const color = primary.color ?? '#2A4BFF'
+  const finishYear = (() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + (finishIdx >= 0 ? finishIdx : monthsLeft))
+    return d.getFullYear()
+  })()
 
   return (
     <div className="flex flex-col gap-3 px-4 pb-4 pt-2 animate-[fade-in_240ms_ease-out]">
@@ -121,7 +126,7 @@ export function Proyeccion() {
         </div>
         <p className="relative font-display text-[32px] font-extrabold leading-none">
           {finishIdx >= 0 ? series[finishIdx].month : '—'}{' '}
-          {new Date().getFullYear()}
+          {finishYear}
         </p>
         <p className="relative mt-1.5 text-[12.5px] font-medium opacity-85">
           Aportando{' '}

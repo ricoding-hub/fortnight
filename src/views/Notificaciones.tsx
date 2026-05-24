@@ -110,7 +110,7 @@ interface NotifItemProps {
 }
 
 function NotifItem({ notif, onRead, onDismiss }: NotifItemProps) {
-  const meta = TYPE_META[notif.type]
+  const meta = TYPE_META[notif.type] ?? TYPE_META['payday']
   const Icon = meta.icon
   const timeAgo = formatDistanceToNow(parseISO(notif.created_at), {
     locale: es,

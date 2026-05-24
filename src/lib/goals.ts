@@ -49,7 +49,7 @@ export function projectGoal(goal: Goal, today: Date = new Date()): ProjectionPoi
   for (let i = 0; i < len; i++) {
     const monthIdx = (today.getMonth() + i) % 12
     const value = goal.is_debt
-      ? Math.max(goal.target - i * goal.monthly, 0)
+      ? Math.max(remaining - i * goal.monthly, 0)
       : Math.min(goal.saved + i * goal.monthly, goal.target)
     out.push({ month: MONTHS_ES[monthIdx], value })
   }
