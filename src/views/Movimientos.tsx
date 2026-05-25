@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { IconArrowsLeftRight } from '@tabler/icons-react'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useAccounts } from '@/hooks/useAccounts'
@@ -24,7 +25,8 @@ function groupByDate(transactions: Transaction[]) {
 }
 
 export function Movimientos() {
-  const [account, setAccount] = useState('')
+  const [searchParams] = useSearchParams()
+  const [account, setAccount] = useState(() => searchParams.get('account') ?? '')
   const [category, setCategory] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -47,6 +49,7 @@ export function Movimientos() {
     () => new Map(accounts.map((a) => [a.id, a])),
     [accounts],
   )
+  const selectedAccountName = account ? accountById.get(account)?.name : undefined
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
@@ -63,10 +66,20 @@ export function Movimientos() {
 
   return (
     <div className="flex flex-col animate-[fade-in_300ms_ease-out]">
-      <header className="px-4 pb-2 pt-4 lg:pt-2">
-        <h1 className="text-lg font-bold text-text">Movimientos</h1>
-        <p className="text-xs text-text-secondary">Historial de gastos e ingresos</p>
-      </header>
+      {selectedAccountName && (
+        <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-2">
+          <p className="truncate text-xs font-medium text-text-secondary">
+            Mostrando <span className="font-semibold text-text">{selectedAccountName}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setAccount('')}
+            className="shrink-0 rounded-full bg-primary/8 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/12"
+          >
+            Ver todas
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col gap-2 px-4 pb-2">

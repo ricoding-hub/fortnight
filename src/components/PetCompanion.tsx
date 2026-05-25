@@ -13,13 +13,14 @@ import type { BucketWithSpend } from '@/lib/plan'
  * (e.g. user without budget data yet).
  */
 const ROUTE_MESSAGES: Record<string, string> = {
-  '/':            '¿En qué te ayudo hoy?',
-  '/plan':        'Ajusta los porcentajes a tu vida — el 50/30/20 es solo el punto de partida.',
-  '/cuentas':     'Mantén tus cuentas al día; un par de segundos por aquí evita sorpresas.',
-  '/movimientos': 'Cada peso contado es uno controlado.',
+  '/':                     '¿En qué te ayudo hoy?',
+  '/plan':                 'Ajusta los porcentajes a tu vida — el 50/30/20 es solo el punto de partida.',
+  '/cuentas':              'Mantén tus cuentas al día; un par de segundos por aquí evita sorpresas.',
+  '/cuentas/movimientos':  'Cada peso contado es uno controlado.',
 }
 
 function fallbackMessage(pathname: string): string {
+  if (pathname.startsWith('/cuentas/movimientos')) return ROUTE_MESSAGES['/cuentas/movimientos']
   if (pathname.startsWith('/plan')) return ROUTE_MESSAGES['/plan']
   if (pathname.startsWith('/cuentas')) return ROUTE_MESSAGES['/cuentas']
   return ROUTE_MESSAGES[pathname] ?? '¿En qué te ayudo?'

@@ -103,7 +103,7 @@ export function MisCuentas() {
   const debit = accounts.filter((a) => a.type === 'debit')
   const credit = accounts.filter((a) => a.type === 'credit')
   const debitTotal = debit.reduce((s, a) => s + a.balance, 0)
-  const creditTotal = credit.reduce((s, a) => s + a.balance, 0)
+  const creditTotal = credit.reduce((s, a) => s + Math.abs(a.balance), 0)
 
   const sectionProps = {
     onSaveBalance: updateBalance,

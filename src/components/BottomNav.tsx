@@ -6,7 +6,7 @@ import { NAV_TABS, type NavTab } from '@/components/nav'
 
 /**
  * Floating pill tab bar with a raised central "+" FAB.
- * Layout: Resumen · Cuentas · [+] · Plan · Movimientos on mobile.
+ * Layout: Resumen · Cuentas · [+] · Plan · Perfil on mobile.
  * The sidebar handles navigation at ≥lg.
  */
 export function BottomNav() {

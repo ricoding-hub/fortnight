@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.7"
+            version="0.2.8"
             date="25 may 2026"
             current
+            notes={[
+              'Saldos de crédito sincronizados ya se guardan y muestran en positivo',
+              'Movimientos vive ahora como subtab dentro de Cuentas',
+              'Tap a cualquier cuenta abre Movimientos prefiltrado por esa cuenta',
+            ]}
+          />
+          <VersionRow
+            version="0.2.7"
+            date="25 may 2026"
             notes={[
               'Toca el score para ver el desglose completo: 5 señales con pesos y contribución',
               'Widget de banco: timeout explícito de 20 s en token + 15 s en script, mejor mensaje de error',

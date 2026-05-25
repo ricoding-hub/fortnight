@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { IconPencil, IconSettings, IconCheck, IconX } from '@tabler/icons-react'
 import { CreditCycleBadge } from '@/components/CreditCycleBadge'
@@ -78,28 +79,36 @@ export function AccountCard({
     }
   }
 
+  const displayBalance = isCredit ? Math.abs(account.balance) : account.balance
+
   return (
     <div className="flex items-center gap-3 py-3.5 transition-colors">
-      {/* Avatar */}
-      <div
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
-        style={{ backgroundColor: account.color ?? '#6B7194' }}
+      <Link
+        to={`/cuentas/movimientos?account=${account.id}`}
+        aria-label={`Ver movimientos de ${account.name}`}
+        className="-my-3.5 flex min-w-0 flex-1 items-center gap-3 rounded-lg py-3.5 transition-colors hover:bg-bg-secondary/40 active:bg-bg-secondary/60"
       >
-        {initialsOf(account.name)}
-      </div>
-
-      {/* Name + cycle badge */}
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <p className="truncate text-sm font-semibold text-text">
-            {account.name}
-          </p>
-          {isSynced && account.institution_name && (
-            <SyncedPill name={account.institution_name} />
-          )}
+        {/* Avatar */}
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+          style={{ backgroundColor: account.color ?? '#6B7194' }}
+        >
+          {initialsOf(account.name)}
         </div>
-        {isCredit && <CreditCycleBadge account={account} />}
-      </div>
+
+        {/* Name + cycle badge */}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-text">
+              {account.name}
+            </p>
+            {isSynced && account.institution_name && (
+              <SyncedPill name={account.institution_name} />
+            )}
+          </div>
+          {isCredit && <CreditCycleBadge account={account} />}
+        </div>
+      </Link>
 
       {/* Inline edit or display */}
       {editing ? (
@@ -149,7 +158,7 @@ export function AccountCard({
                 isCredit ? 'text-debt' : 'text-text',
               )}
             >
-              {formatMXN(account.balance)}
+              {formatMXN(displayBalance)}
             </span>
           ) : (
             <>
@@ -161,7 +170,7 @@ export function AccountCard({
                   isCredit ? 'text-debt' : 'text-text',
                 )}
               >
-                {formatMXN(account.balance)}
+                {formatMXN(displayBalance)}
               </button>
               <button
                 type="button"

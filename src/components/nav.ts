@@ -1,7 +1,6 @@
 import {
   IconHome,
   IconWallet,
-  IconArrowsLeftRight,
   IconTarget,
   IconUser,
   type Icon,
@@ -15,13 +14,12 @@ export interface NavTab {
 
 /**
  * Full nav list — consumed by Sidebar (all items) and BottomNav (subset).
- * Mobile bottom nav shows: Resumen · Cuentas · [FAB] · Plan · Perfil.
- * Movimientos is sidebar-only on mobile.
+ * Movimientos lives as a subtab inside Cuentas (`/cuentas/movimientos`),
+ * so it intentionally doesn't appear at the top level.
  */
 export const NAV_TABS: NavTab[] = [
   { to: '/', label: 'Resumen', icon: IconHome },
   { to: '/cuentas', label: 'Cuentas', icon: IconWallet },
   { to: '/plan', label: 'Plan', icon: IconTarget },
-  { to: '/movimientos', label: 'Movimientos', icon: IconArrowsLeftRight },
   { to: '/perfil', label: 'Perfil', icon: IconUser },
 ]

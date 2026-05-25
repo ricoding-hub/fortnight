@@ -251,10 +251,12 @@ async function reconcileBalance(
   )
   if (!remoteRow) return
 
-  // Syncfy reports positive numbers for both debit balance (available cash)
-  // and credit balance (debt amount), matching Fortnight's convention — so
-  // we compare directly without sign-flipping.
-  const reported = Number(remoteRow.balance)
+  // Syncfy's `balance` for credit accounts can come back negative on some
+  // banks (Santander reports debt as -). Fortnight's convention is always
+  // positive (balance = debt amount), so normalize before comparing —
+  // otherwise the drift adjustment flips the account to a negative balance.
+  const reportedRaw = Number(remoteRow.balance)
+  const reported = account.type === 'credit' ? Math.abs(reportedRaw) : reportedRaw
   const local = Number(localRow.balance)
   const drift = reported - local
   if (Math.abs(drift) < 0.01) return

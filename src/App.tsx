@@ -70,10 +70,14 @@ export default function App() {
             <Route path="/cuentas" element={<CuentasLayout />}>
               <Route index element={<Navigate to="mis" replace />} />
               <Route path="mis" element={<MisCuentas />} />
+              <Route path="movimientos" element={<Movimientos />} />
               <Route path="suscripciones" element={<MisSuscripciones />} />
               <Route path="prestamos" element={<MisPrestamos />} />
             </Route>
-            <Route path="/movimientos" element={<Movimientos />} />
+            <Route
+              path="/movimientos"
+              element={<Navigate to="/cuentas/movimientos" replace />}
+            />
             <Route path="/plan" element={<PlanLayout />}>
               <Route index element={<Navigate to="proyeccion" replace />} />
               <Route path="presupuesto" element={<Presupuesto />} />
