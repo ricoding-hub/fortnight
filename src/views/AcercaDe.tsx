@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.0"
+            version="0.2.1"
             date="25 may 2026"
             current
+            notes={[
+              'Edición y eliminación de metas desde el ícono de lápiz',
+              'Re-enlace de cuentas en cualquier momento',
+            ]}
+          />
+          <VersionRow
+            version="0.2.0"
+            date="25 may 2026"
             notes={[
               'Metas enlazables a múltiples cuentas (cajitas, apartados, CETES)',
               'Proyección muestra saldo real de tus cuentas, no estimación',

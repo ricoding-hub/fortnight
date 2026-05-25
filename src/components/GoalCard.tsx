@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { IconArrowDown, IconArrowUp, IconLink } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconLink, IconPencil } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { iconFor } from '@/lib/icons'
@@ -9,6 +9,7 @@ import type { Goal } from '@/types'
 
 interface GoalCardProps {
   goal: Goal
+  onEdit?: (goal: Goal) => void
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -65,7 +66,7 @@ function fmtDeadline(iso: string | null): string {
   return `${months[d.getMonth()]} ${d.getFullYear()}`
 }
 
-export function GoalCard({ goal }: GoalCardProps) {
+export function GoalCard({ goal, onEdit }: GoalCardProps) {
   const { data: accounts } = useAccounts()
   const color = goal.color ?? '#2A4BFF'
   const pct = goal.target > 0 ? clamp(goal.saved / goal.target, 0, 1) : 0
@@ -77,8 +78,18 @@ export function GoalCard({ goal }: GoalCardProps) {
   const linkedAccounts = accounts.filter((a) => goal.linked_account_ids.includes(a.id))
 
   return (
-    <Card className="p-3.5">
-      <div className="flex items-center gap-3">
+    <Card className="relative p-3.5">
+      {onEdit && (
+        <button
+          type="button"
+          onClick={() => onEdit(goal)}
+          aria-label={`Editar ${goal.name}`}
+          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-bg-secondary text-text-secondary transition-all hover:bg-primary/10 hover:text-primary active:scale-90"
+        >
+          <IconPencil size={13} stroke={2} />
+        </button>
+      )}
+      <div className="flex items-center gap-3 pr-7">
         <ProgressRing pct={pct} color={color} trackColor={color + '22'}>
           {createElement(iconFor(goal.icon), { size: 22, stroke: 2, color })}
         </ProgressRing>

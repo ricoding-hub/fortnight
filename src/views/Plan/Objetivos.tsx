@@ -4,11 +4,14 @@ import { useGoals } from '@/hooks/useGoals'
 import { Card } from '@/components/ui/Card'
 import { GoalCard } from '@/components/GoalCard'
 import { GoalWizard } from '@/components/GoalWizard'
+import { GoalEditModal } from '@/components/GoalEditModal'
 import { Richeto } from '@/components/Richeto'
+import type { Goal } from '@/types'
 
 export function Objetivos() {
   const { data: goals, loading } = useGoals()
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
 
   if (loading) {
     return (
@@ -65,7 +68,7 @@ export function Objetivos() {
             </p>
           </Card>
         ) : (
-          goals.map((g) => <GoalCard key={g.id} goal={g} />)
+          goals.map((g) => <GoalCard key={g.id} goal={g} onEdit={setEditingGoal} />)
         )}
       </div>
 
@@ -101,6 +104,13 @@ export function Objetivos() {
 
       {wizardOpen && (
         <GoalWizard onClose={() => setWizardOpen(false)} />
+      )}
+
+      {editingGoal && (
+        <GoalEditModal
+          goal={editingGoal}
+          onClose={() => setEditingGoal(null)}
+        />
       )}
     </div>
   )
