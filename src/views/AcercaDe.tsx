@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.5"
+            version="0.2.6"
             date="25 may 2026"
             current
+            notes={[
+              'Score financiero real: ahora mezcla utilización, liquidez, ahorro, racha y disciplina del plan',
+              'Sparkline del score lee tu historial diario en lugar de un patrón sintético',
+              'Marca tu meta principal con la estrella; se muestra primero en Plan y alimenta el "libre de deuda" del Resumen',
+              'Misiones de la semana persisten en Supabase y otorgan XP al instante al completarse',
+              'Card de Logros ahora navega al Perfil para ver tus logros completos',
+            ]}
+          />
+          <VersionRow
+            version="0.2.5"
+            date="25 may 2026"
             notes={[
               'Tarjetas con pago hoy muestran "Pagar hoy" en lugar de "0 días"',
               'XP y racha vuelven a registrarse en cada movimiento',

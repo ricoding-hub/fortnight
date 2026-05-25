@@ -57,24 +57,32 @@ export function useGoals() {
     // Savings: saved = Σ balances. Debt: saved = max(0, target − Σ balances).
     const accountBalance = new Map(accounts.map((a) => [a.id, Number(a.balance)]))
 
-    setData(
-      (goalsRes.data ?? []).map((g) => {
-        const linkedIds = linkMap.get(g.id) ?? []
-        const target = Number(g.target)
-        let derivedSaved = Number(g.saved)
-        if (linkedIds.length > 0) {
-          const sumBal = linkedIds.reduce((s, id) => s + (accountBalance.get(id) ?? 0), 0)
-          derivedSaved = g.is_debt ? Math.max(0, target - sumBal) : sumBal
-        }
-        return {
-          ...g,
-          target,
-          saved: derivedSaved,
-          monthly: Number(g.monthly),
-          linked_account_ids: linkedIds,
-        } as Goal
-      }),
-    )
+    const enriched = (goalsRes.data ?? []).map((g) => {
+      const linkedIds = linkMap.get(g.id) ?? []
+      const target = Number(g.target)
+      let derivedSaved = Number(g.saved)
+      if (linkedIds.length > 0) {
+        const sumBal = linkedIds.reduce((s, id) => s + (accountBalance.get(id) ?? 0), 0)
+        derivedSaved = g.is_debt ? Math.max(0, target - sumBal) : sumBal
+      }
+      return {
+        ...g,
+        target,
+        saved: derivedSaved,
+        monthly: Number(g.monthly),
+        is_primary: Boolean(g.is_primary),
+        linked_account_ids: linkedIds,
+      } as Goal
+    })
+
+    // Sort primary first, then by creation order — so every consumer of
+    // useGoals().data sees the user's principal goal at the top of the list.
+    enriched.sort((a, b) => {
+      if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
+      return a.created_at.localeCompare(b.created_at)
+    })
+
+    setData(enriched)
     setLoading(false)
   }, [user, accounts])
 
@@ -179,6 +187,34 @@ export function useGoals() {
     await fetchGoals()
   }
 
+  /**
+   * Mark one goal as the user's principal goal. Clears the previous primary
+   * first so the partial unique index never sees two primaries at once;
+   * realtime will smooth the transition for other tabs.
+   */
+  async function setPrimary(goalId: string): Promise<void> {
+    if (!user) throw new Error('Not authenticated')
+    // Optimistic local sort so the tap feels instant.
+    setData((prev) =>
+      [...prev]
+        .map((g) => ({ ...g, is_primary: g.id === goalId }))
+        .sort((a, b) => {
+          if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
+          return a.created_at.localeCompare(b.created_at)
+        }),
+    )
+    await supabase
+      .from('goals')
+      .update({ is_primary: false })
+      .eq('user_id', user.id)
+      .eq('is_primary', true)
+    const { error: err } = await supabase
+      .from('goals')
+      .update({ is_primary: true })
+      .eq('id', goalId)
+    if (err) throw err
+  }
+
   async function setLinkedAccounts(goalId: string, accountIds: string[]): Promise<void> {
     if (!user) throw new Error('Not authenticated')
     await supabase.from('goal_accounts').delete().eq('goal_id', goalId)
@@ -200,5 +236,6 @@ export function useGoals() {
     linkAccount,
     unlinkAccount,
     setLinkedAccounts,
+    setPrimary,
   }
 }

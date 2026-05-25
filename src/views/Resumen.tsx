@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   IconArrowDown,
@@ -8,7 +8,6 @@ import {
   IconCreditCard,
   IconFlame,
   IconRocket,
-  IconTarget,
   IconTrendingUp,
   IconTrophy,
   IconUsers,
@@ -21,19 +20,20 @@ import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
 import { useGamification } from '@/hooks/useGamification'
+import { useScoreHistory } from '@/hooks/useScoreHistory'
+import { useMissions } from '@/hooks/useMissions'
 
 import { Card } from '@/components/ui/Card'
 import { SkeletonStatCard } from '@/components/ui/Skeleton'
 import { PaydayBanner } from '@/components/PaydayBanner'
 import { ScoreSparkline } from '@/components/ScoreSparkline'
-import { Confetti } from '@/components/Confetti'
 import { Podium, type PodiumFriend } from '@/components/Podium'
 import { YourRank, type RankFriend } from '@/components/YourRank'
-import { MisionesCompact, type Mission } from '@/components/MisionesCompact'
+import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
-import { calculateScore } from '@/lib/score'
+import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -45,18 +45,6 @@ import { useNotifications } from '@/hooks/useNotifications'
 function shortMonth(d: Date): string {
   const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
   return `${months[d.getMonth()]} ${d.getFullYear()}`
-}
-
-/** Derive a 7-point sparkline from the current score (placeholder for score_history). */
-function syntheticScoreHistory(score: number): number[] {
-  // Small downward-trending jitter ending at the real score — purely visual.
-  const out: number[] = []
-  for (let i = 6; i >= 0; i--) {
-    const drift = Math.sin(i * 1.1) * 0.4
-    out.push(Math.max(1, Math.min(10, Math.round((score - i * 0.15 + drift) * 10) / 10)))
-  }
-  out[out.length - 1] = score
-  return out
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,10 +60,8 @@ export function Resumen() {
   const { data: goals } = useGoals()
   const { data: gami, nextLevelXP, levelProgress } = useGamification()
   const { unreadCount } = useNotifications()
+  const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const openAddModal = useUiStore((s) => s.openAddModal)
-
-  const [completedMissionId, setCompletedMissionId] = useState<string | null>(null)
-  const [logrosConfetti, setLogrosConfetti] = useState(false)
 
   /* --------------------------------- derived */
 
@@ -103,11 +89,55 @@ export function Resumen() {
       .reduce((s, t) => s + Number(t.amount), 0)
   }, [recentTx])
 
-  const score = calculateScore(accounts)
-  const scoreHistory = useMemo(() => syntheticScoreHistory(score), [score])
-  const scoreTier = score >= 8 ? 'Top' : score >= 5 ? 'Mejorando' : 'En reto'
-  const scoreColor = score >= 8 ? '#2BB673' : score >= 5 ? '#9B7BFF' : '#FF5A5F'
-  const scoreDelta = Math.round(scoreHistory[scoreHistory.length - 1] - scoreHistory[0])
+  // ── Score V2: blends balance sheet + behavioural signals from the last 30 days
+  const { monthlyIncome, monthlyExpense } = useMemo(() => {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 30)
+    const iso = cutoff.toISOString().slice(0, 10)
+    let income = 0
+    let expense = 0
+    for (const t of recentTx) {
+      if (t.date < iso || t.type !== 'transaction') continue
+      const amt = Number(t.amount)
+      if (amt > 0) income += amt
+      else expense += -amt
+    }
+    return { monthlyIncome: income, monthlyExpense: expense }
+  }, [recentTx])
+
+  const { score, breakdown } = useMemo(
+    () =>
+      calculateScoreV2({
+        accounts,
+        streakDays: gami.streak_days,
+        monthlyIncome,
+        monthlyExpense,
+        budgetSpendRatio: null,
+      }),
+    [accounts, gami.streak_days, monthlyIncome, monthlyExpense],
+  )
+
+  // Persist today's snapshot when the live score deviates from the last record.
+  useEffect(() => {
+    if (loading || !user) return
+    void recordIfChanged(score, breakdown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [score, loading, user])
+
+  // Sparkline: use real persisted points; pad with the current score if the
+  // user just signed up and we have no history yet.
+  const scoreHistory = useMemo(() => {
+    if (scoreSnapshots.length === 0) return [score]
+    const points = [...scoreSnapshots].reverse().map((s) => Number(s.score))
+    if (points.length === 1) return [points[0], score]
+    return points
+  }, [scoreSnapshots, score])
+
+  const scoreInt = Math.round(score)
+  const scoreTier = scoreInt >= 8 ? 'Top' : scoreInt >= 5 ? 'Mejorando' : 'En reto'
+  const scoreColor = scoreInt >= 8 ? '#2BB673' : scoreInt >= 5 ? '#9B7BFF' : '#FF5A5F'
+  const scoreDelta =
+    Math.round((scoreHistory[scoreHistory.length - 1] - scoreHistory[0]) * 10) / 10
 
   const unlockedAchievements = [
     recentTx.length >= 1,
@@ -116,16 +146,20 @@ export function Resumen() {
     gami.xp >= 500,
   ].filter(Boolean).length
 
-  // Mes libre de deuda — projected month/year if a debt goal exists.
-  const debtGoal = goals.find((g) => g.is_debt)
+  // Mes libre de deuda — projected month/year from the primary goal (falling
+  // back to any debt goal so existing users see something on day one).
+  const primaryGoal = useMemo(
+    () => goals.find((g) => g.is_primary) ?? goals.find((g) => g.is_debt) ?? null,
+    [goals],
+  )
   const mesLibre = useMemo(() => {
-    if (!debtGoal) return null
-    const m = monthsToGoal(debtGoal)
+    if (!primaryGoal) return null
+    const m = monthsToGoal(primaryGoal)
     if (!Number.isFinite(m)) return null
     const d = new Date()
     d.setMonth(d.getMonth() + m)
     return d
-  }, [debtGoal])
+  }, [primaryGoal])
 
   const urgent = creditAccounts
     .map((a) => ({ account: a, days: daysUntilPayment(a) }))
@@ -140,43 +174,27 @@ export function Resumen() {
 
   const streak = gami.streak_days
 
-  // Missions — starter set with progress derived from real signals.
-  const missions: Mission[] = useMemo(() => {
+  // Missions — driven by useMissions, which fetches this week's claims and
+  // auto-awards XP the moment a mission hits 100%.
+  const missionCtx = useMemo(() => {
     const cutoff7 = new Date()
     cutoff7.setDate(cutoff7.getDate() - 7)
     const cutoffISO = cutoff7.toISOString().slice(0, 10)
-    const last7TxCount = recentTx.filter((t) => t.date >= cutoffISO).length
+    const weekTx = recentTx.filter((t) => t.date >= cutoffISO && t.type === 'transaction')
+    const weekDebtPayments = weekTx
+      .filter((t) => {
+        const acc = accounts.find((a) => a.id === t.account_id)
+        return acc?.type === 'credit' && Number(t.amount) < 0
+      })
+      .reduce((s, t) => s + -Number(t.amount), 0)
+    return {
+      weekTxCount: weekTx.length,
+      score,
+      weekDebtPayments,
+    }
+  }, [recentTx, accounts, score])
 
-    return [
-      {
-        id: 'log-3',
-        title: 'Registra 3 gastos esta semana',
-        progress: Math.min(last7TxCount, 3),
-        total: 3,
-        reward: 20,
-        icon: IconFlame,
-        color: '#FF5A5F',
-      },
-      {
-        id: 'score-up',
-        title: 'Mantén tu score en 5+',
-        progress: score >= 5 ? 1 : 0,
-        total: 1,
-        reward: 50,
-        icon: IconTarget,
-        color: '#2A4BFF',
-      },
-      {
-        id: 'apply-plan',
-        title: 'Aplica tu plan en día de pago',
-        progress: 0,
-        total: 1,
-        reward: 100,
-        icon: IconRocket,
-        color: '#9B7BFF',
-      },
-    ]
-  }, [recentTx, score])
+  const { missions } = useMissions(missionCtx)
 
   // Friends data is gated behind a future gamification migration — Liga is
   // hidden when there's nothing to show.
@@ -404,7 +422,7 @@ export function Resumen() {
       <section className="px-4 pt-2">
         <Card className="p-4">
           <div className="flex items-center gap-3.5">
-            <ScoreRing score={score} color={scoreColor} />
+            <ScoreRing score={scoreInt} color={scoreColor} />
             <div className="min-w-0 flex-1">
               <div className="mb-0.5 flex items-center gap-1.5">
                 <span className="text-sm font-extrabold text-text">Score financiero</span>
@@ -544,17 +562,10 @@ export function Resumen() {
         />
         <button
           type="button"
-          onClick={() => {
-            setLogrosConfetti(true)
-            window.setTimeout(() => setLogrosConfetti(false), 2000)
-          }}
+          onClick={() => navigate('/perfil')}
+          aria-label="Ver logros"
           className="relative text-left transition-transform active:scale-[0.96]"
         >
-          {logrosConfetti && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
-              <Confetti count={18} />
-            </div>
-          )}
           <MiniStat
             icon={IconTrophy}
             label="Logros"
@@ -570,11 +581,7 @@ export function Resumen() {
         Misiones de la semana
       </SectionHeader>
       <section className="px-4 pb-2">
-        <MisionesCompact
-          missions={missions}
-          onToggle={setCompletedMissionId}
-          completedId={completedMissionId}
-        />
+        <MisionesCompact missions={missions} />
       </section>
 
       {/* Bottom spacer for tab bar */}

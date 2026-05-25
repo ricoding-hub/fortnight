@@ -1,10 +1,18 @@
 import { createElement } from 'react'
-import { IconArrowDown, IconArrowUp, IconLink, IconPencil } from '@tabler/icons-react'
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconLink,
+  IconPencil,
+  IconStar,
+  IconStarFilled,
+} from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { iconFor } from '@/lib/icons'
 import { expectedToday, monthsToGoal } from '@/lib/goals'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useGoals } from '@/hooks/useGoals'
 import type { Goal } from '@/types'
 
 interface GoalCardProps {
@@ -68,6 +76,7 @@ function fmtDeadline(iso: string | null): string {
 
 export function GoalCard({ goal, onEdit }: GoalCardProps) {
   const { data: accounts } = useAccounts()
+  const { setPrimary } = useGoals()
   const color = goal.color ?? '#2A4BFF'
   const pct = goal.target > 0 ? clamp(goal.saved / goal.target, 0, 1) : 0
   const expected = expectedToday(goal)
@@ -79,23 +88,48 @@ export function GoalCard({ goal, onEdit }: GoalCardProps) {
 
   return (
     <Card className="relative p-3.5">
-      {onEdit && (
+      <div className="absolute right-2 top-2 flex items-center gap-1">
         <button
           type="button"
-          onClick={() => onEdit(goal)}
-          aria-label={`Editar ${goal.name}`}
-          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-bg-secondary text-text-secondary transition-all hover:bg-primary/10 hover:text-primary active:scale-90"
+          onClick={() => void setPrimary(goal.id)}
+          aria-label={goal.is_primary ? 'Meta principal' : 'Marcar como meta principal'}
+          aria-pressed={goal.is_primary}
+          className={clsx(
+            'grid h-7 w-7 place-items-center rounded-full transition-all active:scale-110',
+            goal.is_primary
+              ? 'bg-[#F59E0B]/15 text-[#F59E0B]'
+              : 'bg-bg-secondary text-text-tertiary hover:bg-[#F59E0B]/10 hover:text-[#F59E0B]',
+          )}
         >
-          <IconPencil size={13} stroke={2} />
+          {goal.is_primary ? (
+            <IconStarFilled size={14} />
+          ) : (
+            <IconStar size={14} stroke={2} />
+          )}
         </button>
-      )}
-      <div className="flex items-center gap-3 pr-7">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(goal)}
+            aria-label={`Editar ${goal.name}`}
+            className="grid h-7 w-7 place-items-center rounded-full bg-bg-secondary text-text-secondary transition-all hover:bg-primary/10 hover:text-primary active:scale-90"
+          >
+            <IconPencil size={13} stroke={2} />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-3 pr-16">
         <ProgressRing pct={pct} color={color} trackColor={color + '22'}>
           {createElement(iconFor(goal.icon), { size: 22, stroke: 2, color })}
         </ProgressRing>
         <div className="min-w-0 flex-1">
           <div className="mb-0.5 flex items-center gap-1.5">
             <span className="truncate text-sm font-extrabold text-text">{goal.name}</span>
+            {goal.is_primary && (
+              <span className="rounded-full bg-[#F59E0B]/15 px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-[#B45309]">
+                PRINCIPAL
+              </span>
+            )}
             {goal.is_debt && (
               <span className="rounded-full bg-debt-soft px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-debt-deep">
                 DEUDA

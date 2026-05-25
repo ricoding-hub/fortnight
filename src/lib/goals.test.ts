@@ -14,6 +14,7 @@ function goal(overrides: Partial<Goal> = {}): Goal {
     monthly: 2800,
     deadline: '2026-12-31',
     is_debt: false,
+    is_primary: false,
     started_at: '2026-01-01',
     created_at: '2026-01-01T00:00:00Z',
     linked_account_ids: [],

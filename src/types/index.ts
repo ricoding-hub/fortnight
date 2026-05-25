@@ -167,6 +167,8 @@ export interface Goal {
   /** ISO date string. */
   deadline: string | null
   is_debt: boolean
+  /** User marks one goal as the "principal" goal — shown first everywhere. */
+  is_primary: boolean
   /** ISO date string — when the goal/contributions started. */
   started_at: string
   created_at: string
@@ -235,6 +237,29 @@ export type NewSubscription = Omit<Subscription, 'id' | 'user_id' | 'created_at'
 export type SubscriptionPatch = Partial<NewSubscription>
 
 export type NotificationType = 'payment_due' | 'payday' | 'goal' | 'mission'
+
+export interface ScoreSnapshot {
+  user_id: string
+  /** ISO date 'YYYY-MM-DD'. */
+  day: string
+  score: number
+  utilization: number | null
+  liquidity: number | null
+  savings_rate: number | null
+  streak_days: number | null
+  budget_adherence: number | null
+  recorded_at: string
+}
+
+export interface MissionCompletion {
+  id: string
+  user_id: string
+  mission_id: string
+  /** ISO week — 'YYYY-Www'. */
+  cycle_week: string
+  reward_xp: number
+  claimed_at: string
+}
 
 export interface Notification {
   id: string

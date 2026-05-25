@@ -106,13 +106,16 @@ export function Proyeccion() {
 
   const [primaryId, setPrimaryId] = useState<string | null>(null)
 
-  // Auto-select goal on first load. If net balance is negative (more debt than
-  // assets), surface the debt goal first so the user immediately sees their
-  // payoff plan.
+  // Auto-select goal on first load. Priority:
+  //   1. The user's principal goal (is_primary)
+  //   2. Debt goal when net balance is negative
+  //   3. First non-debt goal otherwise, falling back to any debt goal
   useEffect(() => {
     if (accounts.length === 0 && goals.length === 0) return
     setPrimaryId((cur) => {
       if (cur !== null) return cur
+      const pinned = goals.find((g) => g.is_primary)
+      if (pinned) return pinned.id
       const totalAssets = accounts
         .filter((a) => a.type === 'debit')
         .reduce((s, a) => s + Number(a.balance), 0)

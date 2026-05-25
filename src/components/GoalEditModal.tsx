@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconCheck, IconLink, IconTrash } from '@tabler/icons-react'
+import { IconCheck, IconLink, IconStarFilled, IconTrash } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -20,13 +20,14 @@ function isMoney(v: string) {
 export function GoalEditModal({ goal, onClose }: Props) {
   const toast = useToast()
   const { data: accounts } = useAccounts()
-  const { update, remove, setLinkedAccounts } = useGoals()
+  const { update, remove, setLinkedAccounts, setPrimary } = useGoals()
 
   const [name, setName] = useState(goal.name)
   const [target, setTarget] = useState(String(Math.round(goal.target)))
   const [monthly, setMonthly] = useState(String(Math.round(goal.monthly)))
   const [deadline, setDeadline] = useState(goal.deadline ?? '')
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set(goal.linked_account_ids))
+  const [isPrimary, setIsPrimary] = useState(goal.is_primary)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -65,6 +66,9 @@ export function GoalEditModal({ goal, onClose }: Props) {
       if (changed) {
         await setLinkedAccounts(goal.id, Array.from(linkedIds))
       }
+      if (isPrimary && !goal.is_primary) {
+        await setPrimary(goal.id)
+      }
       toast.success('Meta actualizada', name.trim())
       onClose()
     } catch {
@@ -99,6 +103,49 @@ export function GoalEditModal({ goal, onClose }: Props) {
   return (
     <Modal open title="Editar meta" onClose={onClose}>
       <div className="flex flex-col gap-3">
+        {/* Primary goal toggle — pin this goal to the top of every Plan tab */}
+        <button
+          type="button"
+          onClick={() => setIsPrimary((v) => !v)}
+          aria-pressed={isPrimary}
+          className={
+            'flex items-center justify-between rounded-xl border-2 px-3.5 py-3 text-left transition-all ' +
+            (isPrimary
+              ? 'border-[#F59E0B] bg-[#F59E0B]/10'
+              : 'border-transparent bg-bg-secondary hover:border-[#F59E0B]/30')
+          }
+        >
+          <div className="flex items-center gap-2.5">
+            <span
+              className={
+                'grid h-8 w-8 place-items-center rounded-full transition-colors ' +
+                (isPrimary ? 'bg-[#F59E0B] text-white' : 'bg-bg-elevated text-text-tertiary')
+              }
+            >
+              <IconStarFilled size={15} />
+            </span>
+            <div>
+              <p className="text-[13px] font-extrabold text-text">Marcar como meta principal</p>
+              <p className="text-[11px] text-text-secondary">
+                Se mostrará primero al abrir Plan y alimenta la fecha del Resumen.
+              </p>
+            </div>
+          </div>
+          <span
+            className={
+              'relative h-5 w-9 shrink-0 rounded-full transition-colors ' +
+              (isPrimary ? 'bg-[#F59E0B]' : 'bg-bg-elevated')
+            }
+          >
+            <span
+              className={
+                'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all ' +
+                (isPrimary ? 'left-4' : 'left-0.5')
+              }
+            />
+          </span>
+        </button>
+
         <Input
           label="Nombre"
           value={name}

@@ -2,11 +2,17 @@ import { createElement } from 'react'
 import { IconCheck, type Icon } from '@tabler/icons-react'
 import clsx from 'clsx'
 
+/**
+ * Mission shape the card renders. `current` is the live progress; `done` and
+ * `claimed` come from `useMissions` (claim state is sourced from
+ * `mission_completions`). Everything except `id/title/total/reward/icon/color`
+ * is optional so callers can render a static placeholder mission too.
+ */
 export interface Mission {
   id: string
   title: string
-  /** Progress count toward `total`. */
-  progress: number
+  /** Current progress. */
+  current?: number
   total: number
   /** Reward XP shown in the pill. */
   reward: number
@@ -14,11 +20,15 @@ export interface Mission {
   icon: Icon
   /** Accent hex colour — drives icon tile, bar, and reward pill. */
   color: string
+  /** True when current >= total. */
+  done?: boolean
+  /** True when XP has already been awarded for this cycle. */
+  claimed?: boolean
 }
 
 interface MisionesCompactProps {
   missions: Mission[]
-  /** Toggle handler for marking a mission complete. */
+  /** Optional override (legacy callers). Auto-claim is the default flow now. */
   onToggle?: (id: string) => void
   /** Optional override of completion (e.g. optimistic UI). */
   completedId?: string | null
@@ -28,21 +38,26 @@ export function MisionesCompact({ missions, onToggle, completedId }: MisionesCom
   return (
     <div className="flex flex-col gap-2">
       {missions.map((q) => {
-        const pct = q.total > 0 ? q.progress / q.total : 0
-        const done = pct >= 1 || completedId === q.id
+        const current = q.current ?? 0
+        const pct = q.total > 0 ? current / q.total : 0
+        const done = q.done ?? (pct >= 1 || completedId === q.id)
+        const claimed = q.claimed ?? done
 
         return (
           <button
             key={q.id}
             type="button"
             onClick={() => onToggle?.(q.id)}
+            disabled={!onToggle}
+            aria-label={done ? `${q.title} — completada` : q.title}
             className={clsx(
               'flex w-full items-center gap-3 rounded-md bg-bg-elevated px-3 py-2.5 text-left shadow-card transition-opacity',
-              done && 'opacity-70',
+              done && 'opacity-80',
+              !onToggle && 'cursor-default',
             )}
           >
             <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-md"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors"
               style={{ background: done ? q.color : q.color + '1a' }}
             >
               {done ? (
@@ -74,15 +89,24 @@ export function MisionesCompact({ missions, onToggle, completedId }: MisionesCom
                   />
                 </div>
                 <span className="font-mono text-[10px] font-bold text-text-tertiary">
-                  {done ? q.total : q.progress}/{q.total}
+                  {done ? q.total : current}/{q.total}
                 </span>
               </div>
             </div>
             <span
-              className="shrink-0 rounded-full px-2 py-1 font-mono text-[11px] font-bold"
-              style={{ color: q.color, background: q.color + '1a' }}
+              className={clsx(
+                'shrink-0 rounded-full px-2 py-1 font-mono text-[11px] font-bold transition-colors',
+                claimed
+                  ? 'bg-asset-soft text-asset-deep'
+                  : '',
+              )}
+              style={
+                claimed
+                  ? undefined
+                  : { color: q.color, background: q.color + '1a' }
+              }
             >
-              +{q.reward}xp
+              {claimed ? `+${q.reward} ✓` : `+${q.reward}xp`}
             </span>
           </button>
         )
