@@ -14,8 +14,7 @@ import {
   mintToken,
 } from '../../../_lib/syncfy.js'
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'DELETE') return json({ error: 'method_not_allowed' }, 405)
+export async function DELETE(req: Request): Promise<Response> {
   try {
     const { user, admin } = await requireUser(req)
     const id = extractId(req.url)

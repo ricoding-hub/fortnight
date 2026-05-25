@@ -13,8 +13,7 @@
 import { getOrCreateUser, mintToken } from '../_lib/syncfy.js'
 import { isResponse, json, requireUser } from '../_lib/auth.js'
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
+export async function POST(req: Request): Promise<Response> {
   try {
     const { user } = await requireUser(req)
     const syncfyUser = await getOrCreateUser(user.id)

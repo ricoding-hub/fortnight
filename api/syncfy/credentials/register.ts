@@ -19,8 +19,7 @@ interface RegisterBody {
   institution_name?: string
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
+export async function POST(req: Request): Promise<Response> {
   try {
     const { user, admin } = await requireUser(req)
     const body = (await req.json().catch(() => ({}))) as RegisterBody
