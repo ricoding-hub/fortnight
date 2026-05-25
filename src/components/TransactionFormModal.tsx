@@ -53,7 +53,7 @@ export function TransactionFormModal({
   initialDirection = 'spend',
 }: TransactionFormModalProps) {
   const toast = useToast()
-  const { addXP } = useGamification()
+  const { refetch: refetchGami } = useGamification()
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
   const [step, setStep] = useState<0 | 1>(0)
@@ -174,7 +174,10 @@ export function TransactionFormModal({
         date: today(),
       })
       setStep(1)
-      void addXP(XP_PER_TX)
+      // XP + streak are awarded server-side by the
+      // tr_award_xp_on_transaction trigger; realtime propagates to UI.
+      // Manual re-fetch as fallback in case realtime is delayed.
+      window.setTimeout(() => { void refetchGami() }, 400)
     } catch {
       toast.error('Error al guardar', 'Ocurrió un problema al registrar el movimiento')
       setSubmitting(false)

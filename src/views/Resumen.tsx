@@ -132,6 +132,11 @@ export function Resumen() {
     .filter((x): x is { account: typeof x.account; days: number } => x.days != null && x.days <= 5)
     .sort((a, b) => a.days - b.days)
   const nextUrgent = urgent[0]
+  const urgentLabel = nextUrgent
+    ? nextUrgent.days <= 0
+      ? `Paga ${nextUrgent.account.name} hoy`
+      : `${nextUrgent.account.name} en ${nextUrgent.days} día${nextUrgent.days === 1 ? '' : 's'}`
+    : ''
 
   const streak = gami.streak_days
 
@@ -480,7 +485,7 @@ export function Resumen() {
               </div>
               <div>
                 <p className="text-[13.5px] font-extrabold text-text">
-                  {nextUrgent.account.name} en {nextUrgent.days} día{nextUrgent.days === 1 ? '' : 's'}
+                  {urgentLabel}
                 </p>
                 <p className="font-mono text-[11px] text-text-secondary">
                   ${nextUrgent.account.balance.toLocaleString()}

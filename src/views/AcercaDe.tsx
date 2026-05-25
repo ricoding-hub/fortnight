@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.4"
+            version="0.2.5"
             date="25 may 2026"
             current
+            notes={[
+              'Tarjetas con pago hoy muestran "Pagar hoy" en lugar de "0 días"',
+              'XP y racha vuelven a registrarse en cada movimiento',
+              'Realtime activado para gamificación: streak y XP se actualizan al instante',
+            ]}
+          />
+          <VersionRow
+            version="0.2.4"
+            date="25 may 2026"
             notes={[
               'Proyección lee fijos y variables del plan, no del onboarding',
               'Todos los items del presupuesto se pueden marcar como pagados',

@@ -50,21 +50,23 @@ export function useGamification() {
   const seededRef = useRef(false)
 
   const seed = useCallback(async () => {
-    if (!user || seededRef.current) return
-    seededRef.current = true
-    const { data: row } = await supabase
-      .from('user_gamification')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (!row) {
-      await supabase.from('user_gamification').insert({
-        user_id: user.id,
-        xp: 0,
-        level: 1,
-        streak_days: 0,
-        last_activity_date: null,
-      })
+    if (!user) return
+    if (!seededRef.current) {
+      seededRef.current = true
+      const { data: row } = await supabase
+        .from('user_gamification')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!row) {
+        await supabase.from('user_gamification').insert({
+          user_id: user.id,
+          xp: 0,
+          level: 1,
+          streak_days: 0,
+          last_activity_date: null,
+        })
+      }
     }
     const { data: fresh } = await supabase
       .from('user_gamification')
@@ -79,7 +81,9 @@ export function useGamification() {
     void seed()
   }, [seed])
 
-  // Realtime subscription
+  // Realtime subscription. The XP trigger fires inside a SECURITY DEFINER
+  // function, so realtime only reaches us if user_gamification is in the
+  // supabase_realtime publication (added in migration 011).
   useEffect(() => {
     if (!user) return
     const channel = supabase
@@ -90,12 +94,15 @@ export function useGamification() {
         (payload) => {
           if (payload.new && typeof payload.new === 'object') {
             setData(payload.new as UserGamification)
+          } else {
+            // Fallback: re-fetch if payload shape is unexpected
+            void seed()
           }
         },
       )
       .subscribe()
     return () => { void supabase.removeChannel(channel) }
-  }, [user, channelKey])
+  }, [user, channelKey, seed])
 
   // Keep a ref so addXP always reads the latest gamification state without
   // including `data` in the dependency array (avoids stale closure bug).
@@ -138,6 +145,7 @@ export function useGamification() {
     data,
     loading: user ? loading : false,
     addXP,
+    refetch: seed,
     nextLevelXP: nextXP,
     levelProgress,
   }
