@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card'
 
 const VERSION = __APP_VERSION__
 
-const STACK = [
+const STACK: { label: string; role: string }[] = [
   { label: 'React 19 + TypeScript', role: 'UI' },
   { label: 'Tailwind CSS v4', role: 'Estilos' },
   { label: 'Supabase', role: 'Backend / Auth' },
@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.6"
+            version="0.2.7"
             date="25 may 2026"
             current
+            notes={[
+              'Toca el score para ver el desglose completo: 5 señales con pesos y contribución',
+              'Widget de banco: timeout explícito de 20 s en token + 15 s en script, mejor mensaje de error',
+              'Bug: el script del widget ya se reinicializa al reintentar (no quedaba en estado de error)',
+            ]}
+          />
+          <VersionRow
+            version="0.2.6"
+            date="25 may 2026"
             notes={[
               'Score financiero real: ahora mezcla utilización, liquidez, ahorro, racha y disciplina del plan',
               'Sparkline del score lee tu historial diario en lugar de un patrón sintético',

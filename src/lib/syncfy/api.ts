@@ -14,12 +14,33 @@ async function authHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` }
 }
 
+const API_TIMEOUT_MS = 20_000
+
+async function fetchWithTimeout(
+  path: string,
+  init: RequestInit,
+  timeoutMs = API_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(path, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('La conexión tardó demasiado. Revisa tu red e intenta de nuevo.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const headers = {
     'content-type': 'application/json',
     ...(await authHeader()),
   }
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     method: 'POST',
     headers,
     body: body == null ? undefined : JSON.stringify(body),
@@ -28,7 +49,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     method: 'DELETE',
     headers: await authHeader(),
   })

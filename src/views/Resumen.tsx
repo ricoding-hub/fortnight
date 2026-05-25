@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   IconArrowDown,
@@ -7,6 +7,7 @@ import {
   IconCash,
   IconCreditCard,
   IconFlame,
+  IconInfoCircle,
   IconRocket,
   IconTrendingUp,
   IconTrophy,
@@ -24,6 +25,7 @@ import { useScoreHistory } from '@/hooks/useScoreHistory'
 import { useMissions } from '@/hooks/useMissions'
 
 import { Card } from '@/components/ui/Card'
+import { Modal } from '@/components/ui/Modal'
 import { SkeletonStatCard } from '@/components/ui/Skeleton'
 import { PaydayBanner } from '@/components/PaydayBanner'
 import { ScoreSparkline } from '@/components/ScoreSparkline'
@@ -53,6 +55,7 @@ function shortMonth(d: Date): string {
 
 export function Resumen() {
   const navigate = useNavigate()
+  const [scoreOpen, setScoreOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
   const { active: activeLoans } = useLoans()
@@ -420,27 +423,44 @@ export function Resumen() {
 
       {/* ── Score card with ring + sparkline ── */}
       <section className="px-4 pt-2">
-        <Card className="p-4">
-          <div className="flex items-center gap-3.5">
-            <ScoreRing score={scoreInt} color={scoreColor} />
-            <div className="min-w-0 flex-1">
-              <div className="mb-0.5 flex items-center gap-1.5">
-                <span className="text-sm font-extrabold text-text">Score financiero</span>
-                <span className="rounded-full bg-lavender-soft px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-lavender-deep">
-                  {scoreTier}
-                </span>
+        <button
+          type="button"
+          className="w-full text-left transition-transform active:scale-[0.985]"
+          onClick={() => setScoreOpen(true)}
+          aria-label="Ver desglose del score financiero"
+        >
+          <Card className="p-4">
+            <div className="flex items-center gap-3.5">
+              <ScoreRing score={scoreInt} color={scoreColor} />
+              <div className="min-w-0 flex-1">
+                <div className="mb-0.5 flex items-center gap-1.5">
+                  <span className="text-sm font-extrabold text-text">Score financiero</span>
+                  <span className="rounded-full bg-lavender-soft px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-lavender-deep">
+                    {scoreTier}
+                  </span>
+                  <IconInfoCircle size={13} className="ml-auto text-text-tertiary" />
+                </div>
+                <p className="mb-2 text-[11.5px] font-semibold text-text-secondary">
+                  <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
+                    {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
+                  </span>{' '}
+                  esta semana · meta <b className="text-text">7</b>
+                </p>
+                <ScoreSparkline data={scoreHistory} />
               </div>
-              <p className="mb-2 text-[11.5px] font-semibold text-text-secondary">
-                <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
-                  {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
-                </span>{' '}
-                esta semana · meta <b className="text-text">7</b>
-              </p>
-              <ScoreSparkline data={scoreHistory} />
             </div>
-          </div>
-        </Card>
+          </Card>
+        </button>
       </section>
+
+      <ScoreBreakdownSheet
+        open={scoreOpen}
+        onClose={() => setScoreOpen(false)}
+        score={score}
+        scoreColor={scoreColor}
+        scoreTier={scoreTier}
+        breakdown={breakdown}
+      />
 
       {/* ── Streak + Mes libre dual cards ── */}
       <section className="grid grid-cols-2 gap-2 px-4 pt-2">
@@ -675,5 +695,147 @@ function MiniStat({
         {value}
       </p>
     </Card>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Score breakdown bottom sheet                                         */
+/* ------------------------------------------------------------------ */
+
+interface ScoreBreakdownSheetProps {
+  open: boolean
+  onClose: () => void
+  score: number
+  scoreColor: string
+  scoreTier: string
+  breakdown: import('@/lib/score').ScoreBreakdown
+}
+
+const SIGNAL_META = [
+  {
+    key: 'utilization' as const,
+    label: 'Utilización de crédito',
+    weight: 30,
+    description: 'Qué tan lejos estás de tu límite total de tarjetas.',
+    goodLabel: 'baja utilización',
+  },
+  {
+    key: 'liquidity' as const,
+    label: 'Liquidez',
+    weight: 20,
+    description: 'Efectivo en cuentas versus deuda total.',
+    goodLabel: 'más efectivo que deuda',
+  },
+  {
+    key: 'savingsRate' as const,
+    label: 'Tasa de ahorro',
+    weight: 20,
+    description: 'Porcentaje del ingreso que no gastas (últimos 30 días). Meta: 40%.',
+    goodLabel: 'ahorrando 40%+',
+  },
+  {
+    key: 'streak' as const,
+    label: 'Racha de registro',
+    weight: 15,
+    description: 'Consistencia diaria. 21 días continuos = puntaje completo.',
+    goodLabel: '21 días de racha',
+  },
+  {
+    key: 'budgetAdherence' as const,
+    label: 'Apego al presupuesto',
+    weight: 15,
+    description: 'Qué tan cerca estás del gasto planeado. Sin plan activo = neutro.',
+    goodLabel: 'dentro del plan',
+  },
+]
+
+function SignalBar({ value, color }: { value: number; color: string }) {
+  return (
+    <div
+      className="h-2 flex-1 overflow-hidden rounded-full"
+      style={{ background: color + '20' }}
+    >
+      <div
+        className="h-full rounded-full transition-[width] duration-500"
+        style={{ width: `${Math.round(value * 100)}%`, background: color }}
+      />
+    </div>
+  )
+}
+
+function signalColor(v: number): string {
+  if (v >= 0.7) return '#10B981'
+  if (v >= 0.4) return '#9B7BFF'
+  return '#EF4444'
+}
+
+function ScoreBreakdownSheet({
+  open,
+  onClose,
+  score,
+  scoreColor,
+  scoreTier,
+  breakdown,
+}: ScoreBreakdownSheetProps) {
+  return (
+    <Modal open={open} onClose={onClose} title="Score financiero">
+      {/* Hero row */}
+      <div className="mb-4 flex items-center gap-4 rounded-xl p-4" style={{ background: scoreColor + '12' }}>
+        <ScoreRing score={Math.round(score)} color={scoreColor} />
+        <div>
+          <p className="font-display text-3xl font-extrabold leading-none" style={{ color: scoreColor }}>
+            {score}
+            <span className="ml-1 text-base font-bold text-text-tertiary">/ 10</span>
+          </p>
+          <span
+            className="mt-1.5 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-extrabold"
+            style={{ background: scoreColor + '22', color: scoreColor }}
+          >
+            {scoreTier}
+          </span>
+          <p className="mt-1 text-[11px] text-text-tertiary">
+            Meta <b className="text-text">7.0</b> · Excelente <b className="text-text">8.5</b>
+          </p>
+        </div>
+      </div>
+
+      {/* Signal breakdown */}
+      <div className="flex flex-col gap-3.5">
+        {SIGNAL_META.map((sig) => {
+          const val = breakdown[sig.key]
+          const col = signalColor(val)
+          const pts = Math.round(val * sig.weight * 10) / 10
+          return (
+            <div key={sig.key}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="flex-1 text-[12.5px] font-bold text-text">{sig.label}</span>
+                <span
+                  className="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-extrabold"
+                  style={{ background: col + '18', color: col }}
+                >
+                  {pts.toFixed(1)} pts
+                </span>
+                <span className="shrink-0 text-[10px] font-semibold text-text-tertiary">
+                  peso {sig.weight}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <SignalBar value={val} color={col} />
+                <span className="w-8 text-right font-mono text-[11px] font-bold" style={{ color: col }}>
+                  {Math.round(val * 100)}%
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-text-tertiary">
+                {sig.description}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="mt-5 text-center text-[10.5px] text-text-tertiary">
+        Basado en tus últimos 30 días · Se recalcula al cambiar saldos
+      </p>
+    </Modal>
   )
 }

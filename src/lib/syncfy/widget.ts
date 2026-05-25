@@ -11,6 +11,8 @@ const WIDGET_CSS =
   'https://syncfy.com/widget/v3/syncfy-authentication-widget.css'
 const WIDGET_JS = 'https://syncfy.com/widget/v3/syncfy-authentication-widget.js'
 
+const SCRIPT_TIMEOUT_MS = 15_000
+
 let scriptPromise: Promise<void> | null = null
 
 declare global {
@@ -55,8 +57,8 @@ export interface SyncfyWidgetInstance {
 }
 
 /**
- * Loads the Syncfy widget script + stylesheet exactly once. Subsequent
- * calls reuse the cached promise.
+ * Loads the Syncfy widget script + stylesheet. The promise is cached after a
+ * successful load; on failure the cache is cleared so the next call retries.
  */
 function loadWidget(): Promise<void> {
   if (scriptPromise) return scriptPromise
@@ -80,14 +82,31 @@ function loadWidget(): Promise<void> {
       return
     }
 
+    const fail = (msg: string) => {
+      // Remove the failed script tag so a future attempt can re-inject it.
+      const injected = document.querySelector<HTMLScriptElement>(`script[data-syncfy="js"]`)
+      injected?.remove()
+      scriptPromise = null
+      reject(new Error(msg))
+    }
+
+    const timer = setTimeout(
+      () => fail('El widget tardó demasiado en cargar (timeout)'),
+      SCRIPT_TIMEOUT_MS,
+    )
+
     const script = existing ?? document.createElement('script')
     script.src = WIDGET_JS
     script.async = true
     script.dataset.syncfy = 'js'
-    script.addEventListener('load', () => resolve())
-    script.addEventListener('error', () =>
-      reject(new Error('Failed to load Syncfy widget script')),
-    )
+    script.addEventListener('load', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    script.addEventListener('error', () => {
+      clearTimeout(timer)
+      fail('No se pudo descargar el widget de Syncfy')
+    })
     if (!existing) document.body.appendChild(script)
   })
   return scriptPromise
