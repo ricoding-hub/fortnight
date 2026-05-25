@@ -4,11 +4,14 @@ import { IconRocket } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
+import { useConfig } from '@/hooks/useConfig'
+import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { Card } from '@/components/ui/Card'
 import { PlanChart } from '@/components/PlanChart'
 import { Richeto } from '@/components/Richeto'
 import { iconFor } from '@/lib/icons'
 import { monthsToGoal, projectGoal } from '@/lib/goals'
+import { calcMonthlyDisposable } from '@/lib/projections'
 
 interface PlanContext {
   monthlyIncome: number
@@ -30,6 +33,10 @@ export function Proyeccion() {
   useOutletContext<PlanContext>() // contract: present even if unused now
   const { data: plan } = useBudgetPlan()
   const { data: goals, loading } = useGoals()
+  const { data: config } = useConfig()
+  const { data: subs } = useSubscriptions()
+
+  const disposable = config ? calcMonthlyDisposable(config, subs) : 0
 
   const [primaryId, setPrimaryId] = useState<string | null>(null)
 
@@ -190,12 +197,13 @@ export function Proyeccion() {
             Richeto predice
           </p>
           <p className="text-[12px] font-medium leading-snug text-text-secondary">
-            Si mantienes tu plan <b className="text-text">{plan?.plan.preset ?? '50-30-20'}</b>,
-            tu meta de <b className="text-text">{primary.name}</b> llega en{' '}
+            Con tu plan <b className="text-text">{plan?.plan.preset ?? '50-30-20'}</b> y{' '}
+            <b className="text-text">${Math.round(disposable).toLocaleString()}/mes</b> disponibles,
+            tu meta <b className="text-text">{primary.name}</b> llega en{' '}
             <b className="text-text">
               {Number.isFinite(monthsLeft) ? monthsLeft : '?'} meses
             </b>
-            . Recortar 5% de salidas la adelanta un mes más.
+            .{subs.filter((s) => s.active).length > 0 && ` Suscripciones: $${Math.round(subs.filter(s=>s.active).reduce((a,s2)=>a+(s2.frequency==='anual'?s2.amount/12:s2.frequency==='trimestral'?s2.amount/3:s2.amount),0)).toLocaleString()}/mes.`}
           </p>
         </div>
       </div>

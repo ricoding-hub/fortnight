@@ -198,6 +198,28 @@ export interface UserGamification {
   updated_at: string
 }
 
+export type SubscriptionFrequency = 'mensual' | 'trimestral' | 'anual'
+
+export interface Subscription {
+  id: string
+  user_id: string
+  account_id: string | null
+  name: string
+  amount: number
+  frequency: SubscriptionFrequency
+  charge_day: number
+  category_id: string | null
+  brand_id: string | null
+  color: string | null
+  notes: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type NewSubscription = Omit<Subscription, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+export type SubscriptionPatch = Partial<NewSubscription>
+
 export type NotificationType = 'payment_due' | 'payday' | 'goal' | 'mission'
 
 export interface Notification {

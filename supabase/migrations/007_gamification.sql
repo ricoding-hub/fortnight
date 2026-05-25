@@ -86,3 +86,56 @@ grant select, insert, update, delete on public.notifications to service_role;
 --     );
 --   $$
 -- );
+
+-- ============================================================
+-- XP trigger: award XP + update streak on every new transaction
+-- Runs server-side so gamification works even if the client
+-- never calls addXP (e.g. Syncfy auto-imports).
+-- ============================================================
+create or replace function public.award_xp_on_transaction()
+returns trigger language plpgsql security definer as $$
+declare
+  v_xp     int  := 15;
+  v_today  date := current_date;
+  v_row    public.user_gamification%rowtype;
+  v_streak int;
+begin
+  -- Skip adjustments — only real user transactions earn XP
+  if NEW.type = 'adjustment' then return NEW; end if;
+
+  select * into v_row
+  from public.user_gamification
+  where user_id = NEW.user_id;
+
+  if not found then
+    insert into public.user_gamification(user_id, xp, level, streak_days, last_activity_date)
+    values (NEW.user_id, v_xp, 1, 1, v_today);
+    return NEW;
+  end if;
+
+  -- Streak logic
+  if v_row.last_activity_date = v_today then
+    v_streak := v_row.streak_days;
+    v_xp     := 0;                          -- no double XP same day
+  elsif v_row.last_activity_date = v_today - 1 then
+    v_streak := v_row.streak_days + 1;      -- continuing streak
+  else
+    v_streak := 1;                          -- streak reset
+  end if;
+
+  update public.user_gamification set
+    xp                 = xp + v_xp,
+    streak_days        = v_streak,
+    last_activity_date = v_today,
+    level              = greatest(1, floor((xp + v_xp)::numeric / 500) + 1),
+    updated_at         = now()
+  where user_id = NEW.user_id;
+
+  return NEW;
+end;
+$$;
+
+drop trigger if exists tr_award_xp_on_transaction on public.transactions;
+create trigger tr_award_xp_on_transaction
+  after insert on public.transactions
+  for each row execute function public.award_xp_on_transaction();

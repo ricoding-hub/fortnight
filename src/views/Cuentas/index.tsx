@@ -3,6 +3,7 @@ import clsx from 'clsx'
 
 const TABS = [
   { to: '/cuentas/mis', label: 'Cuentas' },
+  { to: '/cuentas/suscripciones', label: 'Suscripciones' },
   { to: '/cuentas/prestamos', label: 'Préstamos' },
 ] as const
 
@@ -23,7 +24,7 @@ export function CuentasLayout() {
 
       {/* Sub-nav segmented */}
       <div className="px-4 pb-1 pt-2">
-        <div className="grid grid-cols-2 rounded-full bg-bg-secondary p-1">
+        <div className="grid grid-cols-3 rounded-full bg-bg-secondary p-1">
           {TABS.map((t) => (
             <NavLink
               key={t.to}

@@ -1,30 +1,46 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { IconCheck, IconSettings } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
+import { useTransactions } from '@/hooks/useTransactions'
+import { useAccounts } from '@/hooks/useAccounts'
 import { BucketCard } from '@/components/BucketCard'
 import { Richeto } from '@/components/Richeto'
 import { PRESETS, planIntegrityPct, type BucketWithSpend } from '@/lib/plan'
-import type { PlanPreset, BucketWithItems } from '@/types'
+import type { PlanPreset } from '@/types'
 
 interface PlanContext {
   monthlyIncome: number
 }
 
-/** Map raw buckets onto BucketWithSpend by attaching spent=0 — PR-6 wires real spend. */
-function withZeroSpend(buckets: BucketWithItems[]): BucketWithSpend[] {
-  return buckets.map((b) => ({
-    ...b,
-    items: b.items.map((it) => ({ ...it, spent: 0 })),
-  }))
-}
-
 export function Presupuesto() {
   const { monthlyIncome } = useOutletContext<PlanContext>()
   const { data, loading, updateItemPct, applyPlanPreset } = useBudgetPlan()
+  const { data: accounts } = useAccounts()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+
+  const now = new Date()
+  const dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dateTo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const { data: txs } = useTransactions({ dateFrom, dateTo })
+
+  // Build category → spent map from real transactions this month
+  const categorySpend = useMemo(() => {
+    const accountTypeMap = new Map(accounts.map((a) => [a.id, a.type]))
+    const map = new Map<string, number>()
+    for (const tx of txs) {
+      if (tx.type === 'adjustment' || !tx.category_id) continue
+      const accountType = accountTypeMap.get(tx.account_id)
+      let expense = 0
+      if (accountType === 'debit' && tx.amount < 0) expense = -tx.amount
+      else if (accountType === 'credit' && tx.amount > 0) expense = tx.amount
+      if (expense > 0) map.set(tx.category_id, (map.get(tx.category_id) ?? 0) + expense)
+    }
+    return map
+  }, [txs, accounts])
 
   if (loading || !data) {
     return (
@@ -34,7 +50,13 @@ export function Presupuesto() {
     )
   }
 
-  const bucketsWithSpend = withZeroSpend(data.buckets)
+  const bucketsWithSpend: BucketWithSpend[] = data.buckets.map((b) => ({
+    ...b,
+    items: b.items.map((it) => ({
+      ...it,
+      spent: it.category_id ? (categorySpend.get(it.category_id) ?? 0) : 0,
+    })),
+  }))
   const totalBudget = monthlyIncome
   const totalSpent = bucketsWithSpend.reduce(
     (s, b) => s + b.items.reduce((s2, it) => s2 + (it.spent ?? 0), 0),

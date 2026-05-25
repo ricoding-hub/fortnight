@@ -97,11 +97,17 @@ export function useGamification() {
     return () => { void supabase.removeChannel(channel) }
   }, [user, channelKey])
 
+  // Keep a ref so addXP always reads the latest gamification state without
+  // including `data` in the dependency array (avoids stale closure bug).
+  const dataRef = useRef(data)
+  useEffect(() => { dataRef.current = data }, [data])
+
   const addXP = useCallback(async (amount: number) => {
     if (!user) return
-    const newXP = data.xp + amount
+    const current = dataRef.current
+    const newXP = current.xp + amount
     const newLevel = xpToLevel(newXP)
-    const { streak, date } = computeStreak(data.streak_days, data.last_activity_date)
+    const { streak, date } = computeStreak(current.streak_days, current.last_activity_date)
 
     const patch: Partial<UserGamification> = {
       xp: newXP,
@@ -121,7 +127,7 @@ export function useGamification() {
     } catch {
       // Revert on failure — next realtime event will correct state
     }
-  }, [user, data])
+  }, [user])
 
   const lv = data.level
   const nextXP = nextLevelXP(lv)

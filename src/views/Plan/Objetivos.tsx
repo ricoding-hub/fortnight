@@ -1,13 +1,14 @@
+import { useState } from 'react'
 import { IconPlus } from '@tabler/icons-react'
 import { useGoals } from '@/hooks/useGoals'
 import { Card } from '@/components/ui/Card'
 import { GoalCard } from '@/components/GoalCard'
+import { GoalWizard } from '@/components/GoalWizard'
 import { Richeto } from '@/components/Richeto'
-import { useToast } from '@/hooks/useToast'
 
 export function Objetivos() {
-  const { data: goals, loading } = useGoals()
-  const toast = useToast()
+  const { data: goals, loading, create } = useGoals()
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   if (loading) {
     return (
@@ -71,7 +72,7 @@ export function Objetivos() {
       {/* Add goal CTA */}
       <button
         type="button"
-        onClick={() => toast.info('Próximamente', 'Crear meta llega en la siguiente actualización.')}
+        onClick={() => setWizardOpen(true)}
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-primary/30 px-4 py-4 text-[13px] font-extrabold text-primary transition-colors hover:bg-primary/5"
       >
         <IconPlus size={16} stroke={2.5} /> Nuevo objetivo
@@ -97,6 +98,10 @@ export function Objetivos() {
           </p>
         </div>
       </div>
+
+      {wizardOpen && (
+        <GoalWizard onClose={() => setWizardOpen(false)} onCreate={create} />
+      )}
     </div>
   )
 }

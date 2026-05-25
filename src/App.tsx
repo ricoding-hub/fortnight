@@ -9,6 +9,7 @@ import { Resumen } from '@/views/Resumen'
 import { CuentasLayout } from '@/views/Cuentas'
 import { MisCuentas } from '@/views/Cuentas/MisCuentas'
 import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
+import { MisSuscripciones } from '@/views/Cuentas/MisSuscripciones'
 import { Movimientos } from '@/views/Movimientos'
 import { Profile } from '@/views/Profile'
 import { AcercaDe } from '@/views/AcercaDe'
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="/cuentas" element={<CuentasLayout />}>
               <Route index element={<Navigate to="mis" replace />} />
               <Route path="mis" element={<MisCuentas />} />
+              <Route path="suscripciones" element={<MisSuscripciones />} />
               <Route path="prestamos" element={<MisPrestamos />} />
             </Route>
             <Route path="/movimientos" element={<Movimientos />} />
