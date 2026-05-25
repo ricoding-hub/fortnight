@@ -34,12 +34,6 @@ interface SyncfyWidgetParams {
       displayStatusInToast?: boolean
     }
   }
-  events?: {
-    /** Fired when the user successfully links a bank credential. */
-    onSuccess?: (credential: SyncfyWidgetCredential) => void
-    onError?: (err: unknown) => void
-    onClose?: () => void
-  }
 }
 
 export interface SyncfyWidgetCredential {
@@ -140,15 +134,10 @@ export async function openSyncfyWidget(
       },
       navigation: { displayStatusInToast: true },
     },
-    events: {
-      onSuccess: opts.onSuccess,
-      onError: opts.onError,
-      onClose: opts.onClose,
-    },
   })
 
-  // Some widget builds dispatch events via .on() instead of the events
-  // option; wire both paths so we don't miss callbacks.
+  // The widget exposes callbacks via .on() — the constructor only accepts
+  // token + config. Passing an `events` key causes a ValidationError.
   instance.on?.('success', (cred) =>
     opts.onSuccess(cred as SyncfyWidgetCredential),
   )
