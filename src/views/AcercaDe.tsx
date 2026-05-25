@@ -126,8 +126,9 @@ export function AcercaDe() {
             current
             notes={[
               'Gráfica de proyección muestra deuda real (no estimación original)',
-              'Card "Saldo actual" con desglose por cuenta de activos y deuda',
-              'Gráfica aparece antes del desglose de disponible',
+              'Aporte mensual derivado del disponible real del presupuesto',
+              'Card "Saldo actual" colapsable con desglose por cuenta',
+              'Meta de deuda se muestra primero si el balance general es negativo',
             ]}
           />
           <VersionRow

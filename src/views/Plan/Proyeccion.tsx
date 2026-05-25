@@ -5,6 +5,7 @@ import {
   IconArrowUp,
   IconBolt,
   IconCash,
+  IconChevronDown,
   IconChevronRight,
   IconCreditCard,
   IconLink,
@@ -67,31 +68,53 @@ export function Proyeccion() {
 
   const [primaryId, setPrimaryId] = useState<string | null>(null)
 
+  // Auto-select goal on first load. If net balance is negative (more debt than
+  // assets), surface the debt goal first so the user immediately sees their
+  // payoff plan.
   useEffect(() => {
+    if (accounts.length === 0 && goals.length === 0) return
     setPrimaryId((cur) => {
       if (cur !== null) return cur
+      const totalAssets = accounts
+        .filter((a) => a.type === 'debit')
+        .reduce((s, a) => s + Number(a.balance), 0)
+      const totalDebt = accounts
+        .filter((a) => a.type === 'credit')
+        .reduce((s, a) => s + Number(a.balance), 0)
+      const netNegative = totalDebt > totalAssets
+      if (netNegative) {
+        return goals.find((g) => g.is_debt)?.id ?? goals[0]?.id ?? null
+      }
       return goals.find((g) => !g.is_debt)?.id ?? goals.find((g) => g.is_debt)?.id ?? null
     })
-  }, [goals])
+  }, [goals, accounts])
 
   const primary = goals.find((g) => g.id === primaryId) ?? null
 
-  // For debt goals with no linked accounts, use total credit balance as the
-  // real starting point so the series reflects the actual debt, not the stale
-  // target that was seeded before account-linking existed.
+  // For unlinked debt goals: patch both `saved` (use real credit total) and
+  // `monthly` (use actual disposable income so the projection is actionable).
   const patchedPrimary = useMemo(() => {
     if (!primary) return null
     if (primary.is_debt && primary.linked_account_ids.length === 0) {
       const totalCreditDebt = accounts
         .filter((a) => a.type === 'credit')
         .reduce((s, a) => s + Number(a.balance), 0)
-      return { ...primary, saved: Math.max(0, primary.target - totalCreditDebt) }
+      const derivedSaved = Math.max(0, primary.target - totalCreditDebt)
+      const derivedMonthly = disposable > 0 ? disposable : primary.monthly
+      return { ...primary, saved: derivedSaved, monthly: derivedMonthly }
     }
     return primary
-  }, [primary, accounts])
+  }, [primary, accounts, disposable])
 
-  // For the "ahead of plan" chip — look at debt-payoff transactions this month
-  // on any linked credit account (or balance delta vs expectedToday for savings).
+  // Monthly shown in hero — patched value when auto-derived.
+  const displayMonthly = (patchedPrimary ?? primary)?.monthly ?? 0
+  const monthlyIsDerived =
+    primary?.is_debt &&
+    primary.linked_account_ids.length === 0 &&
+    disposable > 0 &&
+    disposable !== primary.monthly
+
+  // For the "ahead of plan" chip — look at debt-payoff transactions this month.
   const now = new Date()
   const dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const { data: monthTxs } = useTransactions({ dateFrom })
@@ -100,7 +123,6 @@ export function Proyeccion() {
     if (!primary) return 0
     if (primary.linked_account_ids.length === 0) return 0
     if (primary.is_debt) {
-      // Sum of credit-card payments (negative amounts on credit accounts) this month
       const accountIds = new Set(primary.linked_account_ids)
       return monthTxs
         .filter((t) => accountIds.has(t.account_id) && t.amount < 0 && t.type === 'transaction')
@@ -143,24 +165,20 @@ export function Proyeccion() {
     return d.getFullYear()
   })()
 
-  // Linked accounts (for the "qué cuentas" line in the breakdown)
   const linkedAccounts = accounts.filter((a) => primary.linked_account_ids.includes(a.id))
   const linkedBalance = linkedAccounts.reduce((s, a) => s + Number(a.balance), 0)
 
-  // Ahead-of-plan logic. For debt goals: did we pay more than expected so far?
-  // expectedThisMonth ≈ goal.monthly prorated by days elapsed.
   const dayOfMonth = now.getDate()
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const expectedSoFar = primary.monthly * (dayOfMonth / daysInMonth)
   const ahead = isDebt && paidThisMonth > 0 ? paidThisMonth - expectedSoFar : null
 
-  // Expected vs current (savings only)
   const expectedNow = expectedToday(primary)
   const savingsAhead = !isDebt ? primary.saved - expectedNow : null
 
   return (
     <div className="flex flex-col gap-3 px-4 pb-4 pt-2 animate-[fade-in_240ms_ease-out]">
-      {/* Goal picker chips — softer shadow so it doesn't bleed onto the hero */}
+      {/* Goal picker chips */}
       <div className="mb-1 flex gap-1.5 overflow-x-auto pb-1">
         {goals.map((g) => {
           const Icon = iconFor(g.icon)
@@ -205,11 +223,8 @@ export function Proyeccion() {
               {isDebt ? 'Mes libre de deuda' : 'Llegas a la meta'}
             </span>
           </div>
-          {/* Ahead-of-plan chip */}
           {ahead != null && Math.abs(ahead) >= 100 && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold backdrop-blur-sm"
-            >
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold backdrop-blur-sm">
               {ahead > 0 ? <IconArrowUp size={10} stroke={3} /> : <IconArrowDown size={10} stroke={3} />}
               {ahead > 0 ? 'Adelantado' : 'Atrasado'} {fmtMoney(Math.abs(ahead))}
             </span>
@@ -225,10 +240,17 @@ export function Proyeccion() {
           {finishIdx >= 0 ? series[finishIdx].month : '—'}{' '}
           {finishYear}
         </p>
-        <p className="relative mt-1.5 text-[12.5px] font-medium opacity-85">
-          Aportando{' '}
-          <b className="font-mono">{fmtMoney(primary.monthly)}/mes</b>
-        </p>
+        <div className="relative mt-1.5 flex items-baseline gap-2">
+          <p className="text-[12.5px] font-medium opacity-85">
+            Aportando{' '}
+            <b className="font-mono">{fmtMoney(displayMonthly)}/mes</b>
+          </p>
+          {monthlyIsDerived && (
+            <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9.5px] font-extrabold tracking-wide opacity-90">
+              = tu disponible
+            </span>
+          )}
+        </div>
         {linkedAccounts.length > 0 && (
           <p className="relative mt-1 inline-flex items-center gap-1 text-[11px] font-medium opacity-80">
             <IconLink size={10} />
@@ -247,13 +269,18 @@ export function Proyeccion() {
             toca o desliza para ver detalle
           </span>
         </div>
-        <PlanChart series={series} color={color} isDebt={isDebt} target={patchedPrimary?.target ?? primary.target} />
+        <PlanChart
+          series={series}
+          color={color}
+          isDebt={isDebt}
+          target={patchedPrimary?.target ?? primary.target}
+        />
       </Card>
 
-      {/* Balance breakdown — where does the current balance come from? */}
+      {/* Balance breakdown — collapsible, collapsed by default */}
       <BalanceBreakdownCard accounts={accounts} />
 
-      {/* Breakdown card — explains the disposable number */}
+      {/* Disposable breakdown */}
       <Card>
         <p className="mb-2.5 text-[13px] font-extrabold text-text">De dónde sale tu disponible</p>
         <div className="flex flex-col gap-1.5">
@@ -301,11 +328,7 @@ export function Proyeccion() {
       <Card>
         <p className="mb-2.5 text-[13px] font-extrabold text-text">Si aportas más</p>
         <div className="flex flex-col gap-2">
-          {[
-            { pct: 10 },
-            { pct: 25 },
-            { pct: 50 },
-          ].map(({ pct }) => {
+          {[{ pct: 10 }, { pct: 25 }, { pct: 50 }].map(({ pct }) => {
             const effective = patchedPrimary ?? primary
             const next = effective.monthly * (1 + pct / 100)
             const remaining = Math.max(effective.target - effective.saved, 0)
@@ -337,9 +360,7 @@ export function Proyeccion() {
       >
         <Richeto size={56} shadowColor="rgba(43,182,115,0.3)" />
         <div className="min-w-0 flex-1 pt-0.5">
-          <p className="mb-1 text-[12.5px] font-extrabold text-asset-deep">
-            Richeto predice
-          </p>
+          <p className="mb-1 text-[12.5px] font-extrabold text-asset-deep">Richeto predice</p>
           <p className="text-[12px] font-medium leading-snug text-text-secondary">
             Con tu plan <b className="text-text">{plan?.plan.preset ?? '50-30-20'}</b> y{' '}
             <b className="text-text">{fmtMoney(disposable)}/mes</b> disponibles, tu meta{' '}
@@ -360,7 +381,13 @@ export function Proyeccion() {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/* BalanceBreakdownCard — collapsed by default                         */
+/* ------------------------------------------------------------------ */
+
 function BalanceBreakdownCard({ accounts }: { accounts: Account[] }) {
+  const [expanded, setExpanded] = useState(false)
+
   const debit = accounts.filter((a) => a.type === 'debit')
   const credit = accounts.filter((a) => a.type === 'credit')
   if (debit.length === 0 && credit.length === 0) return null
@@ -371,84 +398,125 @@ function BalanceBreakdownCard({ accounts }: { accounts: Account[] }) {
   const netPositive = net >= 0
 
   return (
-    <Card>
-      <div className="mb-2.5 flex items-center justify-between">
-        <p className="text-[13px] font-extrabold text-text">Saldo actual</p>
-        <span
-          className={clsx(
-            'rounded-full px-2 py-0.5 font-mono text-[11px] font-extrabold',
-            netPositive ? 'bg-asset-soft text-asset-deep' : 'bg-debt-soft text-debt-deep',
-          )}
-        >
-          {netPositive ? '+' : '−'}{fmtMoney(Math.abs(net))}
-        </span>
-      </div>
-
-      {debit.length > 0 && (
-        <div className="mb-2 overflow-hidden rounded-xl" style={{ background: 'var(--color-asset-soft)' }}>
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <IconWallet size={11} className="text-asset-deep" />
-            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-asset-deep">Activos</span>
-          </div>
-          {debit.map((a, i) => (
-            <div
-              key={a.id}
-              className={clsx(
-                'flex items-center justify-between px-3 py-2',
-                i < debit.length - 1 && 'border-b border-white/30',
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: a.color ?? '#10B981' }}
-                />
-                <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
-              </div>
-              <span className="font-mono text-[12.5px] font-bold text-asset-deep">
-                +{fmtMoney(Number(a.balance))}
-              </span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
-            <span className="text-[11.5px] font-extrabold text-asset-deep">Total activos</span>
-            <span className="font-mono text-[12.5px] font-extrabold text-asset-deep">
-              {fmtMoney(totalAssets)}
+    <Card className="overflow-hidden p-0">
+      {/* Summary row — always visible, tap to expand */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3.5 transition-colors hover:bg-bg-secondary"
+      >
+        <p className="flex-1 text-left text-[13px] font-extrabold text-text">Saldo actual</p>
+        <div className="flex items-center gap-2">
+          {/* Debit / credit summary counts */}
+          {debit.length > 0 && (
+            <span className="rounded-full bg-asset-soft px-2 py-0.5 text-[10px] font-bold text-asset-deep">
+              {debit.length} activo{debit.length !== 1 ? 's' : ''}
             </span>
-          </div>
+          )}
+          {credit.length > 0 && (
+            <span className="rounded-full bg-debt-soft px-2 py-0.5 text-[10px] font-bold text-debt-deep">
+              {credit.length} tarjeta{credit.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          <span
+            className={clsx(
+              'font-mono text-[12px] font-extrabold',
+              netPositive ? 'text-asset-deep' : 'text-debt-deep',
+            )}
+          >
+            {netPositive ? '+' : '−'}{fmtMoney(Math.abs(net))}
+          </span>
+          <IconChevronDown
+            size={15}
+            className={clsx(
+              'shrink-0 text-text-tertiary transition-transform duration-200',
+              expanded && 'rotate-180',
+            )}
+          />
         </div>
-      )}
+      </button>
 
-      {credit.length > 0 && (
-        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--color-debt-soft)' }}>
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <IconCreditCard size={11} className="text-debt-deep" />
-            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-debt-deep">Deuda</span>
-          </div>
-          {credit.map((a, i) => (
-            <div
-              key={a.id}
+      {/* Detail — only when expanded */}
+      {expanded && (
+        <div className="border-t border-border px-4 pb-4 pt-3">
+          {debit.length > 0 && (
+            <div className="mb-2.5 overflow-hidden rounded-xl" style={{ background: 'var(--color-asset-soft)' }}>
+              <div className="flex items-center gap-1.5 px-3 py-1.5">
+                <IconWallet size={11} className="text-asset-deep" />
+                <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-asset-deep">
+                  Activos
+                </span>
+              </div>
+              {debit.map((a, i) => (
+                <div
+                  key={a.id}
+                  className={clsx(
+                    'flex items-center justify-between px-3 py-2',
+                    i < debit.length - 1 && 'border-b border-white/30',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full" style={{ background: a.color ?? '#10B981' }} />
+                    <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
+                  </div>
+                  <span className="font-mono text-[12.5px] font-bold text-asset-deep">
+                    +{fmtMoney(Number(a.balance))}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
+                <span className="text-[11.5px] font-extrabold text-asset-deep">Total activos</span>
+                <span className="font-mono text-[12.5px] font-extrabold text-asset-deep">
+                  {fmtMoney(totalAssets)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {credit.length > 0 && (
+            <div className="overflow-hidden rounded-xl" style={{ background: 'var(--color-debt-soft)' }}>
+              <div className="flex items-center gap-1.5 px-3 py-1.5">
+                <IconCreditCard size={11} className="text-debt-deep" />
+                <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-debt-deep">
+                  Deuda
+                </span>
+              </div>
+              {credit.map((a, i) => (
+                <div
+                  key={a.id}
+                  className={clsx(
+                    'flex items-center justify-between px-3 py-2',
+                    i < credit.length - 1 && 'border-b border-white/30',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full" style={{ background: a.color ?? '#EF4444' }} />
+                    <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
+                  </div>
+                  <span className="font-mono text-[12.5px] font-bold text-debt-deep">
+                    −{fmtMoney(Number(a.balance))}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
+                <span className="text-[11.5px] font-extrabold text-debt-deep">Total deuda</span>
+                <span className="font-mono text-[12.5px] font-extrabold text-debt-deep">
+                  {fmtMoney(totalDebt)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Net line */}
+          <div className="mt-2.5 flex items-center justify-between rounded-xl bg-bg-secondary px-3 py-2.5">
+            <span className="text-[12px] font-extrabold text-text">Saldo neto</span>
+            <span
               className={clsx(
-                'flex items-center justify-between px-3 py-2',
-                i < credit.length - 1 && 'border-b border-white/30',
+                'font-mono text-[13px] font-extrabold',
+                netPositive ? 'text-asset-deep' : 'text-debt-deep',
               )}
             >
-              <div className="flex items-center gap-2">
-                <div
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: a.color ?? '#EF4444' }}
-                />
-                <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
-              </div>
-              <span className="font-mono text-[12.5px] font-bold text-debt-deep">
-                −{fmtMoney(Number(a.balance))}
-              </span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
-            <span className="text-[11.5px] font-extrabold text-debt-deep">Total deuda</span>
-            <span className="font-mono text-[12.5px] font-extrabold text-debt-deep">
-              {fmtMoney(totalDebt)}
+              {netPositive ? '+' : '−'}{fmtMoney(Math.abs(net))}
             </span>
           </div>
         </div>
@@ -456,6 +524,10 @@ function BalanceBreakdownCard({ accounts }: { accounts: Account[] }) {
     </Card>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* BreakdownRow                                                         */
+/* ------------------------------------------------------------------ */
 
 interface BreakdownRowProps {
   icon: typeof IconCash
@@ -468,16 +540,7 @@ interface BreakdownRowProps {
   onClick?: () => void
 }
 
-function BreakdownRow({
-  icon: Icon,
-  color,
-  label,
-  value,
-  sub,
-  valueColor,
-  bold,
-  onClick,
-}: BreakdownRowProps) {
+function BreakdownRow({ icon: Icon, color, label, value, sub, valueColor, bold, onClick }: BreakdownRowProps) {
   const inner = (
     <div className="flex items-center gap-2.5 rounded-lg px-1 py-1">
       <div
@@ -501,7 +564,7 @@ function BreakdownRow({
   )
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className="text-left transition-colors hover:bg-bg-secondary rounded-lg">
+      <button type="button" onClick={onClick} className="rounded-lg text-left transition-colors hover:bg-bg-secondary">
         {inner}
       </button>
     )
