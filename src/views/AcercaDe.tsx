@@ -121,9 +121,22 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.2.0"
+            date="25 may 2026"
+            current
+            notes={[
+              'Metas enlazables a múltiples cuentas (cajitas, apartados, CETES)',
+              'Proyección muestra saldo real de tus cuentas, no estimación',
+              'Desglose: ingreso → fijos → suscripciones → variables → disponible',
+              'Gráfica de proyección interactiva con tooltip',
+              'Marcar gastos fijos como pagados del mes',
+              'Suscripciones registradas alimentan la línea del presupuesto',
+              'Chip "vas adelantado/atrasado" basado en pagos reales',
+            ]}
+          />
+          <VersionRow
             version="0.1.0"
             date="23 may 2026"
-            current
             notes={[
               'Lanzamiento inicial del PWA',
               'Auth con magic link (Supabase)',

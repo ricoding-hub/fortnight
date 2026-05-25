@@ -36,21 +36,26 @@ const MONTHS_ES = [
 ] as const
 
 /**
- * Month-by-month projection of `value`. For debt goals: decreases from target
- * toward 0. For savings: increases from saved toward target. Series stops once
- * the goal is hit and is capped at 8 months for the chart.
+ * Month-by-month projection of `value`. For debt goals: decreases from the
+ * current remaining debt toward 0. For savings: increases from current saved
+ * toward target. Series stops once the goal is hit and is capped at 8 months.
+ *
+ * `goal.saved` is the derived field from useGoals (= Σ linked account balances
+ * for savings, or target − Σ credit balances for debt), so this stays accurate
+ * with the user's real-world cash position.
  */
 export function projectGoal(goal: Goal, today: Date = new Date()): ProjectionPoint[] {
-  const remaining = Math.max(goal.target - goal.saved, 0)
   if (goal.monthly <= 0) return []
+  const remaining = Math.max(goal.target - goal.saved, 0)
+  const currentValue = goal.is_debt ? remaining : goal.saved
   const months = Math.ceil(remaining / goal.monthly)
   const len = Math.min(months + 1, 8)
   const out: ProjectionPoint[] = []
   for (let i = 0; i < len; i++) {
     const monthIdx = (today.getMonth() + i) % 12
     const value = goal.is_debt
-      ? Math.max(remaining - i * goal.monthly, 0)
-      : Math.min(goal.saved + i * goal.monthly, goal.target)
+      ? Math.max(currentValue - i * goal.monthly, 0)
+      : Math.min(currentValue + i * goal.monthly, goal.target)
     out.push({ month: MONTHS_ES[monthIdx], value })
   }
   return out
@@ -58,6 +63,7 @@ export function projectGoal(goal: Goal, today: Date = new Date()): ProjectionPoi
 
 /**
  * Months remaining to hit the goal at the current `monthly` contribution.
+ * Uses `goal.saved` (already derived from linked accounts when present).
  */
 export function monthsToGoal(goal: Goal): number {
   if (goal.monthly <= 0) return Infinity

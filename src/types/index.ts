@@ -158,6 +158,8 @@ export interface Goal {
   /** ISO date string — when the goal/contributions started. */
   started_at: string
   created_at: string
+  /** Accounts whose balances back this goal. Derived from `goal_accounts`. */
+  linked_account_ids: string[]
 }
 
 export interface UserConfig {

@@ -34,25 +34,49 @@ export function useGoals() {
 
   const fetchGoals = useCallback(async () => {
     if (!user) return
-    const { data: rows, error: err } = await supabase
-      .from('goals')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (err) {
-      setError(err)
-    } else {
-      setError(null)
-      setData(
-        (rows ?? []).map((g) => ({
-          ...g,
-          target: Number(g.target),
-          saved: Number(g.saved),
-          monthly: Number(g.monthly),
-        })) as Goal[],
-      )
+    const [goalsRes, linksRes] = await Promise.all([
+      supabase.from('goals').select('*').order('created_at', { ascending: true }),
+      supabase.from('goal_accounts').select('goal_id, account_id'),
+    ])
+    if (goalsRes.error) {
+      setError(goalsRes.error)
+      setLoading(false)
+      return
     }
+    setError(null)
+
+    // Build goal_id -> account_ids[] map
+    const linkMap = new Map<string, string[]>()
+    for (const link of linksRes.data ?? []) {
+      const existing = linkMap.get(link.goal_id) ?? []
+      existing.push(link.account_id)
+      linkMap.set(link.goal_id, existing)
+    }
+
+    // Derive `saved` from linked account balances when present.
+    // Savings: saved = Σ balances. Debt: saved = max(0, target − Σ balances).
+    const accountBalance = new Map(accounts.map((a) => [a.id, Number(a.balance)]))
+
+    setData(
+      (goalsRes.data ?? []).map((g) => {
+        const linkedIds = linkMap.get(g.id) ?? []
+        const target = Number(g.target)
+        let derivedSaved = Number(g.saved)
+        if (linkedIds.length > 0) {
+          const sumBal = linkedIds.reduce((s, id) => s + (accountBalance.get(id) ?? 0), 0)
+          derivedSaved = g.is_debt ? Math.max(0, target - sumBal) : sumBal
+        }
+        return {
+          ...g,
+          target,
+          saved: derivedSaved,
+          monthly: Number(g.monthly),
+          linked_account_ids: linkedIds,
+        } as Goal
+      }),
+    )
     setLoading(false)
-  }, [user])
+  }, [user, accounts])
 
   useEffect(() => {
     if (!user) return
@@ -64,6 +88,11 @@ export function useGoals() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'goals', filter: `user_id=eq.${user.id}` },
+        () => void fetchGoals(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'goal_accounts', filter: `user_id=eq.${user.id}` },
         () => void fetchGoals(),
       )
       .subscribe()
@@ -131,6 +160,36 @@ export function useGoals() {
     if (err) throw err
   }
 
+  async function linkAccount(goalId: string, accountId: string): Promise<void> {
+    if (!user) throw new Error('Not authenticated')
+    const { error: err } = await supabase
+      .from('goal_accounts')
+      .insert({ goal_id: goalId, account_id: accountId, user_id: user.id })
+    if (err) throw err
+    await fetchGoals()
+  }
+
+  async function unlinkAccount(goalId: string, accountId: string): Promise<void> {
+    const { error: err } = await supabase
+      .from('goal_accounts')
+      .delete()
+      .eq('goal_id', goalId)
+      .eq('account_id', accountId)
+    if (err) throw err
+    await fetchGoals()
+  }
+
+  async function setLinkedAccounts(goalId: string, accountIds: string[]): Promise<void> {
+    if (!user) throw new Error('Not authenticated')
+    await supabase.from('goal_accounts').delete().eq('goal_id', goalId)
+    if (accountIds.length > 0) {
+      await supabase.from('goal_accounts').insert(
+        accountIds.map((aid) => ({ goal_id: goalId, account_id: aid, user_id: user.id })),
+      )
+    }
+    await fetchGoals()
+  }
+
   return {
     data: user ? data : EMPTY,
     loading: user ? loading : false,
@@ -138,5 +197,8 @@ export function useGoals() {
     create,
     update,
     remove,
+    linkAccount,
+    unlinkAccount,
+    setLinkedAccounts,
   }
 }

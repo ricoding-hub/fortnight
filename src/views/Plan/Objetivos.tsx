@@ -7,7 +7,7 @@ import { GoalWizard } from '@/components/GoalWizard'
 import { Richeto } from '@/components/Richeto'
 
 export function Objetivos() {
-  const { data: goals, loading, create } = useGoals()
+  const { data: goals, loading } = useGoals()
   const [wizardOpen, setWizardOpen] = useState(false)
 
   if (loading) {
@@ -100,7 +100,7 @@ export function Objetivos() {
       </div>
 
       {wizardOpen && (
-        <GoalWizard onClose={() => setWizardOpen(false)} onCreate={create} />
+        <GoalWizard onClose={() => setWizardOpen(false)} />
       )}
     </div>
   )

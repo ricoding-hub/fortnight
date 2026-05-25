@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { IconCheck, IconRocket, IconX } from '@tabler/icons-react'
+import { IconCheck, IconLink, IconRocket, IconX } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
+import { useAccounts } from '@/hooks/useAccounts'
 import { calcMonthlyDisposable } from '@/lib/projections'
-import type { NewGoal } from '@/hooks/useGoals'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   onClose: () => void
-  onCreate: (g: NewGoal) => Promise<void>
 }
 
 type GoalType = 'viaje' | 'coche' | 'emergencia' | 'ahorro' | 'personalizado'
@@ -38,15 +39,18 @@ const GOAL_ICONS: Record<GoalType, string> = {
   personalizado: 'target',
 }
 
-export function GoalWizard({ onClose, onCreate }: Props) {
+export function GoalWizard({ onClose }: Props) {
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
+  const { data: accounts } = useAccounts()
+  const { user } = useAuth()
 
   const [step, setStep] = useState(0)
   const [goalType, setGoalType] = useState<GoalType | null>(null)
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
   const [months, setMonths] = useState(12)
+  const [linkedAccountIds, setLinkedAccountIds] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -73,19 +77,42 @@ export function GoalWizard({ onClose, onCreate }: Props) {
       setError('Completa todos los campos')
       return
     }
+    if (!user) {
+      setError('Sesión no encontrada')
+      return
+    }
     setSubmitting(true)
     const today = new Date()
     const deadline = new Date(today.getFullYear(), today.getMonth() + months, today.getDate())
     try {
-      await onCreate({
-        name: name.trim(),
-        icon: GOAL_ICONS[goalType],
-        color: GOAL_COLORS[goalType],
-        target: targetNum,
-        monthly: suggestedMonthly,
-        deadline: deadline.toISOString().slice(0, 10),
-        is_debt: false,
-      })
+      // Create the goal and capture the inserted id so we can link accounts atomically.
+      const { data: created, error: insErr } = await supabase
+        .from('goals')
+        .insert({
+          user_id: user.id,
+          name: name.trim(),
+          icon: GOAL_ICONS[goalType],
+          color: GOAL_COLORS[goalType],
+          target: targetNum,
+          saved: 0,
+          monthly: suggestedMonthly,
+          deadline: deadline.toISOString().slice(0, 10),
+          is_debt: false,
+          started_at: today.toISOString().slice(0, 10),
+        })
+        .select('id')
+        .single()
+      if (insErr || !created) throw insErr ?? new Error('insert failed')
+
+      if (linkedAccountIds.size > 0) {
+        await supabase.from('goal_accounts').insert(
+          Array.from(linkedAccountIds).map((aid) => ({
+            goal_id: created.id,
+            account_id: aid,
+            user_id: user.id,
+          })),
+        )
+      }
       onClose()
     } catch {
       setError('No se pudo crear la meta. Intenta de nuevo.')
@@ -94,12 +121,24 @@ export function GoalWizard({ onClose, onCreate }: Props) {
     }
   }
 
+  function toggleAccount(id: string) {
+    setLinkedAccountIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const STEP_TITLES = [
     '¿Qué quieres lograr?',
     'Cuánto y cómo se llama',
     '¿En cuánto tiempo?',
+    '¿De qué cuentas viene?',
     'Confirmar meta',
   ]
+
+  const debitAccounts = accounts.filter((a) => a.type === 'debit')
 
   return (
     <Modal open title={STEP_TITLES[step]} onClose={onClose}>
@@ -230,8 +269,78 @@ export function GoalWizard({ onClose, onCreate }: Props) {
           </div>
         )}
 
-        {/* Step 3 — confirm */}
-        {step === 3 && goalType && (
+        {/* Step 3 — link accounts (optional) */}
+        {step === 3 && (
+          <div className="flex flex-col gap-3">
+            <p className="text-[12.5px] leading-snug text-text-secondary">
+              Enlaza una o más cuentas. El progreso se actualizará automáticamente con el saldo real
+              (ej: cajita Nu + apartado BBVA + CETES).
+            </p>
+
+            {debitAccounts.length === 0 ? (
+              <div className="rounded-xl bg-bg-secondary p-4 text-center text-[12.5px] text-text-secondary">
+                Aún no tienes cuentas de débito. Crea una en{' '}
+                <b className="text-text">Cuentas</b> y vuelve aquí.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {debitAccounts.map((a) => {
+                  const sel = linkedAccountIds.has(a.id)
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => toggleAccount(a.id)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all"
+                      style={{
+                        background: sel ? (a.color ?? '#6366F1') + '15' : 'var(--color-bg-secondary)',
+                        borderWidth: 2,
+                        borderStyle: 'solid',
+                        borderColor: sel ? (a.color ?? '#6366F1') : 'transparent',
+                      }}
+                    >
+                      <div
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[12px] font-extrabold text-white"
+                        style={{ background: a.color ?? '#6B7194' }}
+                      >
+                        {a.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-bold text-text">{a.name}</p>
+                        <p className="font-mono text-[11px] text-text-tertiary">
+                          ${Math.round(a.balance).toLocaleString()}
+                        </p>
+                      </div>
+                      {sel && <IconCheck size={18} stroke={3} color={a.color ?? '#6366F1'} />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {linkedAccountIds.size > 0 && (
+              <div className="rounded-xl bg-asset-soft p-3 text-[12px] text-asset-deep">
+                <IconLink size={12} className="mr-1 inline" />
+                Progreso enlazado:{' '}
+                <b>
+                  $
+                  {Math.round(
+                    accounts
+                      .filter((a) => linkedAccountIds.has(a.id))
+                      .reduce((s, a) => s + Number(a.balance), 0),
+                  ).toLocaleString()}
+                </b>
+              </div>
+            )}
+
+            <Button onClick={() => setStep(4)}>
+              {linkedAccountIds.size > 0 ? 'Siguiente' : 'Saltar este paso'}
+            </Button>
+          </div>
+        )}
+
+        {/* Step 4 — confirm */}
+        {step === 4 && goalType && (
           <div className="flex flex-col gap-3">
             <div
               className="overflow-hidden rounded-xl p-5 text-white"
@@ -248,6 +357,12 @@ export function GoalWizard({ onClose, onCreate }: Props) {
                 ${targetNum.toLocaleString()} · {months} meses ·{' '}
                 ${suggestedMonthly.toLocaleString()}/mes
               </p>
+              {linkedAccountIds.size > 0 && (
+                <p className="mt-1 text-[11.5px] text-white/75">
+                  <IconLink size={11} className="mr-1 inline" />
+                  {linkedAccountIds.size} cuenta{linkedAccountIds.size === 1 ? '' : 's'} enlazada{linkedAccountIds.size === 1 ? '' : 's'}
+                </p>
+              )}
             </div>
 
             {error && (
@@ -261,7 +376,7 @@ export function GoalWizard({ onClose, onCreate }: Props) {
             </Button>
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => setStep(3)}
               className="py-2 text-sm font-semibold text-text-secondary"
             >
               Volver a editar
@@ -270,7 +385,7 @@ export function GoalWizard({ onClose, onCreate }: Props) {
         )}
 
         {/* Step back (steps 1–3) */}
-        {step > 0 && step < 3 && (
+        {step > 0 && step < 4 && (
           <button
             type="button"
             onClick={() => setStep((s) => s - 1)}

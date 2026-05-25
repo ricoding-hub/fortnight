@@ -1,4 +1,4 @@
-import { IconChevronRight, IconMinus, IconPlus } from '@tabler/icons-react'
+import { IconChevronRight, IconCircle, IconCircleCheck, IconLink, IconMinus, IconPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { iconFor } from '@/lib/icons'
 import { bucketStats, type BucketWithSpend } from '@/lib/plan'
@@ -11,6 +11,8 @@ interface BucketCardProps {
   onToggle: () => void
   /** Called with the item id + delta (typically ±1 percentage point). */
   onItemDelta: (itemId: string, delta: number) => void
+  /** Toggle "paid this cycle" for an item. Only invoked for completable items. */
+  onToggleCompletion?: (itemId: string) => void
 }
 
 export function BucketCard({
@@ -20,9 +22,12 @@ export function BucketCard({
   editing,
   onToggle,
   onItemDelta,
+  onToggleCompletion,
 }: BucketCardProps) {
   const stats = bucketStats(bucket, monthlyIncome)
   const over = stats.diff > 0
+  const completableItems = bucket.items.filter((it) => it.completable)
+  const completedCount = completableItems.filter((it) => it.completed).length
 
   return (
     <div
@@ -60,9 +65,22 @@ export function BucketCard({
                 {over ? '+' : ''}${Math.abs(Math.round(stats.diff)).toLocaleString()}
               </span>
             </div>
-            <div className="mt-0.5 font-mono text-[11px] text-text-tertiary">
-              real ${Math.round(stats.spent).toLocaleString()} / plan $
-              {Math.round(stats.planAmount).toLocaleString()}
+            <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-text-tertiary">
+              <span>
+                real ${Math.round(stats.spent).toLocaleString()} / plan $
+                {Math.round(stats.planAmount).toLocaleString()}
+              </span>
+              {completableItems.length > 0 && (
+                <span
+                  className="rounded-full px-1.5 py-px text-[10px] font-extrabold"
+                  style={{
+                    background: completedCount === completableItems.length ? '#D7F2E4' : bucket.soft_color,
+                    color: completedCount === completableItems.length ? '#1F8F58' : bucket.color,
+                  }}
+                >
+                  {completedCount}/{completableItems.length} pagados
+                </span>
+              )}
             </div>
           </div>
           {!editing && (
@@ -164,8 +182,16 @@ export function BucketCard({
               )
             }
 
+            const canComplete = !!item.completable && !!onToggleCompletion
+            const isCompleted = !!item.completed
             return (
-              <div key={item.id} className="flex items-center gap-2.5">
+              <div
+                key={item.id}
+                className={clsx(
+                  'flex items-center gap-2.5 transition-opacity',
+                  isCompleted && 'opacity-55',
+                )}
+              >
                 <div
                   className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md"
                   style={{ background: bucket.soft_color }}
@@ -174,7 +200,17 @@ export function BucketCard({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[12.5px] font-bold text-text">{item.name}</span>
+                    <span
+                      className={clsx(
+                        'flex items-center gap-1 text-[12.5px] font-bold text-text',
+                        isCompleted && 'line-through',
+                      )}
+                    >
+                      {item.name}
+                      {item.auto_from_subscriptions && (
+                        <IconLink size={10} className="text-text-tertiary" />
+                      )}
+                    </span>
                     <span className="font-mono text-[11.5px] font-semibold tabular-nums">
                       <span className="text-text-tertiary">
                         ${Math.round(itemPlan).toLocaleString()}
@@ -190,17 +226,31 @@ export function BucketCard({
                     style={{ background: bucket.soft_color }}
                   >
                     <div
-                      className="h-full rounded-full"
+                      className="h-full rounded-full transition-[width] duration-300"
                       style={{
                         width:
                           itemPlan > 0
                             ? `${Math.min((itemSpent / itemPlan) * 100, 130)}%`
                             : '0%',
-                        background: itemOver ? '#FF5A5F' : bucket.color,
+                        background: isCompleted ? '#2BB673' : itemOver ? '#FF5A5F' : bucket.color,
                       }}
                     />
                   </div>
                 </div>
+                {canComplete && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onToggleCompletion?.(item.id) }}
+                    aria-label={isCompleted ? `Desmarcar ${item.name}` : `Marcar ${item.name} como pagado`}
+                    className="shrink-0 grid h-7 w-7 place-items-center rounded-full transition-transform active:scale-90"
+                  >
+                    {isCompleted ? (
+                      <IconCircleCheck size={20} stroke={2} className="text-asset" />
+                    ) : (
+                      <IconCircle size={20} stroke={2} className="text-text-tertiary" />
+                    )}
+                  </button>
+                )}
               </div>
             )
           })}

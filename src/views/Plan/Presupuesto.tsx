@@ -5,6 +5,9 @@ import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useCategories } from '@/hooks/useCategories'
+import { useSubscriptions } from '@/hooks/useSubscriptions'
+import { useBudgetCompletions } from '@/hooks/useBudgetCompletions'
 import { BucketCard } from '@/components/BucketCard'
 import { Richeto } from '@/components/Richeto'
 import { PRESETS, planIntegrityPct, type BucketWithSpend } from '@/lib/plan'
@@ -18,6 +21,9 @@ export function Presupuesto() {
   const { monthlyIncome } = useOutletContext<PlanContext>()
   const { data, loading, updateItemPct, applyPlanPreset } = useBudgetPlan()
   const { data: accounts } = useAccounts()
+  const { data: categories } = useCategories()
+  const { totalMonthly: subscriptionsMonthly } = useSubscriptions()
+  const { completed, toggle: toggleCompletion } = useBudgetCompletions()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
 
@@ -26,6 +32,14 @@ export function Presupuesto() {
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const dateTo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
   const { data: txs } = useTransactions({ dateFrom, dateTo })
+
+  // The category id for "Suscripciones" — its budget item's `spent` comes
+  // from the subscriptions table (not transactions), so the user sees
+  // committed recurring charges reflected automatically.
+  const subsCategoryId = useMemo(
+    () => categories.find((c) => c.name.toLowerCase() === 'suscripciones')?.id ?? null,
+    [categories],
+  )
 
   // Build category → spent map from real transactions this month
   const categorySpend = useMemo(() => {
@@ -42,6 +56,12 @@ export function Presupuesto() {
     return map
   }, [txs, accounts])
 
+  // Map category_id → kind for "is this a fixed item?" lookups.
+  const categoryKind = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.kind])),
+    [categories],
+  )
+
   if (loading || !data) {
     return (
       <div className="px-4.5 pt-2 animate-[fade-in_300ms_ease-out]">
@@ -52,10 +72,19 @@ export function Presupuesto() {
 
   const bucketsWithSpend: BucketWithSpend[] = data.buckets.map((b) => ({
     ...b,
-    items: b.items.map((it) => ({
-      ...it,
-      spent: it.category_id ? (categorySpend.get(it.category_id) ?? 0) : 0,
-    })),
+    items: b.items.map((it) => {
+      const isSubs = !!subsCategoryId && it.category_id === subsCategoryId
+      const transactionSpend = it.category_id ? (categorySpend.get(it.category_id) ?? 0) : 0
+      const isFixed = !!it.category_id && categoryKind.get(it.category_id) === 'fixed'
+      return {
+        ...it,
+        // For Suscripciones: ignore transactions, use the committed monthly total.
+        spent: isSubs ? subscriptionsMonthly : transactionSpend,
+        auto_from_subscriptions: isSubs,
+        completable: isFixed || isSubs,
+        completed: completed.has(it.id),
+      }
+    }),
   }))
   const totalBudget = monthlyIncome
   const totalSpent = bucketsWithSpend.reduce(
@@ -183,6 +212,7 @@ export function Presupuesto() {
               if (!item) return
               void updateItemPct(itemId, item.pct + delta)
             }}
+            onToggleCompletion={(itemId) => void toggleCompletion(itemId)}
           />
         ))}
       </div>

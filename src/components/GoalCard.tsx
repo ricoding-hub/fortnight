@@ -1,9 +1,10 @@
 import { createElement } from 'react'
-import { IconArrowDown, IconArrowUp } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconLink } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { iconFor } from '@/lib/icons'
 import { expectedToday, monthsToGoal } from '@/lib/goals'
+import { useAccounts } from '@/hooks/useAccounts'
 import type { Goal } from '@/types'
 
 interface GoalCardProps {
@@ -65,6 +66,7 @@ function fmtDeadline(iso: string | null): string {
 }
 
 export function GoalCard({ goal }: GoalCardProps) {
+  const { data: accounts } = useAccounts()
   const color = goal.color ?? '#2A4BFF'
   const pct = goal.target > 0 ? clamp(goal.saved / goal.target, 0, 1) : 0
   const expected = expectedToday(goal)
@@ -72,6 +74,7 @@ export function GoalCard({ goal }: GoalCardProps) {
   const delta = goal.saved - expected
   const ahead = delta > 0
   const monthsLeft = monthsToGoal(goal)
+  const linkedAccounts = accounts.filter((a) => goal.linked_account_ids.includes(a.id))
 
   return (
     <Card className="p-3.5">
@@ -99,6 +102,21 @@ export function GoalCard({ goal }: GoalCardProps) {
           </div>
         </div>
       </div>
+
+      {linkedAccounts.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          <IconLink size={11} className="text-text-tertiary" />
+          {linkedAccounts.map((a) => (
+            <span
+              key={a.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: (a.color ?? color) + '20', color: a.color ?? color }}
+            >
+              {a.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Plan vs Real layered bar */}
       <div className="mt-3">

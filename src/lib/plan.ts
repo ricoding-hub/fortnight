@@ -23,6 +23,12 @@ export interface BucketStats {
 /** A budget item with its real-cycle spend attached. */
 export interface ItemWithSpend extends BudgetItem {
   spent: number
+  /** True when the user marked the item as paid for the current cycle. */
+  completed?: boolean
+  /** Marker that this item's spent value comes from the subscriptions table. */
+  auto_from_subscriptions?: boolean
+  /** True if the item can be toggled "paid" — only fixed or auto-sub items. */
+  completable?: boolean
 }
 
 /** A bucket with items that include spend — what bucketStats consumes. */
