@@ -14,6 +14,8 @@ function debit(balance: number): Account {
     payment_due_day: null,
     payment_grace_days: null,
     color: null,
+    logo_domain: null,
+    sort_order: null,
     created_at: '',
     updated_at: '',
     source: 'manual',

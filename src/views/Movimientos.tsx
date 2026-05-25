@@ -5,6 +5,7 @@ import { useTransactions } from '@/hooks/useTransactions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { TransactionRow } from '@/components/TransactionRow'
+import { TransactionDetailModal } from '@/components/TransactionDetailModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
@@ -24,12 +25,24 @@ function groupByDate(transactions: Transaction[]) {
   return groups
 }
 
+/** ISO date (YYYY-MM-DD) for N days before today, in local time. */
+function isoDaysAgo(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString().slice(0, 10)
+}
+
+const DEFAULT_FROM = isoDaysAgo(30)
+
 export function Movimientos() {
   const [searchParams] = useSearchParams()
   const [account, setAccount] = useState(() => searchParams.get('account') ?? '')
   const [category, setCategory] = useState('')
-  const [from, setFrom] = useState('')
+  // Default window is the last 30 days — the user can widen it via the date
+  // pickers or clear filters to load everything.
+  const [from, setFrom] = useState(DEFAULT_FROM)
   const [to, setTo] = useState('')
+  const [selected, setSelected] = useState<Transaction | null>(null)
 
   const {
     data: transactions,
@@ -56,11 +69,15 @@ export function Movimientos() {
   )
   const groups = useMemo(() => groupByDate(transactions), [transactions])
 
-  const hasFilters = Boolean(account || category || from || to)
+  // "Custom" means the user has narrowed beyond the default 30-day floor.
+  const isDefaultWindow = from === DEFAULT_FROM && !to
+  const hasNonDateFilters = Boolean(account || category)
+  const hasFilters = hasNonDateFilters || !isDefaultWindow
+
   function clearFilters() {
     setAccount('')
     setCategory('')
-    setFrom('')
+    setFrom(DEFAULT_FROM)
     setTo('')
   }
 
@@ -82,7 +99,7 @@ export function Movimientos() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-2 px-4 pb-2">
+      <div className="flex flex-col gap-2 px-4 pb-2 pt-2">
         <div className="grid grid-cols-2 gap-2">
           <Select
             aria-label="Filtrar por cuenta"
@@ -137,6 +154,11 @@ export function Movimientos() {
             </button>
           )}
         </div>
+        {isDefaultWindow && !hasNonDateFilters && (
+          <p className="px-0.5 text-[11px] text-text-tertiary">
+            Mostrando los últimos 30 días · ajusta las fechas para ver más
+          </p>
+        )}
       </div>
 
       {/* Content */}
@@ -183,6 +205,7 @@ export function Movimientos() {
                         : undefined
                     }
                     onDelete={deleteTransaction}
+                    onSelect={setSelected}
                   />
                 ))}
               </div>
@@ -191,6 +214,17 @@ export function Movimientos() {
         </div>
       )}
 
+      {selected && (
+        <TransactionDetailModal
+          transaction={selected}
+          account={accountById.get(selected.account_id)}
+          category={
+            selected.category_id ? categoryById.get(selected.category_id) : undefined
+          }
+          onClose={() => setSelected(null)}
+          onDelete={deleteTransaction}
+        />
+      )}
     </div>
   )
 }

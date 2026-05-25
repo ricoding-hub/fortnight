@@ -11,6 +11,8 @@ interface TransactionRowProps {
   account?: Account
   category?: Category
   onDelete: (id: string) => Promise<void>
+  /** Optional — tapping the row body fires this with the transaction. */
+  onSelect?: (transaction: Transaction) => void
 }
 
 const REVEAL = 80 // px of delete action exposed when the row is swiped open
@@ -21,6 +23,7 @@ export function TransactionRow({
   account,
   category,
   onDelete,
+  onSelect,
 }: TransactionRowProps) {
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -100,11 +103,17 @@ export function TransactionRow({
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
         onClick={() => {
-          if (!moved.current && offset !== 0) setOffset(0)
+          if (moved.current) return
+          if (offset !== 0) {
+            setOffset(0)
+            return
+          }
+          onSelect?.(transaction)
         }}
         style={{ transform: `translateX(${offset}px)`, touchAction: 'pan-y' }}
         className={clsx(
           'relative flex items-center gap-3 bg-bg-elevated px-4 py-3',
+          onSelect && 'cursor-pointer',
           !dragging && 'transition-transform duration-[--duration-normal]',
         )}
       >

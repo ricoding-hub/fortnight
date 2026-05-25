@@ -13,6 +13,7 @@ export interface NewAccount {
   payment_due_day?: number | null
   payment_grace_days?: number | null
   color?: string | null
+  logo_domain?: string | null
 }
 
 export type AccountPatch = Partial<NewAccount>
@@ -31,6 +32,7 @@ export function useAccounts() {
     const { data: rows, error: err } = await supabase
       .from('accounts')
       .select('*')
+      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true })
     if (err) setError(err)
     else {
@@ -67,9 +69,14 @@ export function useAccounts() {
 
   async function create(account: NewAccount) {
     if (!user) throw new Error('Not authenticated')
+    // New accounts go to the end of the list.
+    const maxSort = data.reduce(
+      (max, a) => ((a.sort_order ?? 0) > max ? (a.sort_order ?? 0) : max),
+      0,
+    )
     const { error: err } = await supabase
       .from('accounts')
-      .insert({ ...account, user_id: user.id })
+      .insert({ ...account, user_id: user.id, sort_order: maxSort + 1 })
     if (err) throw err
   }
 
@@ -84,6 +91,65 @@ export function useAccounts() {
   async function deleteAccount(id: string) {
     const { error: err } = await supabase.from('accounts').delete().eq('id', id)
     if (err) throw err
+  }
+
+  /**
+   * Swap the sort_order of `accountId` with its neighbor in the same `type`
+   * group (debit or credit). `direction` = -1 moves up, +1 moves down.
+   * Realtime corrects any flicker if both updates land out of order.
+   */
+  async function move(accountId: string, direction: -1 | 1) {
+    const acc = data.find((a) => a.id === accountId)
+    if (!acc) return
+    // Sort nulls last so they remain at the end while the user reorders.
+    const SORT_END = Number.MAX_SAFE_INTEGER
+    const sortKey = (a: Account) => a.sort_order ?? SORT_END
+    const group = data
+      .filter((a) => a.type === acc.type)
+      .sort((a, b) => sortKey(a) - sortKey(b))
+    const idx = group.findIndex((a) => a.id === accountId)
+    const swapWith = group[idx + direction]
+    if (!swapWith) return
+
+    // Ensure both rows have concrete sort values. Backfill nulls based on
+    // their current visual position so the move feels stable.
+    const baseStamp = Math.floor(Date.now() / 1000)
+    const accSort = acc.sort_order ?? baseStamp + idx
+    const swapSort = swapWith.sort_order ?? baseStamp + idx + direction
+
+    // Optimistic local swap so the UI doesn't lag the network roundtrip.
+    setData((prev) =>
+      prev.map((a) => {
+        if (a.id === acc.id) return { ...a, sort_order: swapSort }
+        if (a.id === swapWith.id) return { ...a, sort_order: accSort }
+        return a
+      }),
+    )
+
+    const results = await Promise.all([
+      supabase
+        .from('accounts')
+        .update({ sort_order: swapSort })
+        .eq('id', acc.id),
+      supabase
+        .from('accounts')
+        .update({ sort_order: accSort })
+        .eq('id', swapWith.id),
+    ])
+    const err = results.find((r) => r.error)?.error ?? null
+
+    if (err) {
+      // Revert on failure — realtime would correct it anyway but this is faster.
+      setData((prev) =>
+        prev.map((a) => {
+          if (a.id === acc.id) return { ...a, sort_order: acc.sort_order }
+          if (a.id === swapWith.id)
+            return { ...a, sort_order: swapWith.sort_order }
+          return a
+        }),
+      )
+      throw err
+    }
   }
 
   /**
@@ -141,5 +207,6 @@ export function useAccounts() {
     update,
     deleteAccount,
     updateBalance,
+    move,
   }
 }

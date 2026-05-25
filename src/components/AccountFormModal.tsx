@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { IconBuildingBank } from '@tabler/icons-react'
+import { IconBuildingBank, IconCheck } from '@tabler/icons-react'
+import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/hooks/useToast'
+import { BANK_PRESETS, bankLogoUrl } from '@/lib/banks'
 import type { Account, AccountType } from '@/types'
 import type { NewAccount, AccountPatch } from '@/hooks/useAccounts'
 
@@ -56,6 +58,20 @@ const accountSchema = z.object({
 
 type AccountFormValues = z.infer<typeof accountSchema>
 
+/** Accent color palette — matches Tailwind tokens used elsewhere in the app. */
+const COLOR_SWATCHES: string[] = [
+  '#6366F1', // primary indigo
+  '#10B981', // emerald
+  '#F59E0B', // amber
+  '#EF4444', // rose
+  '#F97316', // orange
+  '#8B5CF6', // violet
+  '#EC4899', // pink
+  '#14B8A6', // teal
+  '#6B7194', // slate (default avatar bg)
+  '#0F172A', // near-black
+]
+
 export function AccountFormModal({
   mode,
   onClose,
@@ -69,6 +85,13 @@ export function AccountFormModal({
   const isCredit = type === 'credit'
   const isSynced = mode.kind === 'edit' && mode.account.source === 'syncfy'
   const [submitError, setSubmitError] = useState(false)
+
+  const [color, setColor] = useState<string | null>(
+    mode.kind === 'edit' ? mode.account.color : null,
+  )
+  const [logoDomain, setLogoDomain] = useState<string | null>(
+    mode.kind === 'edit' ? mode.account.logo_domain : null,
+  )
 
   // Due date mode: 'fixed_day' uses payment_due_day; 'grace_days' uses cut_day + payment_grace_days
   const [dueDateMode, setDueDateMode] = useState<'fixed_day' | 'grace_days'>(
@@ -127,12 +150,16 @@ export function AccountFormModal({
           name: values.name.trim(),
           type,
           balance: Number(values.balance),
+          color,
+          logo_domain: logoDomain,
           ...creditFields,
         })
         toast.success('Cuenta creada', `La cuenta ${values.name.trim()} fue creada`)
       } else {
         await onUpdate(mode.account.id, {
           name: values.name.trim(),
+          color,
+          logo_domain: logoDomain,
           ...creditFields,
         })
         toast.success('Cuenta actualizada', 'Los cambios han sido guardados')
@@ -170,7 +197,8 @@ export function AccountFormModal({
             <IconBuildingBank size={16} className="mt-0.5 shrink-0 text-primary" />
             <p className="text-[12px] leading-snug text-text-secondary">
               Esta cuenta se sincroniza con <b>{mode.account.institution_name}</b>.
-              El saldo y los movimientos se actualizan automáticamente.
+              Puedes ajustar nombre, color y logo; en la próxima sincronización
+              algunos datos del banco prevalecen.
             </p>
           </div>
         )}
@@ -191,6 +219,99 @@ export function AccountFormModal({
             {...register('balance')}
           />
         )}
+
+        {/* Logo picker */}
+        <div>
+          <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
+            Logo del banco
+          </p>
+          <div className="grid grid-cols-6 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setLogoDomain(null)}
+              aria-label="Sin logo"
+              className={clsx(
+                'flex aspect-square items-center justify-center rounded-xl border-2 text-[10px] font-bold transition-all',
+                logoDomain === null
+                  ? 'border-primary bg-primary/8 text-primary'
+                  : 'border-transparent bg-bg-secondary text-text-tertiary',
+              )}
+            >
+              Ninguno
+            </button>
+            {BANK_PRESETS.map((bank) => {
+              const active = logoDomain === bank.domain
+              return (
+                <button
+                  key={bank.id}
+                  type="button"
+                  onClick={() => {
+                    setLogoDomain(bank.domain)
+                    if (!color) setColor(bank.color)
+                  }}
+                  aria-label={bank.name}
+                  title={bank.name}
+                  className={clsx(
+                    'relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border-2 bg-white transition-all',
+                    active
+                      ? 'border-primary shadow-[0_2px_8px_rgba(99,102,241,0.2)]'
+                      : 'border-transparent hover:border-border',
+                  )}
+                >
+                  <img
+                    src={bankLogoUrl(bank.domain)}
+                    alt={bank.name}
+                    className="h-7 w-7 object-contain"
+                    loading="lazy"
+                  />
+                  {active && (
+                    <span className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-white">
+                      <IconCheck size={9} stroke={3} />
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Color picker */}
+        <div>
+          <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
+            Color de acento
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {COLOR_SWATCHES.map((swatch) => {
+              const active = color === swatch
+              return (
+                <button
+                  key={swatch}
+                  type="button"
+                  onClick={() => setColor(swatch)}
+                  aria-label={`Color ${swatch}`}
+                  className={clsx(
+                    'h-8 w-8 rounded-full border-2 transition-transform active:scale-95',
+                    active ? 'border-text shadow-[0_2px_6px_rgba(0,0,0,0.15)]' : 'border-transparent',
+                  )}
+                  style={{ backgroundColor: swatch }}
+                />
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => setColor(null)}
+              aria-label="Sin color"
+              className={clsx(
+                'h-8 rounded-full border-2 px-3 text-[11px] font-bold transition-all',
+                color === null
+                  ? 'border-primary bg-primary/8 text-primary'
+                  : 'border-border text-text-secondary',
+              )}
+            >
+              Default
+            </button>
+          </div>
+        </div>
 
         {isCredit && (
           <>

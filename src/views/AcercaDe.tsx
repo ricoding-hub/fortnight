@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.8"
+            version="0.2.9"
             date="25 may 2026"
             current
+            notes={[
+              'Cuentas: reordena con el modo "Reordenar" y elige logo del banco + color de acento',
+              'Movimientos: por defecto muestra los últimos 30 días; toca un movimiento para ver el detalle completo',
+              'Atajo claro a Movimientos desde la lista de cuentas, sin ocupar otra pestaña',
+            ]}
+          />
+          <VersionRow
+            version="0.2.8"
+            date="25 may 2026"
             notes={[
               'Saldos de crédito sincronizados ya se guardan y muestran en positivo',
               'Movimientos vive ahora como subtab dentro de Cuentas',

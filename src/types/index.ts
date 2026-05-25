@@ -31,6 +31,10 @@ export interface Account {
    */
   payment_grace_days: number | null
   color: string | null
+  /** Optional bank domain (e.g. "santander.com.mx") for favicon-based logo display. */
+  logo_domain: string | null
+  /** Numeric sort key; lower = first. Null = sorts after explicit values. */
+  sort_order: number | null
   created_at: string
   updated_at: string
   /** 'manual' (default) or 'syncfy' for accounts imported via the bank-aggregation widget. */

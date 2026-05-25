@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { IconPlus, IconWallet } from '@tabler/icons-react'
+import { Link } from 'react-router-dom'
+import {
+  IconPlus,
+  IconWallet,
+  IconArrowsLeftRight,
+  IconArrowsSort,
+  IconChevronRight,
+} from '@tabler/icons-react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { AccountCard } from '@/components/AccountCard'
 import {
@@ -9,6 +16,7 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
+import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
 import type { Account, AccountType } from '@/types'
 
@@ -17,9 +25,11 @@ interface SectionProps {
   type: AccountType
   accounts: Account[]
   total: number
+  reorderMode: boolean
   onSaveBalance: (account: Account, newBalance: number) => Promise<void>
   onEditDetails: (account: Account) => void
   onAdd: (type: AccountType) => void
+  onMove: (accountId: string, direction: -1 | 1) => Promise<void>
 }
 
 function Section({
@@ -27,9 +37,11 @@ function Section({
   type,
   accounts,
   total,
+  reorderMode,
   onSaveBalance,
   onEditDetails,
   onAdd,
+  onMove,
 }: SectionProps) {
   return (
     <section className="px-4 py-2">
@@ -48,33 +60,58 @@ function Section({
           </p>
         ) : (
           <ul className="divide-y divide-border">
-            {accounts.map((a) => (
+            {accounts.map((a, i) => (
               <li key={a.id}>
                 <AccountCard
                   account={a}
                   onSaveBalance={onSaveBalance}
                   onEditDetails={onEditDetails}
+                  reorderMode={reorderMode}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < accounts.length - 1}
+                  onMoveUp={() => void onMove(a.id, -1)}
+                  onMoveDown={() => void onMove(a.id, 1)}
                 />
               </li>
             ))}
           </ul>
         )}
       </Card>
-      <button
-        type="button"
-        onClick={() => onAdd(type)}
-        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
-      >
-        <IconPlus size={16} /> Agregar cuenta
-      </button>
+      {!reorderMode && (
+        <button
+          type="button"
+          onClick={() => onAdd(type)}
+          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
+        >
+          <IconPlus size={16} /> Agregar cuenta
+        </button>
+      )}
     </section>
   )
 }
 
 export function MisCuentas() {
-  const { data: accounts, loading, error, create, update, deleteAccount, updateBalance } =
-    useAccounts()
+  const {
+    data: accounts,
+    loading,
+    error,
+    create,
+    update,
+    deleteAccount,
+    updateBalance,
+    move,
+  } = useAccounts()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
+  const [reorderMode, setReorderMode] = useState(false)
+  const toast = useToast()
+
+  async function handleMove(id: string, direction: -1 | 1) {
+    try {
+      await move(id, direction)
+    } catch {
+      toast.error('Error', 'No se pudo reordenar la cuenta')
+    }
+  }
 
   if (loading) {
     return (
@@ -109,11 +146,52 @@ export function MisCuentas() {
     onSaveBalance: updateBalance,
     onEditDetails: (account: Account) => setFormMode({ kind: 'edit', account }),
     onAdd: (type: AccountType) => setFormMode({ kind: 'create', type }),
+    onMove: handleMove,
   }
+
+  const hasAccounts = accounts.length > 0
 
   return (
     <div className="flex flex-col pb-24 animate-[fade-in_300ms_ease-out]">
-      {accounts.length === 0 ? (
+      {hasAccounts && (
+        <div className="px-4 pb-1 pt-1">
+          <div className="flex items-stretch gap-2">
+            <Link
+              to="/cuentas/movimientos"
+              className="group flex flex-1 items-center gap-2.5 rounded-2xl bg-primary/8 px-3 py-2.5 text-primary transition-all hover:bg-primary/12 active:scale-[0.98]"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                <IconArrowsLeftRight size={16} />
+              </span>
+              <span className="flex-1 text-left">
+                <span className="block text-[13px] font-bold leading-tight">
+                  Movimientos
+                </span>
+                <span className="block text-[10.5px] font-medium leading-tight text-primary/75">
+                  Historial completo
+                </span>
+              </span>
+              <IconChevronRight size={16} className="text-primary/60 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setReorderMode((m) => !m)}
+              aria-pressed={reorderMode}
+              className={
+                'flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] ' +
+                (reorderMode
+                  ? 'bg-primary text-white shadow-[0_4px_10px_rgba(99,102,241,0.3)]'
+                  : 'bg-bg-secondary text-text-secondary hover:bg-bg-secondary/80')
+              }
+            >
+              <IconArrowsSort size={14} />
+              {reorderMode ? 'Listo' : 'Reordenar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!hasAccounts ? (
         <EmptyState
           icon={IconWallet}
           title="Sin cuentas aún"
@@ -130,8 +208,8 @@ export function MisCuentas() {
         />
       ) : (
         <>
-          <Section title="Débito" type="debit" accounts={debit} total={debitTotal} {...sectionProps} />
-          <Section title="Crédito" type="credit" accounts={credit} total={creditTotal} {...sectionProps} />
+          <Section title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
+          <Section title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
         </>
       )}
 

@@ -1,10 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { IconPencil, IconSettings, IconCheck, IconX } from '@tabler/icons-react'
+import {
+  IconPencil,
+  IconSettings,
+  IconCheck,
+  IconX,
+  IconArrowUp,
+  IconArrowDown,
+} from '@tabler/icons-react'
 import { CreditCycleBadge } from '@/components/CreditCycleBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
+import { bankLogoUrl } from '@/lib/banks'
 import type { Account } from '@/types'
 
 function SyncedPill({ name }: { name: string }) {
@@ -20,6 +28,12 @@ interface AccountCardProps {
   /** Persists a new balance; the hook records the delta as an adjustment. */
   onSaveBalance: (account: Account, newBalance: number) => Promise<void>
   onEditDetails: (account: Account) => void
+  /** When true the card shows reorder controls instead of edit affordances. */
+  reorderMode?: boolean
+  canMoveUp?: boolean
+  canMoveDown?: boolean
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }
 
 /** First letters of up to the first two words, e.g. "Nu Débito" -> "ND". */
@@ -33,10 +47,44 @@ function initialsOf(name: string): string {
   return initials || '?'
 }
 
+interface AvatarProps {
+  account: Account
+}
+
+function Avatar({ account }: AvatarProps) {
+  const [logoFailed, setLogoFailed] = useState(false)
+  const showLogo = account.logo_domain && !logoFailed
+  return (
+    <div
+      className={clsx(
+        'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xs font-bold text-white shadow-sm',
+        showLogo && 'bg-white',
+      )}
+      style={!showLogo ? { backgroundColor: account.color ?? '#6B7194' } : undefined}
+    >
+      {showLogo ? (
+        <img
+          src={bankLogoUrl(account.logo_domain!)}
+          alt={account.name}
+          className="h-7 w-7 object-contain"
+          onError={() => setLogoFailed(true)}
+        />
+      ) : (
+        initialsOf(account.name)
+      )}
+    </div>
+  )
+}
+
 export function AccountCard({
   account,
   onSaveBalance,
   onEditDetails,
+  reorderMode = false,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp,
+  onMoveDown,
 }: AccountCardProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
@@ -81,6 +129,48 @@ export function AccountCard({
 
   const displayBalance = isCredit ? Math.abs(account.balance) : account.balance
 
+  // Reorder mode renders a non-link version so taps don't navigate.
+  if (reorderMode) {
+    return (
+      <div className="flex items-center gap-3 py-3.5">
+        <Avatar account={account} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-text">
+              {account.name}
+            </p>
+            {isSynced && account.institution_name && (
+              <SyncedPill name={account.institution_name} />
+            )}
+          </div>
+          <p className="text-[11px] text-text-tertiary tabular-nums">
+            {formatMXN(displayBalance)}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            aria-label="Mover hacia arriba"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-secondary text-text-secondary transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-bg-secondary disabled:hover:text-text-secondary"
+          >
+            <IconArrowUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            aria-label="Mover hacia abajo"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-secondary text-text-secondary transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-bg-secondary disabled:hover:text-text-secondary"
+          >
+            <IconArrowDown size={16} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center gap-3 py-3.5 transition-colors">
       <Link
@@ -88,13 +178,7 @@ export function AccountCard({
         aria-label={`Ver movimientos de ${account.name}`}
         className="-my-3.5 flex min-w-0 flex-1 items-center gap-3 rounded-lg py-3.5 transition-colors hover:bg-bg-secondary/40 active:bg-bg-secondary/60"
       >
-        {/* Avatar */}
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
-          style={{ backgroundColor: account.color ?? '#6B7194' }}
-        >
-          {initialsOf(account.name)}
-        </div>
+        <Avatar account={account} />
 
         {/* Name + cycle badge */}
         <div className="min-w-0 flex-1">

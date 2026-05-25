@@ -3,7 +3,6 @@ import clsx from 'clsx'
 
 const TABS = [
   { to: '/cuentas/mis', label: 'Cuentas' },
-  { to: '/cuentas/movimientos', label: 'Movimientos' },
   { to: '/cuentas/suscripciones', label: 'Suscripciones' },
   { to: '/cuentas/prestamos', label: 'Préstamos' },
 ] as const
@@ -25,14 +24,14 @@ export function CuentasLayout() {
 
       {/* Sub-nav segmented */}
       <div className="px-4 pb-1 pt-2">
-        <div className="grid grid-cols-4 rounded-full bg-bg-secondary p-1">
+        <div className="grid grid-cols-3 rounded-full bg-bg-secondary p-1">
           {TABS.map((t) => (
             <NavLink
               key={t.to}
               to={t.to}
               className={({ isActive }) =>
                 clsx(
-                  'rounded-full px-2 py-2 text-center text-[11px] font-bold transition-all duration-200',
+                  'rounded-full px-2.5 py-2 text-center text-xs font-bold transition-all duration-200',
                   isActive
                     ? 'bg-bg-elevated text-text shadow-[0_2px_6px_rgba(26,31,54,0.06)]'
                     : 'text-text-secondary hover:text-text',
