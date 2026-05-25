@@ -6,11 +6,14 @@ import {
   IconBolt,
   IconCash,
   IconChevronRight,
+  IconCreditCard,
   IconLink,
   IconRocket,
   IconShoppingBag,
   IconTags,
+  IconWallet,
 } from '@tabler/icons-react'
+import type { Account } from '@/types'
 import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
@@ -73,6 +76,20 @@ export function Proyeccion() {
 
   const primary = goals.find((g) => g.id === primaryId) ?? null
 
+  // For debt goals with no linked accounts, use total credit balance as the
+  // real starting point so the series reflects the actual debt, not the stale
+  // target that was seeded before account-linking existed.
+  const patchedPrimary = useMemo(() => {
+    if (!primary) return null
+    if (primary.is_debt && primary.linked_account_ids.length === 0) {
+      const totalCreditDebt = accounts
+        .filter((a) => a.type === 'credit')
+        .reduce((s, a) => s + Number(a.balance), 0)
+      return { ...primary, saved: Math.max(0, primary.target - totalCreditDebt) }
+    }
+    return primary
+  }, [primary, accounts])
+
   // For the "ahead of plan" chip — look at debt-payoff transactions this month
   // on any linked credit account (or balance delta vs expectedToday for savings).
   const now = new Date()
@@ -92,7 +109,7 @@ export function Proyeccion() {
     return 0
   }, [primary, monthTxs])
 
-  const series = useMemo(() => (primary ? projectGoal(primary) : []), [primary])
+  const series = useMemo(() => (patchedPrimary ? projectGoal(patchedPrimary) : []), [patchedPrimary])
 
   if (loading) {
     return (
@@ -117,8 +134,8 @@ export function Proyeccion() {
   const isDebt = primary.is_debt
   const finishIdx = isDebt
     ? series.findIndex((p) => p.value === 0)
-    : series.findIndex((p) => p.value >= primary.target)
-  const monthsLeft = monthsToGoal(primary)
+    : series.findIndex((p) => p.value >= (patchedPrimary?.target ?? primary.target))
+  const monthsLeft = patchedPrimary ? monthsToGoal(patchedPrimary) : Infinity
   const color = primary.color ?? '#2A4BFF'
   const finishYear = (() => {
     const d = new Date()
@@ -220,6 +237,22 @@ export function Proyeccion() {
         )}
       </div>
 
+      {/* Chart */}
+      <Card>
+        <div className="mb-3 flex items-baseline justify-between">
+          <span className="text-sm font-extrabold text-text">
+            {isDebt ? 'Deuda restante' : 'Ahorro acumulado'}
+          </span>
+          <span className="text-[11px] font-semibold text-text-tertiary">
+            toca o desliza para ver detalle
+          </span>
+        </div>
+        <PlanChart series={series} color={color} isDebt={isDebt} target={patchedPrimary?.target ?? primary.target} />
+      </Card>
+
+      {/* Balance breakdown — where does the current balance come from? */}
+      <BalanceBreakdownCard accounts={accounts} />
+
       {/* Breakdown card — explains the disposable number */}
       <Card>
         <p className="mb-2.5 text-[13px] font-extrabold text-text">De dónde sale tu disponible</p>
@@ -264,19 +297,6 @@ export function Proyeccion() {
         </div>
       </Card>
 
-      {/* Chart */}
-      <Card>
-        <div className="mb-3 flex items-baseline justify-between">
-          <span className="text-sm font-extrabold text-text">
-            {isDebt ? 'Deuda restante' : 'Ahorro acumulado'}
-          </span>
-          <span className="text-[11px] font-semibold text-text-tertiary">
-            toca o desliza para ver detalle
-          </span>
-        </div>
-        <PlanChart series={series} color={color} isDebt={isDebt} target={primary.target} />
-      </Card>
-
       {/* Si aportas más */}
       <Card>
         <p className="mb-2.5 text-[13px] font-extrabold text-text">Si aportas más</p>
@@ -286,8 +306,9 @@ export function Proyeccion() {
             { pct: 25 },
             { pct: 50 },
           ].map(({ pct }) => {
-            const next = primary.monthly * (1 + pct / 100)
-            const remaining = Math.max(primary.target - primary.saved, 0)
+            const effective = patchedPrimary ?? primary
+            const next = effective.monthly * (1 + pct / 100)
+            const remaining = Math.max(effective.target - effective.saved, 0)
             const months = next > 0 ? Math.ceil(remaining / next) : '∞'
             return (
               <div key={pct} className="flex items-center gap-2.5">
@@ -336,6 +357,103 @@ export function Proyeccion() {
         </div>
       </div>
     </div>
+  )
+}
+
+function BalanceBreakdownCard({ accounts }: { accounts: Account[] }) {
+  const debit = accounts.filter((a) => a.type === 'debit')
+  const credit = accounts.filter((a) => a.type === 'credit')
+  if (debit.length === 0 && credit.length === 0) return null
+
+  const totalAssets = debit.reduce((s, a) => s + Number(a.balance), 0)
+  const totalDebt = credit.reduce((s, a) => s + Number(a.balance), 0)
+  const net = totalAssets - totalDebt
+  const netPositive = net >= 0
+
+  return (
+    <Card>
+      <div className="mb-2.5 flex items-center justify-between">
+        <p className="text-[13px] font-extrabold text-text">Saldo actual</p>
+        <span
+          className={clsx(
+            'rounded-full px-2 py-0.5 font-mono text-[11px] font-extrabold',
+            netPositive ? 'bg-asset-soft text-asset-deep' : 'bg-debt-soft text-debt-deep',
+          )}
+        >
+          {netPositive ? '+' : '−'}{fmtMoney(Math.abs(net))}
+        </span>
+      </div>
+
+      {debit.length > 0 && (
+        <div className="mb-2 overflow-hidden rounded-xl" style={{ background: 'var(--color-asset-soft)' }}>
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            <IconWallet size={11} className="text-asset-deep" />
+            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-asset-deep">Activos</span>
+          </div>
+          {debit.map((a, i) => (
+            <div
+              key={a.id}
+              className={clsx(
+                'flex items-center justify-between px-3 py-2',
+                i < debit.length - 1 && 'border-b border-white/30',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: a.color ?? '#10B981' }}
+                />
+                <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
+              </div>
+              <span className="font-mono text-[12.5px] font-bold text-asset-deep">
+                +{fmtMoney(Number(a.balance))}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
+            <span className="text-[11.5px] font-extrabold text-asset-deep">Total activos</span>
+            <span className="font-mono text-[12.5px] font-extrabold text-asset-deep">
+              {fmtMoney(totalAssets)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {credit.length > 0 && (
+        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--color-debt-soft)' }}>
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            <IconCreditCard size={11} className="text-debt-deep" />
+            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-debt-deep">Deuda</span>
+          </div>
+          {credit.map((a, i) => (
+            <div
+              key={a.id}
+              className={clsx(
+                'flex items-center justify-between px-3 py-2',
+                i < credit.length - 1 && 'border-b border-white/30',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: a.color ?? '#EF4444' }}
+                />
+                <span className="text-[12.5px] font-semibold text-text">{a.name}</span>
+              </div>
+              <span className="font-mono text-[12.5px] font-bold text-debt-deep">
+                −{fmtMoney(Number(a.balance))}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-white/40 px-3 py-2">
+            <span className="text-[11.5px] font-extrabold text-debt-deep">Total deuda</span>
+            <span className="font-mono text-[12.5px] font-extrabold text-debt-deep">
+              {fmtMoney(totalDebt)}
+            </span>
+          </div>
+        </div>
+      )}
+    </Card>
   )
 }
 

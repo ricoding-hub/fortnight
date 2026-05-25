@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.1"
+            version="0.2.2"
             date="25 may 2026"
             current
+            notes={[
+              'Gráfica de proyección muestra deuda real (no estimación original)',
+              'Card "Saldo actual" con desglose por cuenta de activos y deuda',
+              'Gráfica aparece antes del desglose de disponible',
+            ]}
+          />
+          <VersionRow
+            version="0.2.1"
+            date="25 may 2026"
             notes={[
               'Edición y eliminación de metas desde el ícono de lápiz',
               'Re-enlace de cuentas en cualquier momento',
