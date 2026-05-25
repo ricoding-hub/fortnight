@@ -29,6 +29,8 @@ export interface ItemWithSpend extends BudgetItem {
   auto_from_subscriptions?: boolean
   /** True if the item can be toggled "paid" — only fixed or auto-sub items. */
   completable?: boolean
+  /** True when `spent` came from a manual user override (replaces transactions). */
+  manual_override?: boolean
 }
 
 /** A bucket with items that include spend — what bucketStats consumes. */
@@ -56,10 +58,17 @@ export function bucketStats(
 /* Presets                                                             */
 /* ------------------------------------------------------------------ */
 
-export const PRESETS: Record<PlanPreset, { label: string; values: [number, number, number] }> = {
+/** Named presets only — Personal is a separate snapshot, not iterated here. */
+export const PRESETS: Record<NamedPreset, { label: string; values: [number, number, number] }> = {
   '50-30-20': { label: '50/30/20', values: [50, 30, 20] },
   '70-20-10': { label: '70/20/10', values: [70, 20, 10] },
   'agresivo': { label: '40/20/40', values: [40, 20, 40] },
+}
+
+export type NamedPreset = Exclude<PlanPreset, 'personal'>
+
+export function isNamedPreset(p: string): p is NamedPreset {
+  return p === '50-30-20' || p === '70-20-10' || p === 'agresivo'
 }
 
 /**
@@ -68,7 +77,7 @@ export const PRESETS: Record<PlanPreset, { label: string; values: [number, numbe
  */
 export function applyPreset(
   buckets: BucketWithItems[],
-  preset: PlanPreset,
+  preset: NamedPreset,
 ): BucketWithItems[] {
   const values = PRESETS[preset].values
   return buckets.map((b, i) => {

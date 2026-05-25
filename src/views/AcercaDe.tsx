@@ -121,9 +121,21 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.2"
+            version="0.2.3"
             date="25 may 2026"
             current
+            notes={[
+              'Proyección es la pestaña por defecto al abrir Plan',
+              'Tu preset personalizado se guarda automáticamente al editar',
+              'Confirmación al cambiar de preset si tienes uno personalizado',
+              'Renombrar tu preset personal desde el chip activo',
+              'Ajuste manual del gasto real por categoría desde modo edit',
+              'Botón "Ajustar %" reubicado junto a los buckets',
+            ]}
+          />
+          <VersionRow
+            version="0.2.2"
+            date="25 may 2026"
             notes={[
               'Gráfica de proyección muestra deuda real (no estimación original)',
               'Aporte mensual derivado del disponible real del presupuesto',

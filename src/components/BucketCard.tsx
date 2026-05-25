@@ -1,7 +1,20 @@
-import { IconChevronRight, IconCircle, IconCircleCheck, IconLink, IconMinus, IconPlus } from '@tabler/icons-react'
+import { useState } from 'react'
+import {
+  IconChevronRight,
+  IconCircle,
+  IconCircleCheck,
+  IconLink,
+  IconMinus,
+  IconPencil,
+  IconPlus,
+  IconX,
+} from '@tabler/icons-react'
 import clsx from 'clsx'
 import { iconFor } from '@/lib/icons'
 import { bucketStats, type BucketWithSpend } from '@/lib/plan'
+import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 interface BucketCardProps {
   bucket: BucketWithSpend
@@ -13,6 +26,10 @@ interface BucketCardProps {
   onItemDelta: (itemId: string, delta: number) => void
   /** Toggle "paid this cycle" for an item. Only invoked for completable items. */
   onToggleCompletion?: (itemId: string) => void
+  /** Upsert a manual real-spend override for an item for this cycle. */
+  onSetManualSpend?: (itemId: string, amount: number) => void
+  /** Remove the manual override for an item. */
+  onClearManualSpend?: (itemId: string) => void
 }
 
 export function BucketCard({
@@ -23,11 +40,42 @@ export function BucketCard({
   onToggle,
   onItemDelta,
   onToggleCompletion,
+  onSetManualSpend,
+  onClearManualSpend,
 }: BucketCardProps) {
   const stats = bucketStats(bucket, monthlyIncome)
   const over = stats.diff > 0
   const completableItems = bucket.items.filter((it) => it.completable)
   const completedCount = completableItems.filter((it) => it.completed).length
+
+  const [editingRealId, setEditingRealId] = useState<string | null>(null)
+  const [realDraft, setRealDraft] = useState('')
+
+  function openManual(itemId: string, currentSpent: number) {
+    setEditingRealId(itemId)
+    setRealDraft(String(Math.round(currentSpent)))
+  }
+
+  function saveManual() {
+    if (!editingRealId) return
+    const amount = Number(realDraft.replace(/[^0-9.]/g, ''))
+    if (Number.isFinite(amount) && amount >= 0) {
+      onSetManualSpend?.(editingRealId, amount)
+    }
+    setEditingRealId(null)
+    setRealDraft('')
+  }
+
+  function clearManualOverride() {
+    if (!editingRealId) return
+    onClearManualSpend?.(editingRealId)
+    setEditingRealId(null)
+    setRealDraft('')
+  }
+
+  const editingItem = editingRealId
+    ? bucket.items.find((it) => it.id === editingRealId)
+    : null
 
   return (
     <div
@@ -143,9 +191,14 @@ export function BucketCard({
                     <div className="flex h-7 w-7 items-center justify-center rounded-md bg-bg-elevated">
                       <Icon size={14} stroke={2} color={bucket.color} />
                     </div>
-                    <span className="flex-1 text-[12.5px] font-bold text-text">
+                    <span className="flex-1 truncate text-[12.5px] font-bold text-text">
                       {item.name}
                     </span>
+                    {item.manual_override && (
+                      <span className="rounded-full bg-bg-elevated px-1.5 py-px text-[9px] font-extrabold tracking-wide" style={{ color: bucket.color }}>
+                        MANUAL
+                      </span>
+                    )}
                     <div className="flex items-center gap-1 rounded-full bg-bg-elevated px-1 py-0.5">
                       <StepperButton
                         onClick={() => onItemDelta(item.id, -1)}
@@ -173,10 +226,23 @@ export function BucketCard({
                     <span className="text-text-secondary">
                       Plan ${Math.round(itemPlan).toLocaleString()}
                     </span>
-                    <span className={itemOver ? 'text-debt-deep' : 'text-asset-deep'}>
-                      Real ${Math.round(itemSpent).toLocaleString()} ·{' '}
-                      {itemOver ? '+' : ''}${Math.abs(Math.round(itemDiff)).toLocaleString()}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={itemOver ? 'text-debt-deep' : 'text-asset-deep'}>
+                        Real ${Math.round(itemSpent).toLocaleString()} ·{' '}
+                        {itemOver ? '+' : ''}${Math.abs(Math.round(itemDiff)).toLocaleString()}
+                      </span>
+                      {onSetManualSpend && (
+                        <button
+                          type="button"
+                          onClick={() => openManual(item.id, itemSpent)}
+                          aria-label={`Editar real de ${item.name}`}
+                          className="grid h-6 w-6 place-items-center rounded-full bg-bg-elevated transition-transform active:scale-90"
+                          style={{ color: bucket.color }}
+                        >
+                          <IconPencil size={11} stroke={2.5} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
@@ -209,6 +275,14 @@ export function BucketCard({
                       {item.name}
                       {item.auto_from_subscriptions && (
                         <IconLink size={10} className="text-text-tertiary" />
+                      )}
+                      {item.manual_override && (
+                        <span
+                          className="rounded-full px-1.5 py-px text-[8.5px] font-extrabold tracking-wide"
+                          style={{ background: bucket.soft_color, color: bucket.color }}
+                        >
+                          MANUAL
+                        </span>
                       )}
                     </span>
                     <span className="font-mono text-[11.5px] font-semibold tabular-nums">
@@ -264,6 +338,45 @@ export function BucketCard({
             </button>
           )}
         </div>
+      )}
+
+      {/* Manual real-spend modal */}
+      {editingItem && (
+        <Modal
+          open
+          onClose={() => setEditingRealId(null)}
+          title={`Real de ${editingItem.name}`}
+        >
+          <p className="mb-3 text-[12.5px] leading-relaxed text-text-secondary">
+            Ajusta manualmente el gasto real de este mes. Se usa cuando no pudiste
+            registrar los movimientos en transacciones. El monto manual reemplaza
+            cualquier total derivado.
+          </p>
+          <Input
+            label="Monto gastado este mes"
+            inputMode="decimal"
+            autoFocus
+            value={realDraft}
+            onChange={(e) => setRealDraft(e.target.value.replace(/[^0-9.]/g, ''))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveManual()
+            }}
+          />
+          <div className="mt-4 flex gap-2">
+            {editingItem.manual_override && (
+              <Button
+                variant="ghost"
+                onClick={clearManualOverride}
+                className="flex-1"
+              >
+                <IconX size={14} stroke={2.5} /> Quitar manual
+              </Button>
+            )}
+            <Button onClick={saveManual} className="flex-1">
+              <IconCircleCheck size={14} stroke={2.5} /> Guardar
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   )

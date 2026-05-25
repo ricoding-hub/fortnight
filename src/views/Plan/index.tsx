@@ -4,9 +4,9 @@ import { useConfig } from '@/hooks/useConfig'
 import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
 
 const TABS = [
+  { to: '/plan/proyeccion', label: 'Proyección' },
   { to: '/plan/presupuesto', label: 'Presupuesto' },
   { to: '/plan/objetivos', label: 'Objetivos' },
-  { to: '/plan/proyeccion', label: 'Proyección' },
 ] as const
 
 export function PlanLayout() {

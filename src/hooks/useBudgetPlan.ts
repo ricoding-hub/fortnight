@@ -3,17 +3,29 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCategories } from '@/hooks/useCategories'
-import { DEFAULT_BUCKETS_SEED, PRESETS } from '@/lib/plan'
+import { DEFAULT_BUCKETS_SEED, PRESETS, isNamedPreset, type NamedPreset } from '@/lib/plan'
 import type {
   BucketWithItems,
   BudgetItem,
   BudgetPlan,
+  PersonalSnapshot,
   PlanPreset,
 } from '@/types'
 
 interface PlanData {
   plan: BudgetPlan
   buckets: BucketWithItems[]
+}
+
+/** Serialize the current buckets/items into the personal_snapshot JSON shape. */
+function snapshotFromBuckets(buckets: BucketWithItems[]): PersonalSnapshot {
+  return {
+    buckets: buckets.map((b) => ({
+      slug: b.slug,
+      pct: b.pct,
+      items: b.items.map((it) => ({ slug: it.slug, pct: it.pct })),
+    })),
+  }
 }
 
 /**
@@ -77,6 +89,10 @@ export function useBudgetPlan() {
             .sort((a, b) => a.sort_order - b.sort_order),
         }))
         .sort((a, b) => a.sort_order - b.sort_order)
+      const planRow = row as unknown as BudgetPlan & {
+        personal_name?: string | null
+        personal_snapshot?: PersonalSnapshot | null
+      }
       setData({
         plan: {
           id: row.id,
@@ -84,6 +100,8 @@ export function useBudgetPlan() {
           preset: row.preset,
           updated_at: row.updated_at,
           created_at: row.created_at,
+          personal_name: planRow.personal_name ?? 'Personalizado',
+          personal_snapshot: planRow.personal_snapshot ?? null,
         },
         buckets,
       })
@@ -187,22 +205,39 @@ export function useBudgetPlan() {
 
   /**
    * Update a single budget_item's pct. Optimistically updates local state then
-   * recomputes the parent bucket's pct as sum of its items.
+   * recomputes the parent bucket's pct as sum of its items. When the plan is
+   * on a named preset (e.g. 50-30-20), the first edit promotes the plan to
+   * the 'personal' preset and snapshots the new state, so subsequent preset
+   * switches can restore the user's customisations.
    */
   async function updateItemPct(itemId: string, nextPct: number) {
+    if (!data) return
     const clamped = Math.max(0, Math.min(100, Math.round(nextPct)))
+    const wasNamed = isNamedPreset(data.plan.preset)
+
+    const nextBuckets = data.buckets.map((b) => {
+      if (!b.items.some((it) => it.id === itemId)) return b
+      const items = b.items.map((it) =>
+        it.id === itemId ? { ...it, pct: clamped } : it,
+      )
+      const bucketPct = items.reduce((s, it) => s + it.pct, 0)
+      return { ...b, pct: bucketPct, items }
+    })
+
+    const snapshot = snapshotFromBuckets(nextBuckets)
+
     setData((prev) => {
       if (!prev) return prev
-      const buckets = prev.buckets.map((b) => {
-        if (!b.items.some((it) => it.id === itemId)) return b
-        const items = b.items.map((it) =>
-          it.id === itemId ? { ...it, pct: clamped } : it,
-        )
-        const bucketPct = items.reduce((s, it) => s + it.pct, 0)
-        return { ...b, pct: bucketPct, items }
-      })
-      return { ...prev, buckets }
+      return {
+        ...prev,
+        buckets: nextBuckets,
+        plan: wasNamed
+          ? { ...prev.plan, preset: 'personal', personal_snapshot: snapshot }
+          : { ...prev.plan, personal_snapshot: snapshot },
+      }
     })
+
+    const changedBucket = nextBuckets.find((b) => b.items.some((it) => it.id === itemId))!
 
     const { error: itErr } = await supabase
       .from('budget_items')
@@ -210,27 +245,69 @@ export function useBudgetPlan() {
       .eq('id', itemId)
     if (itErr) throw itErr
 
-    // Recompute and persist bucket pct
-    const next = data?.buckets.find((b) => b.items.some((it) => it.id === itemId))
-    if (next) {
-      const items = next.items.map((it) =>
-        it.id === itemId ? { ...it, pct: clamped } : it,
-      )
-      const bucketPct = items.reduce((s, it) => s + it.pct, 0)
-      await supabase
-        .from('budget_buckets')
-        .update({ pct: bucketPct })
-        .eq('id', next.id)
-    }
+    await supabase
+      .from('budget_buckets')
+      .update({ pct: changedBucket.pct })
+      .eq('id', changedBucket.id)
+
+    // Promote to 'personal' on first edit; always refresh the snapshot.
+    await supabase
+      .from('budget_plans')
+      .update({
+        preset: wasNamed ? 'personal' : data.plan.preset,
+        personal_snapshot: snapshot,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', data.plan.id)
   }
 
   /**
-   * Apply a preset — scales each bucket and proportionally scales items.
-   * Persists in batched updates.
+   * Apply a preset. For named presets (50/30/20 etc) it scales the live
+   * buckets/items as before. For 'personal' it restores from the stored
+   * snapshot. Either way the personal_snapshot row is preserved so the user
+   * can always return to their custom plan.
    */
   async function applyPlanPreset(preset: PlanPreset) {
     if (!data) return
-    const values = PRESETS[preset].values
+
+    if (preset === 'personal') {
+      const snap = data.plan.personal_snapshot
+      if (!snap) return  // nothing to restore
+      const nextBuckets = data.buckets.map((b) => {
+        const snapBucket = snap.buckets.find((sb) => sb.slug === b.slug)
+        if (!snapBucket) return b
+        const items = b.items.map((it) => {
+          const snapItem = snapBucket.items.find((si) => si.slug === it.slug)
+          return snapItem ? { ...it, pct: snapItem.pct } : it
+        })
+        return { ...b, pct: snapBucket.pct, items }
+      })
+
+      setData({
+        ...data,
+        buckets: nextBuckets,
+        plan: { ...data.plan, preset: 'personal' },
+      })
+
+      await supabase
+        .from('budget_plans')
+        .update({ preset: 'personal', updated_at: new Date().toISOString() })
+        .eq('id', data.plan.id)
+
+      await Promise.all(
+        nextBuckets.flatMap((b) => [
+          supabase.from('budget_buckets').update({ pct: b.pct }).eq('id', b.id),
+          ...b.items.map((it) =>
+            supabase.from('budget_items').update({ pct: it.pct }).eq('id', it.id),
+          ),
+        ]),
+      )
+      return
+    }
+
+    // Named preset path — scale and persist as before. personal_snapshot stays untouched.
+    if (!isNamedPreset(preset)) return
+    const values = PRESETS[preset as NamedPreset].values
     const nextBuckets = data.buckets.map((b, i) => {
       const nextPct = values[i] ?? b.pct
       const scale = b.pct > 0 ? nextPct / b.pct : 1
@@ -238,17 +315,14 @@ export function useBudgetPlan() {
       return { ...b, pct: nextPct, items }
     })
 
-    // Optimistic
     setData({ ...data, buckets: nextBuckets, plan: { ...data.plan, preset } })
 
-    // Persist plan preset
     const { error: pErr } = await supabase
       .from('budget_plans')
       .update({ preset, updated_at: new Date().toISOString() })
       .eq('id', data.plan.id)
     if (pErr) throw pErr
 
-    // Persist bucket + item pcts
     await Promise.all(
       nextBuckets.flatMap((b) => [
         supabase.from('budget_buckets').update({ pct: b.pct }).eq('id', b.id),
@@ -259,12 +333,24 @@ export function useBudgetPlan() {
     )
   }
 
+  /** Rename the user's personal preset. */
+  async function renamePersonalPreset(name: string) {
+    if (!data) return
+    const trimmed = name.trim() || 'Personalizado'
+    setData({ ...data, plan: { ...data.plan, personal_name: trimmed } })
+    await supabase
+      .from('budget_plans')
+      .update({ personal_name: trimmed, updated_at: new Date().toISOString() })
+      .eq('id', data.plan.id)
+  }
+
   return {
     data,
     loading: loading || (data === null && !error),
     error,
     updateItemPct,
     applyPlanPreset,
+    renamePersonalPreset,
     refetch: fetchPlan,
   }
 }

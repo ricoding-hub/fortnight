@@ -75,7 +75,7 @@ export default function App() {
             </Route>
             <Route path="/movimientos" element={<Movimientos />} />
             <Route path="/plan" element={<PlanLayout />}>
-              <Route index element={<Navigate to="presupuesto" replace />} />
+              <Route index element={<Navigate to="proyeccion" replace />} />
               <Route path="presupuesto" element={<Presupuesto />} />
               <Route path="objetivos" element={<Objetivos />} />
               <Route path="proyeccion" element={<Proyeccion />} />

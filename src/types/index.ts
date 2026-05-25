@@ -103,7 +103,15 @@ export type PayFreq = 'semanal' | 'catorcenal' | 'quincenal' | 'mensual'
 /* Plan module — budget plan + buckets + items + goals                 */
 /* ------------------------------------------------------------------ */
 
-export type PlanPreset = '50-30-20' | '70-20-10' | 'agresivo'
+export type PlanPreset = '50-30-20' | '70-20-10' | 'agresivo' | 'personal'
+
+export interface PersonalSnapshot {
+  buckets: Array<{
+    slug: string
+    pct: number
+    items: Array<{ slug: string; pct: number }>
+  }>
+}
 
 export interface BudgetPlan {
   id: string
@@ -111,6 +119,10 @@ export interface BudgetPlan {
   preset: PlanPreset | string
   updated_at: string
   created_at: string
+  /** User-editable label for their personalised preset. */
+  personal_name: string | null
+  /** Snapshot of the user's custom bucket/item percentages. Null until first edit. */
+  personal_snapshot: PersonalSnapshot | null
 }
 
 export interface BudgetBucket {
