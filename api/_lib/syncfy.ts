@@ -76,13 +76,18 @@ export interface SyncfyUser {
  */
 export async function getOrCreateUser(
   fortnightUserId: string,
+  displayName?: string,
 ): Promise<SyncfyUser> {
   const apiKey = process.env.SYNCFY_API_KEY
   if (!apiKey) throw new SyncfyError('SYNCFY_API_KEY not set', 500)
   try {
     return await call<SyncfyUser>('/users', {
       method: 'POST',
-      body: { id_external: fortnightUserId, api_key: apiKey },
+      body: {
+        id_external: fortnightUserId,
+        api_key: apiKey,
+        name: displayName ?? fortnightUserId,
+      },
     })
   } catch (err) {
     // If the user already exists, fall back to lookup.

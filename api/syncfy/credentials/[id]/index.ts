@@ -32,7 +32,7 @@ export async function DELETE(req: Request): Promise<Response> {
     // fails (already gone, network blip), we still continue with local
     // soft-delete so the user is unblocked.
     try {
-      const syncfyUser = await getOrCreateUser(user.id)
+      const syncfyUser = await getOrCreateUser(user.id, user.email)
       const token = await mintToken(syncfyUser.id_user)
       await syncfyDeleteCredential(token, cred.syncfy_id_credential as string)
     } catch {

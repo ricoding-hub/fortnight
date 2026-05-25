@@ -16,7 +16,7 @@ import { isResponse, json, requireUser } from '../_lib/auth.js'
 export async function POST(req: Request): Promise<Response> {
   try {
     const { user } = await requireUser(req)
-    const syncfyUser = await getOrCreateUser(user.id)
+    const syncfyUser = await getOrCreateUser(user.id, user.email)
     const token = await mintToken(syncfyUser.id_user)
     return json({ token, id_user: syncfyUser.id_user })
   } catch (err) {

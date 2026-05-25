@@ -27,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
       return json({ error: 'invalid_body' }, 400)
     }
 
-    const syncfyUser = await getOrCreateUser(user.id)
+    const syncfyUser = await getOrCreateUser(user.id, user.email)
 
     const { data: cred, error: insertErr } = await admin
       .from('syncfy_credentials')
