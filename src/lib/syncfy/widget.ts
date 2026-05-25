@@ -1,16 +1,20 @@
 /**
- * Lazy loader + thin wrapper around the Syncfy authentication widget.
+ * Lazy loader + thin wrapper around the Syncfy authentication widget v3.
  *
- * The widget script and stylesheet are injected on first use so the bundle
- * stays light for users who never connect a bank. The constructor and
- * lifecycle match the Syncfy quickstart example (v3 widget): we pass a
- * fresh token plus a `config` object and call `.open()` to launch.
+ * The widget requires:
+ *   1. A <div> in the DOM to mount into (element: "#syncfy-widget")
+ *   2. token + config passed to the constructor
+ *   3. Callbacks registered via .on() AFTER construction
+ *
+ * Reference: https://github.com/Paybook/sync-widget/blob/master/widget/
  */
 
 const WIDGET_CSS =
-  'https://syncfy.com/widget/v3/syncfy-authentication-widget.css'
-const WIDGET_JS = 'https://syncfy.com/widget/v3/syncfy-authentication-widget.js'
+  'https://www.syncfy.com/widget/v3/syncfy-authentication-widget.css'
+const WIDGET_JS =
+  'https://www.syncfy.com/widget/v3/syncfy-authentication-widget.js'
 
+const CONTAINER_ID = 'syncfy-widget-root'
 const SCRIPT_TIMEOUT_MS = 15_000
 
 let scriptPromise: Promise<void> | null = null
@@ -23,6 +27,8 @@ declare global {
 
 interface SyncfyWidgetParams {
   token: string
+  /** CSS selector of the mount element — required by the widget. */
+  element: string
   config: {
     locale?: string
     entrypoint?: {
@@ -39,28 +45,34 @@ interface SyncfyWidgetParams {
 export interface SyncfyWidgetCredential {
   id_credential: string
   id_site?: string
-  /** Some widget versions expose the bank name here; we fall back if missing. */
   name?: string
   organization?: { name?: string }
 }
 
 export interface SyncfyWidgetInstance {
   open(): void
-  close?(): void
-  on?(event: string, cb: (...args: unknown[]) => void): void
+  close(): void
+  on(event: string, cb: (...args: unknown[]) => void): void
+}
+
+/** Ensures the mount div exists and returns its CSS selector. */
+function ensureContainer(): string {
+  if (!document.getElementById(CONTAINER_ID)) {
+    const div = document.createElement('div')
+    div.id = CONTAINER_ID
+    document.body.appendChild(div)
+  }
+  return `#${CONTAINER_ID}`
 }
 
 /**
- * Loads the Syncfy widget script + stylesheet. The promise is cached after a
- * successful load; on failure the cache is cleared so the next call retries.
+ * Loads the Syncfy widget script + stylesheet exactly once. The promise is
+ * cached after a successful load; cleared on failure so the next call retries.
  */
 function loadWidget(): Promise<void> {
   if (scriptPromise) return scriptPromise
   scriptPromise = new Promise<void>((resolve, reject) => {
-    const cssLoaded = document.querySelector<HTMLLinkElement>(
-      `link[data-syncfy="css"]`,
-    )
-    if (!cssLoaded) {
+    if (!document.querySelector(`link[data-syncfy="css"]`)) {
       const link = document.createElement('link')
       link.rel = 'stylesheet'
       link.href = WIDGET_CSS
@@ -77,9 +89,7 @@ function loadWidget(): Promise<void> {
     }
 
     const fail = (msg: string) => {
-      // Remove the failed script tag so a future attempt can re-inject it.
-      const injected = document.querySelector<HTMLScriptElement>(`script[data-syncfy="js"]`)
-      injected?.remove()
+      document.querySelector(`script[data-syncfy="js"]`)?.remove()
       scriptPromise = null
       reject(new Error(msg))
     }
@@ -93,10 +103,7 @@ function loadWidget(): Promise<void> {
     script.src = WIDGET_JS
     script.async = true
     script.dataset.syncfy = 'js'
-    script.addEventListener('load', () => {
-      clearTimeout(timer)
-      resolve()
-    })
+    script.addEventListener('load', () => { clearTimeout(timer); resolve() })
     script.addEventListener('error', () => {
       clearTimeout(timer)
       fail('No se pudo descargar el widget de Syncfy')
@@ -114,9 +121,8 @@ export interface OpenSyncfyWidgetOptions {
 }
 
 /**
- * Loads the widget if needed, then instantiates it with Mexican defaults
- * and opens it. Returns the instance so callers can close it imperatively
- * (e.g. when their modal unmounts).
+ * Loads the widget if needed, mounts it into a dedicated container div,
+ * registers callbacks via .on(), and calls open().
  */
 export async function openSyncfyWidget(
   opts: OpenSyncfyWidgetOptions,
@@ -125,24 +131,23 @@ export async function openSyncfyWidget(
   const Ctor = window.SyncfyWidget
   if (!Ctor) throw new Error('SyncfyWidget constructor not available')
 
+  const element = ensureContainer()
+
   const instance = new Ctor({
     token: opts.token,
+    element,
     config: {
       locale: 'es',
-      entrypoint: {
-        country: 'MX',
-      },
+      entrypoint: { country: 'MX' },
       navigation: { displayStatusInToast: true },
     },
   })
 
-  // The widget exposes callbacks via .on() — the constructor only accepts
-  // token + config. Passing an `events` key causes a ValidationError.
-  instance.on?.('success', (cred) =>
-    opts.onSuccess(cred as SyncfyWidgetCredential),
-  )
-  instance.on?.('error', (err) => opts.onError?.(err))
-  instance.on?.('close', () => opts.onClose?.())
+  // Events registered via .on() after construction.
+  // Note: close event name is "closed" in the v3 API.
+  instance.on('success', (cred) => opts.onSuccess(cred as SyncfyWidgetCredential))
+  instance.on('error', (err) => opts.onError?.(err))
+  instance.on('closed', () => opts.onClose?.())
 
   instance.open()
   return instance
