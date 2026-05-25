@@ -19,6 +19,7 @@ import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
 import { useConfig } from '@/hooks/useConfig'
+import { useCategories } from '@/hooks/useCategories'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
@@ -27,7 +28,7 @@ import { PlanChart } from '@/components/PlanChart'
 import { Richeto } from '@/components/Richeto'
 import { iconFor } from '@/lib/icons'
 import { monthsToGoal, projectGoal, expectedToday } from '@/lib/goals'
-import { calcMonthlyDisposable, subMonthlyAmount } from '@/lib/projections'
+import { subMonthlyAmount } from '@/lib/projections'
 
 interface PlanContext {
   monthlyIncome: number
@@ -55,6 +56,7 @@ export function Proyeccion() {
   const { data: plan } = useBudgetPlan()
   const { data: goals, loading } = useGoals()
   const { data: config } = useConfig()
+  const { data: categories } = useCategories()
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
@@ -62,9 +64,45 @@ export function Proyeccion() {
     () => subs.filter((s) => s.active).reduce((sum, s) => sum + subMonthlyAmount(s.amount, s.frequency), 0),
     [subs],
   )
-  const disposable = config ? calcMonthlyDisposable(config, subs) : 0
-  const fixedMonthly = config?.fixed_monthly ?? 0
-  const variableMonthly = config?.variable_monthly ?? 0
+
+  // Plan-derived fixed/variable/disposable. Source of truth = the live budget
+  // plan (needs/wants/save buckets) — NOT the static user_config estimates,
+  // which only get set during onboarding and don't reflect user customisations.
+  const subsCategoryId = useMemo(
+    () => categories.find((c) => c.name.toLowerCase() === 'suscripciones')?.id ?? null,
+    [categories],
+  )
+  const { fixedFromPlan, variableFromPlan, disposable } = useMemo(() => {
+    if (!plan || monthlyIncome <= 0) {
+      // Fallback to user_config estimate only when the plan isn't loaded yet.
+      const fallbackFixed = config?.fixed_monthly ?? 0
+      const fallbackVariable = config?.variable_monthly ?? 0
+      return {
+        fixedFromPlan: fallbackFixed,
+        variableFromPlan: fallbackVariable,
+        disposable: monthlyIncome - fallbackFixed - fallbackVariable - subsMonthly,
+      }
+    }
+    const needs = plan.buckets.find((b) => b.slug === 'needs')
+    const wants = plan.buckets.find((b) => b.slug === 'wants')
+    // The "Suscripciones" item lives inside the wants bucket — we already show
+    // real subs as its own line, so subtract its planned amount from wants to
+    // avoid double-counting.
+    const subsItem = wants?.items.find(
+      (it) => subsCategoryId !== null && it.category_id === subsCategoryId,
+    )
+    const subsItemPlanned = ((subsItem?.pct ?? 0) * monthlyIncome) / 100
+    const fixed = ((needs?.pct ?? 0) * monthlyIncome) / 100
+    const variable = Math.max(((wants?.pct ?? 0) * monthlyIncome) / 100 - subsItemPlanned, 0)
+    return {
+      fixedFromPlan: fixed,
+      variableFromPlan: variable,
+      disposable: monthlyIncome - fixed - variable - subsMonthly,
+    }
+  }, [plan, monthlyIncome, config, subsMonthly, subsCategoryId])
+
+  const fixedMonthly = fixedFromPlan
+  const variableMonthly = variableFromPlan
 
   const [primaryId, setPrimaryId] = useState<string | null>(null)
 

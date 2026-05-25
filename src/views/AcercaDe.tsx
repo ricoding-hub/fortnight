@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.3"
+            version="0.2.4"
             date="25 may 2026"
             current
+            notes={[
+              'Proyección lee fijos y variables del plan, no del onboarding',
+              'Todos los items del presupuesto se pueden marcar como pagados',
+            ]}
+          />
+          <VersionRow
+            version="0.2.3"
+            date="25 may 2026"
             notes={[
               'Proyección es la pestaña por defecto al abrir Plan',
               'Tu preset personalizado se guarda automáticamente al editar',

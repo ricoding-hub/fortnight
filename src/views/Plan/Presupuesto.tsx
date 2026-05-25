@@ -60,11 +60,6 @@ export function Presupuesto() {
     return map
   }, [txs, accounts])
 
-  const categoryKind = useMemo(
-    () => new Map(categories.map((c) => [c.id, c.kind])),
-    [categories],
-  )
-
   if (loading || !data) {
     return (
       <div className="px-4.5 pt-2 animate-[fade-in_300ms_ease-out]">
@@ -82,7 +77,6 @@ export function Presupuesto() {
     items: b.items.map((it) => {
       const isSubs = !!subsCategoryId && it.category_id === subsCategoryId
       const transactionSpend = it.category_id ? (categorySpend.get(it.category_id) ?? 0) : 0
-      const isFixed = !!it.category_id && categoryKind.get(it.category_id) === 'fixed'
       const manual = manualSpend.get(it.id)
       // Priority: manual override > subscriptions auto > transactions
       const spent = manual ?? (isSubs ? subscriptionsMonthly : transactionSpend)
@@ -91,7 +85,10 @@ export function Presupuesto() {
         spent,
         auto_from_subscriptions: isSubs && manual === undefined,
         manual_override: manual !== undefined,
-        completable: isFixed || isSubs,
+        // Every item is markable as "pagado este mes" — covers fixed,
+        // variable, and saving items. The user picks whatever they want
+        // to track manually.
+        completable: true,
         completed: completed.has(it.id),
       }
     }),
