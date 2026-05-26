@@ -3,6 +3,8 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   IconBuildingBank,
+  IconChevronDown,
+  IconChevronUp,
   IconPlus,
   IconRefresh,
   IconShieldLock,
@@ -205,70 +207,125 @@ function BankRow({
   onSync,
   onDisconnect,
 }: BankRowProps) {
+  const [expanded, setExpanded] = useState(false)
   const preset = presetForInstitutionName(credential.institution_name)
+
   return (
-    <li className="flex items-center gap-3 px-3.5 py-3">
-      <div
-        className={
-          'flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ' +
-          (preset ? 'bg-white' : 'bg-primary/10 text-primary')
-        }
+    <li>
+      {/* Collapsed row */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-bg-secondary/40"
       >
-        {preset ? (
-          <img
-            src={bankLogoUrl(preset.domain)}
-            alt={preset.name}
-            className="h-7 w-7 object-contain"
-          />
-        ) : (
-          <IconBuildingBank size={20} />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <p className="truncate text-sm font-semibold text-text">
-            {credential.institution_name}
-          </p>
-          <BankStatusPill status={credential.status} />
-        </div>
-        <p className="text-[11px] text-text-tertiary">
-          {accountCount} {accountCount === 1 ? 'cuenta' : 'cuentas'}
-          {credential.last_synced_at && (
-            <>
-              {' · '}
-              {formatDistanceToNow(new Date(credential.last_synced_at), {
-                locale: es,
-                addSuffix: true,
-              })}
-            </>
+        <div
+          className={
+            'flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ' +
+            (preset ? 'bg-white' : 'bg-primary/10 text-primary')
+          }
+        >
+          {preset ? (
+            <img
+              src={bankLogoUrl(preset.domain)}
+              alt={preset.name}
+              className="h-7 w-7 object-contain"
+            />
+          ) : (
+            <IconBuildingBank size={20} />
           )}
-        </p>
-        {credential.last_status_message && credential.status !== 'active' && (
-          <p className="mt-0.5 text-[11px] text-debt">
-            {credential.last_status_message}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-text">
+              {credential.institution_name}
+            </p>
+            <BankStatusPill status={credential.status} />
+          </div>
+          <p className="text-[11px] text-text-tertiary">
+            {accountCount} {accountCount === 1 ? 'cuenta' : 'cuentas'}
+            {credential.last_synced_at && (
+              <>
+                {' · '}
+                {formatDistanceToNow(new Date(credential.last_synced_at), {
+                  locale: es,
+                  addSuffix: true,
+                })}
+              </>
+            )}
+            {credential.last_sync_transactions != null && credential.last_sync_transactions > 0 && (
+              <> · {credential.last_sync_transactions} mov.</>
+            )}
           </p>
+          {credential.last_status_message && credential.status !== 'active' && (
+            <p className="mt-0.5 text-[11px] text-debt">
+              {credential.last_status_message}
+            </p>
+          )}
+        </div>
+        {expanded ? (
+          <IconChevronUp size={14} className="shrink-0 text-text-tertiary" />
+        ) : (
+          <IconChevronDown size={14} className="shrink-0 text-text-tertiary" />
         )}
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onSync}
-          disabled={busy}
-          aria-label="Sincronizar ahora"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary disabled:opacity-50"
-        >
-          <IconRefresh size={16} className={busy ? 'animate-spin' : ''} />
-        </button>
-        <button
-          type="button"
-          onClick={onDisconnect}
-          disabled={busy}
-          aria-label="Desconectar"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-debt-deep transition-colors hover:bg-debt-soft disabled:opacity-50"
-        >
-          <IconTrash size={16} />
-        </button>
-      </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t border-border/60 bg-bg-secondary/30 px-3.5 py-3">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+            <div>
+              <dt className="text-text-tertiary">Estado</dt>
+              <dd className="font-semibold capitalize text-text">{credential.status.replace('_', ' ')}</dd>
+            </div>
+            <div>
+              <dt className="text-text-tertiary">Cuentas importadas</dt>
+              <dd className="font-semibold text-text">
+                {credential.last_sync_accounts ?? accountCount}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-text-tertiary">Última sincronización</dt>
+              <dd className="font-semibold text-text">
+                {credential.last_synced_at
+                  ? formatDistanceToNow(new Date(credential.last_synced_at), { locale: es, addSuffix: true })
+                  : 'Nunca'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-text-tertiary">Movimientos (última)</dt>
+              <dd className="font-semibold text-text">
+                {credential.last_sync_transactions != null ? credential.last_sync_transactions : '—'}
+              </dd>
+            </div>
+            {credential.last_status_message && (
+              <div className="col-span-2">
+                <dt className="text-text-tertiary">Mensaje</dt>
+                <dd className="font-semibold text-debt">{credential.last_status_message}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={busy}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary/8 py-2 text-[12px] font-bold text-primary transition-all hover:bg-primary/12 disabled:opacity-50"
+            >
+              <IconRefresh size={13} className={busy ? 'animate-spin' : ''} />
+              Sincronizar
+            </button>
+            <button
+              type="button"
+              onClick={onDisconnect}
+              disabled={busy}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-debt/8 py-2 text-[12px] font-bold text-debt transition-all hover:bg-debt/12 disabled:opacity-50"
+            >
+              <IconTrash size={13} />
+              Desconectar
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   )
 }

@@ -72,19 +72,22 @@ export async function syncCredential(
       )
 
       // 3. Reconcile balance with the bank's reported value.
-      await reconcileBalance(admin, userId, account, accountsRemote)
+      await reconcileBalance(admin, account, externalId, accountsRemote)
     }
 
+    const accountCount = localByExternal.size
     await admin
       .from('syncfy_credentials')
       .update({
         status: 'active',
         last_synced_at: new Date().toISOString(),
         last_status_message: null,
+        last_sync_accounts: accountCount,
+        last_sync_transactions: totalNewTx,
       })
       .eq('id', credentialId)
 
-    return { accounts: localByExternal.size, transactions: totalNewTx }
+    return { accounts: accountCount, transactions: totalNewTx }
   } catch (err) {
     const status = mapErrorToStatus(err)
     const message = err instanceof Error ? err.message : 'sync_failed'
@@ -124,7 +127,7 @@ async function upsertAccounts(
           source: 'syncfy',
           syncfy_credential_id: credentialId,
           institution_name: institutionName,
-          name: ra.name ?? `${institutionName} ${type}`,
+          name: formatAccountName(ra.name, institutionName, type),
           type,
           credit_limit:
             type === 'credit' && ra.credit_limit != null
@@ -231,43 +234,52 @@ function txToRow(
   }
 }
 
+/**
+ * Overwrites the local balance with Syncfy's reported snapshot value.
+ * Syncfy credit balances may arrive negative (debt as -); we normalize to
+ * our positive-is-debt convention with Math.abs before writing.
+ * Direct UPDATE is more reliable than the drift-adjustment approach when
+ * Syncfy's snapshot doesn't match the locally accumulated transaction history.
+ */
 async function reconcileBalance(
   admin: SupabaseClient,
-  userId: string,
   account: LocalAccount,
+  externalId: string,
   accountsRemote: SyncfyAccount[],
 ): Promise<void> {
-  // Read the local row to learn (a) its current trigger-derived balance and
-  // (b) the external_id we use to find the matching Syncfy snapshot.
-  const { data: localRow } = await admin
-    .from('accounts')
-    .select('balance,external_id')
-    .eq('id', account.id)
-    .single()
-  if (!localRow || !localRow.external_id) return
-
-  const remoteRow = accountsRemote.find(
-    (r) => r.id_account === (localRow.external_id as string),
-  )
+  const remoteRow = accountsRemote.find((r) => r.id_account === externalId)
   if (!remoteRow) return
 
-  // Syncfy's `balance` for credit accounts can come back negative on some
-  // banks (Santander reports debt as -). Fortnight's convention is always
-  // positive (balance = debt amount), so normalize before comparing —
-  // otherwise the drift adjustment flips the account to a negative balance.
   const reportedRaw = Number(remoteRow.balance)
   const reported = account.type === 'credit' ? Math.abs(reportedRaw) : reportedRaw
-  const local = Number(localRow.balance)
-  const drift = reported - local
-  if (Math.abs(drift) < 0.01) return
 
-  await admin.from('transactions').insert({
-    user_id: userId,
-    account_id: account.id,
-    amount: drift,
-    type: 'adjustment',
-    source: 'syncfy',
-    description: 'Conciliación con banco',
-    date: new Date().toISOString().slice(0, 10),
-  })
+  await admin
+    .from('accounts')
+    .update({ balance: reported, updated_at: new Date().toISOString() })
+    .eq('id', account.id)
+}
+
+/**
+ * Title-cases a Syncfy account name and strips the institution prefix when
+ * present so "SANTANDER LIKEU" becomes "Likeu" instead of "Santander Likeu".
+ */
+function formatAccountName(
+  rawName: string | null | undefined,
+  institutionName: string,
+  type: 'debit' | 'credit',
+): string {
+  if (!rawName?.trim()) {
+    return `${institutionName} ${type === 'credit' ? 'Crédito' : 'Débito'}`
+  }
+  const titled = rawName
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+    .join(' ')
+  const prefix = institutionName.toLowerCase()
+  if (titled.toLowerCase().startsWith(prefix) && titled.length > institutionName.length) {
+    const rest = titled.slice(institutionName.length).trim()
+    if (rest.length >= 2) return rest
+  }
+  return titled
 }

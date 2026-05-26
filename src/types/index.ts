@@ -76,6 +76,8 @@ export interface SyncfyCredential {
   status: SyncfyStatus
   last_status_message: string | null
   last_synced_at: string | null
+  last_sync_accounts: number | null
+  last_sync_transactions: number | null
   created_at: string
 }
 

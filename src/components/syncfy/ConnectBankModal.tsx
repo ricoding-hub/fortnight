@@ -145,7 +145,7 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
   }, [phase, onClose])
 
   return (
-    <Modal open={open} onClose={handleModalClose} title="Conectar banco">
+    <Modal open={open && phase !== 'widget'} onClose={handleModalClose} title="Conectar banco">
       <div className="flex flex-col gap-4">
         {phase === 'idle' && (
           <>

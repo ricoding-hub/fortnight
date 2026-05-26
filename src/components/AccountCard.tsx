@@ -95,7 +95,6 @@ export function AccountCard({
   const isSynced = account.source === 'syncfy'
 
   function startEdit() {
-    if (isSynced) return
     setValue(String(account.balance))
     setInvalid(false)
     setEditing(true)
@@ -196,76 +195,70 @@ export function AccountCard({
 
       {/* Inline edit or display */}
       {editing ? (
-        <div className="flex items-center gap-1.5">
-          <input
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void save()
-              if (e.key === 'Escape') cancel()
-            }}
-            inputMode="decimal"
-            aria-label="Nuevo saldo"
-            aria-invalid={invalid || undefined}
-            className={clsx(
-              'h-10 w-24 rounded-xl border bg-bg-elevated px-3 text-base tabular-nums text-text',
-              'transition-all duration-[--duration-fast]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-              invalid ? 'border-debt ring-1 ring-debt/20' : 'border-border',
-            )}
-          />
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving}
-            aria-label="Guardar saldo"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-          >
-            <IconCheck size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Cancelar"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary"
-          >
-            <IconX size={16} />
-          </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save()
+                if (e.key === 'Escape') cancel()
+              }}
+              inputMode="decimal"
+              aria-label="Nuevo saldo"
+              aria-invalid={invalid || undefined}
+              className={clsx(
+                'h-10 w-24 rounded-xl border bg-bg-elevated px-3 text-base tabular-nums text-text',
+                'transition-all duration-[--duration-fast]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                invalid ? 'border-debt ring-1 ring-debt/20' : 'border-border',
+              )}
+            />
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              aria-label="Guardar saldo"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+            >
+              <IconCheck size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={cancel}
+              aria-label="Cancelar"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary"
+            >
+              <IconX size={16} />
+            </button>
+          </div>
+          {isSynced && (
+            <p className="text-[10px] text-text-tertiary">
+              Se sobreescribirá en la próxima sincronización
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          {isSynced ? (
-            <span
-              className={clsx(
-                'text-sm font-bold tabular-nums',
-                isCredit ? 'text-debt' : 'text-text',
-              )}
-            >
-              {formatMXN(displayBalance)}
-            </span>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={startEdit}
-                className={clsx(
-                  'text-sm font-bold tabular-nums transition-colors',
-                  isCredit ? 'text-debt' : 'text-text',
-                )}
-              >
-                {formatMXN(displayBalance)}
-              </button>
-              <button
-                type="button"
-                onClick={startEdit}
-                aria-label="Editar saldo"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text-secondary"
-              >
-                <IconPencil size={14} />
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={startEdit}
+            className={clsx(
+              'text-sm font-bold tabular-nums transition-colors',
+              isCredit ? 'text-debt' : 'text-text',
+            )}
+          >
+            {formatMXN(displayBalance)}
+          </button>
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label="Editar saldo"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text-secondary"
+          >
+            <IconPencil size={14} />
+          </button>
           <button
             type="button"
             onClick={() => onEditDetails(account)}

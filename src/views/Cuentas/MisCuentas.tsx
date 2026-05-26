@@ -6,8 +6,11 @@ import {
   IconArrowsLeftRight,
   IconArrowsSort,
   IconChevronRight,
+  IconRefresh,
+  IconBuildingBank,
 } from '@tabler/icons-react'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
 import { AccountCard } from '@/components/AccountCard'
 import {
   AccountFormModal,
@@ -103,17 +106,46 @@ export function MisCuentas() {
     updateBalance,
     move,
   } = useAccounts()
+  const { data: credentials, sync } = useSyncedCredentials()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
   const [chooserType, setChooserType] = useState<AccountType | null>(null)
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
+  const [syncingAll, setSyncingAll] = useState(false)
   const toast = useToast()
+
+  const syncableCredentials = credentials.filter((c) => c.status !== 'disabled' && c.status !== 'error')
+  const hasConnectedBanks = accounts.some((a) => a.source === 'syncfy')
 
   async function handleMove(id: string, direction: -1 | 1) {
     try {
       await move(id, direction)
     } catch {
       toast.error('Error', 'No se pudo reordenar la cuenta')
+    }
+  }
+
+  async function syncAll() {
+    if (syncableCredentials.length === 0) return
+    setSyncingAll(true)
+    let totalTx = 0
+    const failed: string[] = []
+    for (const cred of syncableCredentials) {
+      try {
+        const result = await sync(cred.id)
+        totalTx += result.transactions
+      } catch {
+        failed.push(cred.institution_name)
+      }
+    }
+    setSyncingAll(false)
+    if (failed.length === 0) {
+      toast.success(
+        'Bancos actualizados',
+        totalTx > 0 ? `${totalTx} movimientos nuevos.` : 'Tus cuentas ya están al día.',
+      )
+    } else {
+      toast.error('Sincronización parcial', `No se pudo: ${failed.join(', ')}`)
     }
   }
 
@@ -190,6 +222,17 @@ export function MisCuentas() {
               </span>
               <IconChevronRight size={16} className="text-primary/60 transition-transform group-hover:translate-x-0.5" />
             </Link>
+            {syncableCredentials.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void syncAll()}
+                disabled={syncingAll}
+                className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-primary/8 px-3 py-2.5 text-[12px] font-bold text-primary transition-all hover:bg-primary/12 active:scale-[0.98] disabled:opacity-60"
+              >
+                <IconRefresh size={14} className={syncingAll ? 'animate-spin' : ''} />
+                {syncingAll ? '…' : 'Sincronizar'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setReorderMode((m) => !m)}
@@ -227,6 +270,18 @@ export function MisCuentas() {
         <>
           <Section title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
           <Section title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
+          {hasConnectedBanks && !reorderMode && (
+            <div className="px-4 pb-2">
+              <Link
+                to="/cuentas/bancos"
+                className="group flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-primary transition-all hover:border-primary/30 hover:bg-primary/8 active:scale-[0.99]"
+              >
+                <IconBuildingBank size={16} className="shrink-0" />
+                <span className="flex-1 text-sm font-semibold">Gestionar bancos conectados</span>
+                <IconChevronRight size={14} className="shrink-0 text-primary/60 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+          )}
         </>
       )}
 
