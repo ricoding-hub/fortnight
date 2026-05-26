@@ -189,7 +189,10 @@ async function pullTransactions(
         (tx) =>
           (!tx.currency || tx.currency === 'MXN') &&
           !tx.is_deleted &&
-          !tx.is_disable,
+          !tx.is_disable &&
+          !tx.is_pending &&
+          isFinite(Number(tx.amount)) &&
+          Number(tx.amount) !== 0,
       )
       .map((tx) => txToRow(tx, userId, account, categoryMap))
 
@@ -220,26 +223,27 @@ function txToRow(
   // Debit accounts keep Syncfy's sign (negative=expense, positive=deposit).
   // Credit accounts invert: Syncfy posts purchases as negative, but our
   // convention is positive=purchase (debt up).
-  const amount = account.type === 'credit' ? -Number(tx.amount) : Number(tx.amount)
+  const rawAmount = Number(tx.amount)
+  const amount = account.type === 'credit' ? -rawAmount : rawAmount
+  const description = tx.description?.trim() || null
   return {
     user_id: userId,
     account_id: account.id,
     external_id: tx.id_transaction,
     source: 'syncfy' as const,
     amount,
-    description: tx.description ?? null,
+    description,
     date: new Date(tx.dt_transaction * 1000).toISOString().slice(0, 10),
     type: 'sync' as const,
-    category_id: matchCategory(tx.description, categoryMap),
+    category_id: matchCategory(description, categoryMap),
   }
 }
 
 /**
  * Overwrites the local balance with Syncfy's reported snapshot value.
- * Syncfy credit balances may arrive negative (debt as -); we normalize to
- * our positive-is-debt convention with Math.abs before writing.
- * Direct UPDATE is more reliable than the drift-adjustment approach when
- * Syncfy's snapshot doesn't match the locally accumulated transaction history.
+ * Only updates when Syncfy provides a non-zero balance — a zero report likely
+ * means the bank didn't return balance data for that account type, not a true
+ * zero balance (which the transaction trigger would have set correctly).
  */
 async function reconcileBalance(
   admin: SupabaseClient,
@@ -251,6 +255,8 @@ async function reconcileBalance(
   if (!remoteRow) return
 
   const reportedRaw = Number(remoteRow.balance)
+  if (!isFinite(reportedRaw) || reportedRaw === 0) return
+
   const reported = account.type === 'credit' ? Math.abs(reportedRaw) : reportedRaw
 
   await admin

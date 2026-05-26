@@ -205,6 +205,7 @@ export function MisCuentas() {
       {hasAccounts && (
         <div className="px-4 pb-1 pt-1">
           <div className="flex items-stretch gap-2">
+            {/* Movimientos: flex-1 so it always has enough space */}
             <Link
               to="/cuentas/movimientos"
               className="group flex flex-1 items-center gap-2.5 rounded-2xl bg-primary/8 px-3 py-2.5 text-primary transition-all hover:bg-primary/12 active:scale-[0.98]"
@@ -222,31 +223,36 @@ export function MisCuentas() {
               </span>
               <IconChevronRight size={16} className="text-primary/60 transition-transform group-hover:translate-x-0.5" />
             </Link>
-            {syncableCredentials.length > 0 && (
+
+            {/* Right-side icon buttons — compact so they never overflow */}
+            <div className="flex shrink-0 items-stretch gap-1.5">
+              {syncableCredentials.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void syncAll()}
+                  disabled={syncingAll}
+                  aria-label="Sincronizar bancos"
+                  title="Sincronizar bancos"
+                  className="flex h-auto w-11 items-center justify-center rounded-2xl bg-primary/8 text-primary transition-all hover:bg-primary/12 active:scale-[0.97] disabled:opacity-60"
+                >
+                  <IconRefresh size={16} className={syncingAll ? 'animate-spin' : ''} />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => void syncAll()}
-                disabled={syncingAll}
-                className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-primary/8 px-3 py-2.5 text-[12px] font-bold text-primary transition-all hover:bg-primary/12 active:scale-[0.98] disabled:opacity-60"
+                onClick={() => setReorderMode((m) => !m)}
+                aria-pressed={reorderMode}
+                className={
+                  'flex items-center gap-1.5 rounded-2xl px-3 text-[12px] font-bold transition-all active:scale-[0.97] ' +
+                  (reorderMode
+                    ? 'bg-primary text-white shadow-[0_4px_10px_rgba(99,102,241,0.3)]'
+                    : 'bg-bg-secondary text-text-secondary hover:bg-bg-secondary/80')
+                }
               >
-                <IconRefresh size={14} className={syncingAll ? 'animate-spin' : ''} />
-                {syncingAll ? '…' : 'Sincronizar'}
+                <IconArrowsSort size={14} />
+                {reorderMode ? 'Listo' : 'Reordenar'}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setReorderMode((m) => !m)}
-              aria-pressed={reorderMode}
-              className={
-                'flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] ' +
-                (reorderMode
-                  ? 'bg-primary text-white shadow-[0_4px_10px_rgba(99,102,241,0.3)]'
-                  : 'bg-bg-secondary text-text-secondary hover:bg-bg-secondary/80')
-              }
-            >
-              <IconArrowsSort size={14} />
-              {reorderMode ? 'Listo' : 'Reordenar'}
-            </button>
+            </div>
           </div>
         </div>
       )}

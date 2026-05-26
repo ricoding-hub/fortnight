@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import {
+  IconBuildingBank,
   IconPencil,
   IconSettings,
   IconCheck,
@@ -15,10 +16,12 @@ import { formatMXN } from '@/lib/format'
 import { bankLogoUrl } from '@/lib/banks'
 import type { Account } from '@/types'
 
-function SyncedPill({ name }: { name: string }) {
+function SyncedLabel({ name }: { name: string }) {
+  const label = name !== 'Banco conectado' ? name : null
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-semibold text-primary">
-      {name}
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold text-primary/80">
+      <IconBuildingBank size={9} className="shrink-0" />
+      {label ? label : 'Bancario'}
     </span>
   )
 }
@@ -134,17 +137,17 @@ export function AccountCard({
       <div className="flex items-center gap-3 py-3.5">
         <Avatar account={account} />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-text">
-              {account.name}
-            </p>
-            {isSynced && account.institution_name && (
-              <SyncedPill name={account.institution_name} />
-            )}
-          </div>
-          <p className="text-[11px] text-text-tertiary tabular-nums">
-            {formatMXN(displayBalance)}
+          <p className="truncate text-sm font-semibold text-text">
+            {account.name}
           </p>
+          <div className="flex items-center gap-1.5">
+            {isSynced && account.institution_name && (
+              <SyncedLabel name={account.institution_name} />
+            )}
+            <span className="text-[11px] text-text-tertiary tabular-nums">
+              {formatMXN(displayBalance)}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -179,17 +182,17 @@ export function AccountCard({
       >
         <Avatar account={account} />
 
-        {/* Name + cycle badge */}
+        {/* Name + sync/cycle badge on second line */}
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-text">
-              {account.name}
-            </p>
+          <p className="truncate text-sm font-semibold text-text">
+            {account.name}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
             {isSynced && account.institution_name && (
-              <SyncedPill name={account.institution_name} />
+              <SyncedLabel name={account.institution_name} />
             )}
+            {isCredit && <CreditCycleBadge account={account} />}
           </div>
-          {isCredit && <CreditCycleBadge account={account} />}
         </div>
       </Link>
 
