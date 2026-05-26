@@ -174,7 +174,10 @@ export function AccountFormModal({
 
   async function handleDelete() {
     if (mode.kind !== 'edit') return
-    if (!window.confirm(`¿Eliminar ${mode.account.name}?`)) return
+    const confirmMsg = mode.account.source === 'syncfy'
+      ? `¿Eliminar ${mode.account.name}? Se eliminará la cuenta y su historial de movimientos importados.`
+      : `¿Eliminar ${mode.account.name}?`
+    if (!window.confirm(confirmMsg)) return
     setSubmitError(false)
     try {
       await onDelete(mode.account.id)
@@ -427,7 +430,7 @@ export function AccountFormModal({
           {isCreate ? 'Crear cuenta' : 'Guardar cambios'}
         </Button>
 
-        {mode.kind === 'edit' && !isSynced && (
+        {mode.kind === 'edit' && (
           <button
             type="button"
             onClick={() => void handleDelete()}
