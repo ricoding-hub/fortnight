@@ -9,6 +9,7 @@ export type SyncfyStatus =
   | 'active'
   | 'token_expired'
   | 'login_required'
+  | 'payment_required'
   | 'disabled'
   | 'error'
 

@@ -240,10 +240,11 @@ export function mapAccountType(
 
 export function mapErrorToStatus(
   err: unknown,
-): 'token_expired' | 'login_required' | 'error' {
+): 'token_expired' | 'login_required' | 'payment_required' | 'error' {
   if (err instanceof SyncfyError) {
     if (err.status === 401) return 'token_expired'
     if (err.status === 410 || err.status === 403) return 'login_required'
+    if (err.status === 402) return 'payment_required'
   }
   return 'error'
 }

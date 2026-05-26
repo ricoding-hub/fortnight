@@ -43,7 +43,8 @@ export function MisBancos() {
   }, [accounts])
 
   const visible = credentials.filter((c) => c.status !== 'disabled')
-  const syncable = visible.filter((c) => c.status !== 'error')
+  const syncable = visible.filter((c) => c.status !== 'error' && c.status !== 'payment_required')
+  const hasPaymentIssue = visible.some((c) => c.status === 'payment_required')
 
   async function onSyncAll() {
     if (syncable.length === 0) return
@@ -123,6 +124,28 @@ export function MisBancos() {
           </p>
         </div>
       </div>
+
+      {/* Payment-required banner */}
+      {hasPaymentIssue && (
+        <div className="px-4">
+          <div className="flex flex-col gap-2 rounded-2xl border border-warning/20 bg-warning/5 p-3.5">
+            <p className="text-[12.5px] font-semibold text-warning-deep">
+              Plan de Syncfy vencido o sin créditos
+            </p>
+            <p className="text-[11.5px] leading-snug text-text-secondary">
+              La sincronización bancaria usa Syncfy (Paybook), un servicio de terceros con cuota mensual. Tu plan actual no permite más sincronizaciones.
+            </p>
+            <a
+              href="https://www.syncfy.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-0.5 self-start rounded-xl bg-warning/10 px-3.5 py-1.5 text-[12px] font-bold text-warning-deep transition-colors hover:bg-warning/20"
+            >
+              Gestionar cuenta Syncfy →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -256,11 +279,15 @@ function BankRow({
               <> · {credential.last_sync_transactions} mov.</>
             )}
           </p>
-          {credential.last_status_message && credential.status !== 'active' && (
+          {credential.status === 'payment_required' ? (
+            <p className="mt-0.5 text-[11px] text-warning-deep">
+              Plan de Syncfy vencido — revisa tu cuenta en syncfy.com
+            </p>
+          ) : credential.last_status_message && credential.status !== 'active' ? (
             <p className="mt-0.5 text-[11px] text-debt">
               {credential.last_status_message}
             </p>
-          )}
+          ) : null}
         </div>
         {expanded ? (
           <IconChevronUp size={14} className="shrink-0 text-text-tertiary" />
