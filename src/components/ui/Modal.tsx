@@ -96,7 +96,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         ref={panelRef}
         tabIndex={-1}
         className={clsx(
-          'relative w-full max-w-[480px] rounded-t-2xl bg-bg-elevated p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+          'relative flex w-full max-w-[480px] max-h-[90dvh] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
           entered ? 'translate-y-0' : 'translate-y-full',
         )}
         onClick={(e) => e.stopPropagation()}
@@ -105,9 +105,10 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         aria-label={title}
       >
         {/* Drag handle */}
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-text-tertiary/40" />
+        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-text-tertiary/40" />
 
-        <div className="flex items-center justify-between pb-4">
+        {/* Fixed header — always visible above the fold */}
+        <div className="flex shrink-0 items-center justify-between px-5 pb-3 pt-3">
           <h2 className="text-lg font-semibold text-text">{title}</h2>
           <button
             type="button"
@@ -118,7 +119,11 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             <IconX size={18} />
           </button>
         </div>
-        {children}
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
+          {children}
+        </div>
       </div>
     </div>
   )

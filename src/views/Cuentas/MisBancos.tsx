@@ -28,6 +28,7 @@ export function MisBancos() {
   const toast = useToast()
   const [openConnect, setOpenConnect] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [syncingAll, setSyncingAll] = useState(false)
 
   const accountCountByCredential = useMemo(() => {
     const counts = new Map<string, number>()
@@ -40,6 +41,34 @@ export function MisBancos() {
   }, [accounts])
 
   const visible = credentials.filter((c) => c.status !== 'disabled')
+  const syncable = visible.filter((c) => c.status !== 'error')
+
+  async function onSyncAll() {
+    if (syncable.length === 0) return
+    setSyncingAll(true)
+    let totalTx = 0
+    const errors: string[] = []
+    for (const cred of syncable) {
+      try {
+        const result = await sync(cred.id)
+        totalTx += result.transactions
+      } catch {
+        errors.push(cred.institution_name)
+      }
+    }
+    setSyncingAll(false)
+    if (errors.length === 0) {
+      toast.success(
+        'Todos los bancos sincronizados',
+        totalTx > 0 ? `${totalTx} movimientos nuevos.` : 'Tus cuentas ya están al día.',
+      )
+    } else {
+      toast.error(
+        'Sincronización parcial',
+        `No se pudo sincronizar: ${errors.join(', ')}.`,
+      )
+    }
+  }
 
   async function onSync(cred: SyncfyCredential) {
     setBusyId(cred.id)
@@ -118,6 +147,19 @@ export function MisBancos() {
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-4">
+          {/* Sync all button */}
+          {syncable.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void onSyncAll()}
+              disabled={syncingAll || busyId !== null}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.25)] transition-all hover:bg-primary-deep active:scale-[0.98] disabled:opacity-60"
+            >
+              <IconRefresh size={16} className={syncingAll ? 'animate-spin' : ''} />
+              {syncingAll ? 'Sincronizando…' : 'Actualizar todos los bancos'}
+            </button>
+          )}
+
           <Card className="flex flex-col p-0">
             <ul className="divide-y divide-border">
               {visible.map((cred) => (
@@ -125,7 +167,7 @@ export function MisBancos() {
                   key={cred.id}
                   credential={cred}
                   accountCount={accountCountByCredential.get(cred.id) ?? 0}
-                  busy={busyId === cred.id}
+                  busy={busyId === cred.id || syncingAll}
                   onSync={() => void onSync(cred)}
                   onDisconnect={() => void onDisconnect(cred)}
                 />

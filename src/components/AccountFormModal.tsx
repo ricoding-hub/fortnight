@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { IconBuildingBank, IconCheck } from '@tabler/icons-react'
+import { IconBuildingBank, IconCheck, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
@@ -85,6 +85,7 @@ export function AccountFormModal({
   const isCredit = type === 'credit'
   const isSynced = mode.kind === 'edit' && mode.account.source === 'syncfy'
   const [submitError, setSubmitError] = useState(false)
+  const [logoPickerOpen, setLogoPickerOpen] = useState(false)
 
   const [color, setColor] = useState<string | null>(
     mode.kind === 'edit' ? mode.account.color : null,
@@ -220,97 +221,139 @@ export function AccountFormModal({
           />
         )}
 
-        {/* Logo picker */}
-        <div>
-          <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
-            Logo del banco
-          </p>
-          <div className="grid grid-cols-6 gap-1.5">
-            <button
-              type="button"
-              onClick={() => setLogoDomain(null)}
-              aria-label="Sin logo"
-              className={clsx(
-                'flex aspect-square items-center justify-center rounded-xl border-2 text-[10px] font-bold transition-all',
-                logoDomain === null
-                  ? 'border-primary bg-primary/8 text-primary'
-                  : 'border-transparent bg-bg-secondary text-text-tertiary',
+        {/* Logo + color picker (collapsible — favicons load only on demand) */}
+        <div className="rounded-2xl bg-bg-secondary/60">
+          <button
+            type="button"
+            onClick={() => setLogoPickerOpen((v) => !v)}
+            className="flex w-full items-center gap-3 px-3 py-2.5"
+          >
+            {/* Current logo preview */}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              {logoDomain ? (
+                <img
+                  src={bankLogoUrl(logoDomain)}
+                  alt=""
+                  className="h-6 w-6 object-contain"
+                />
+              ) : (
+                <IconBuildingBank size={18} className="text-text-tertiary" />
               )}
-            >
-              Ninguno
-            </button>
-            {BANK_PRESETS.map((bank) => {
-              const active = logoDomain === bank.domain
-              return (
+            </span>
+            <span className="flex-1 text-left">
+              <span className="block text-[13px] font-semibold text-text">
+                {logoDomain
+                  ? (BANK_PRESETS.find((b) => b.domain === logoDomain)?.name ?? logoDomain)
+                  : 'Sin logo de banco'}
+              </span>
+              {color && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-[11px] text-text-tertiary">Color seleccionado</span>
+                </span>
+              )}
+            </span>
+            {logoPickerOpen ? (
+              <IconChevronUp size={16} className="shrink-0 text-text-tertiary" />
+            ) : (
+              <IconChevronDown size={16} className="shrink-0 text-text-tertiary" />
+            )}
+          </button>
+
+          {logoPickerOpen && (
+            <div className="border-t border-border/60 px-3 pb-3 pt-2.5">
+              {/* Logo grid — images only render when picker is open */}
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
+                Logo del banco
+              </p>
+              <div className="grid grid-cols-7 gap-1.5">
                 <button
-                  key={bank.id}
                   type="button"
-                  onClick={() => {
-                    setLogoDomain(bank.domain)
-                    if (!color) setColor(bank.color)
-                  }}
-                  aria-label={bank.name}
-                  title={bank.name}
+                  onClick={() => setLogoDomain(null)}
+                  aria-label="Sin logo"
                   className={clsx(
-                    'relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border-2 bg-white transition-all',
-                    active
-                      ? 'border-primary shadow-[0_2px_8px_rgba(99,102,241,0.2)]'
-                      : 'border-transparent hover:border-border',
+                    'flex aspect-square items-center justify-center rounded-xl border-2 text-[9px] font-bold leading-tight transition-all',
+                    logoDomain === null
+                      ? 'border-primary bg-primary/8 text-primary'
+                      : 'border-transparent bg-bg-secondary text-text-tertiary',
                   )}
                 >
-                  <img
-                    src={bankLogoUrl(bank.domain)}
-                    alt={bank.name}
-                    className="h-7 w-7 object-contain"
-                    loading="lazy"
-                  />
-                  {active && (
-                    <span className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-white">
-                      <IconCheck size={9} stroke={3} />
-                    </span>
-                  )}
+                  Ninguno
                 </button>
-              )
-            })}
-          </div>
-        </div>
+                {BANK_PRESETS.map((bank) => {
+                  const active = logoDomain === bank.domain
+                  return (
+                    <button
+                      key={bank.id}
+                      type="button"
+                      onClick={() => {
+                        setLogoDomain(bank.domain)
+                        if (!color) setColor(bank.color)
+                      }}
+                      aria-label={bank.name}
+                      title={bank.name}
+                      className={clsx(
+                        'relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border-2 bg-white transition-all',
+                        active
+                          ? 'border-primary shadow-[0_2px_8px_rgba(99,102,241,0.2)]'
+                          : 'border-transparent hover:border-border',
+                      )}
+                    >
+                      <img
+                        src={bankLogoUrl(bank.domain)}
+                        alt={bank.name}
+                        className="h-6 w-6 object-contain"
+                      />
+                      {active && (
+                        <span className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-white">
+                          <IconCheck size={9} stroke={3} />
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
 
-        {/* Color picker */}
-        <div>
-          <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
-            Color de acento
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {COLOR_SWATCHES.map((swatch) => {
-              const active = color === swatch
-              return (
+              {/* Color swatches */}
+              <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
+                Color de acento
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {COLOR_SWATCHES.map((swatch) => {
+                  const active = color === swatch
+                  return (
+                    <button
+                      key={swatch}
+                      type="button"
+                      onClick={() => setColor(swatch)}
+                      aria-label={`Color ${swatch}`}
+                      className={clsx(
+                        'h-7 w-7 rounded-full border-2 transition-transform active:scale-95',
+                        active ? 'border-text shadow-[0_2px_6px_rgba(0,0,0,0.15)]' : 'border-transparent',
+                      )}
+                      style={{ backgroundColor: swatch }}
+                    />
+                  )
+                })}
                 <button
-                  key={swatch}
                   type="button"
-                  onClick={() => setColor(swatch)}
-                  aria-label={`Color ${swatch}`}
+                  onClick={() => setColor(null)}
+                  aria-label="Sin color"
                   className={clsx(
-                    'h-8 w-8 rounded-full border-2 transition-transform active:scale-95',
-                    active ? 'border-text shadow-[0_2px_6px_rgba(0,0,0,0.15)]' : 'border-transparent',
+                    'h-7 rounded-full border-2 px-2.5 text-[11px] font-bold transition-all',
+                    color === null
+                      ? 'border-primary bg-primary/8 text-primary'
+                      : 'border-border text-text-secondary',
                   )}
-                  style={{ backgroundColor: swatch }}
-                />
-              )
-            })}
-            <button
-              type="button"
-              onClick={() => setColor(null)}
-              aria-label="Sin color"
-              className={clsx(
-                'h-8 rounded-full border-2 px-3 text-[11px] font-bold transition-all',
-                color === null
-                  ? 'border-primary bg-primary/8 text-primary'
-                  : 'border-border text-text-secondary',
-              )}
-            >
-              Default
-            </button>
-          </div>
+                >
+                  Default
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {isCredit && (
