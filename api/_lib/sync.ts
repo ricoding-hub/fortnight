@@ -190,9 +190,7 @@ async function pullTransactions(
           (!tx.currency || tx.currency === 'MXN') &&
           !tx.is_deleted &&
           !tx.is_disable &&
-          !tx.is_pending &&
-          isFinite(Number(tx.amount)) &&
-          Number(tx.amount) !== 0,
+          isFinite(Number(tx.amount)),
       )
       .map((tx) => txToRow(tx, userId, account, categoryMap))
 
