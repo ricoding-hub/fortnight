@@ -14,7 +14,7 @@ const WIDGET_CSS =
 const WIDGET_JS =
   'https://www.syncfy.com/widget/v3/syncfy-authentication-widget.js'
 
-const CONTAINER_ID = 'syncfy-widget-root'
+export const CONTAINER_ID = 'syncfy-widget-root'
 const SCRIPT_TIMEOUT_MS = 15_000
 
 let scriptPromise: Promise<void> | null = null
@@ -71,21 +71,20 @@ export interface SyncfyWidgetInstance {
  * and clear innerHTML before every mount.
  */
 function ensureContainer(): string {
-  let div = document.getElementById(CONTAINER_ID)
-  if (!div) {
-    div = document.createElement('div')
-    div.id = CONTAINER_ID
-    // Prepend rather than append so the container always has a next sibling.
-    if (document.body.firstChild) {
-      document.body.insertBefore(div, document.body.firstChild)
-    } else {
-      document.body.appendChild(div)
-    }
-  }
-  // Safety net: if the user reconnects in the same session, the previous
-  // mount's residual DOM would confuse the constructor.
-  div.innerHTML = ''
+  // Always remove and recreate so the widget never inherits stale DOM or
+  // internal state from a previous session (cause of nextSibling crashes).
+  document.getElementById(CONTAINER_ID)?.remove()
+  const div = document.createElement('div')
+  div.id = CONTAINER_ID
+  // Must be prepended so #root (or whatever follows) is always the next
+  // sibling — the v3 widget dereferences nextSibling.parentNode internally.
+  document.body.insertBefore(div, document.body.firstChild)
   return `#${CONTAINER_ID}`
+}
+
+/** Removes the widget container and any DOM it may have leaked onto <body>. */
+export function destroyWidgetContainer(): void {
+  document.getElementById(CONTAINER_ID)?.remove()
 }
 
 /**

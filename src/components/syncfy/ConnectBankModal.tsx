@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/useToast'
 import { getSyncfyToken } from '@/lib/syncfy/api'
 import {
   openSyncfyWidget,
+  destroyWidgetContainer,
   type SyncfyWidgetCredential,
   type SyncfyWidgetInstance,
 } from '@/lib/syncfy/widget'
@@ -22,7 +23,10 @@ interface ConnectBankModalProps {
   onClose: () => void
 }
 
-type Phase = 'idle' | 'loading' | 'widget' | 'syncing' | 'done' | 'error'
+// connecting = widget dismissed, waiting for the async 'success' event.
+type Phase = 'idle' | 'loading' | 'widget' | 'connecting' | 'syncing' | 'done' | 'error'
+
+const CONNECTING_TIMEOUT_MS = 60_000
 
 /**
  * Bottom-sheet that walks the user through connecting a bank via the
@@ -30,8 +34,13 @@ type Phase = 'idle' | 'loading' | 'widget' | 'syncing' | 'done' | 'error'
  * the staging area: explains what happens, then on tap mounts the widget,
  * and shows progress while we register + import on the server.
  *
- * State machine: idle → loading → widget → syncing → done.
+ * State machine: idle → loading → widget → connecting → syncing → done.
  * Any step can transition to `error` with a recoverable retry.
+ *
+ * The `connecting` phase covers the gap between the widget UI closing and
+ * the async `success` event arriving — Syncfy dismisses its widget before
+ * the credential creation is confirmed, so the user would otherwise see
+ * the idle "Continuar" screen while the bank is still processing.
  */
 export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
   const toast = useToast()
@@ -41,28 +50,41 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
   const [summary, setSummary] = useState<{ accounts: number; transactions: number } | null>(null)
   const widgetRef = useRef<SyncfyWidgetInstance | null>(null)
   const cancelledRef = useRef(false)
+  const connectingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function clearConnectingTimer() {
+    if (connectingTimerRef.current !== null) {
+      clearTimeout(connectingTimerRef.current)
+      connectingTimerRef.current = null
+    }
+  }
 
   // Reset internal state whenever the modal closes — next open starts fresh.
   useEffect(() => {
     if (!open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPhase('idle')
       setSummary(null)
       setErrorMsg(null)
-      cancelledRef.current = false
-      // Force-close the widget if it was still up when the user dismissed us.
+      cancelledRef.current = true
+      clearConnectingTimer()
       try {
         widgetRef.current?.close()
       } catch {
         /* no-op */
       }
       widgetRef.current = null
+      // Remove widget container so no invisible DOM blocks interaction.
+      destroyWidgetContainer()
+      cancelledRef.current = false
     }
+    // clearConnectingTimer is a stable inline fn — not a dep
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const onSuccess = useCallback(
     async (cred: SyncfyWidgetCredential) => {
       if (cancelledRef.current) return
+      clearConnectingTimer()
       setPhase('syncing')
       try {
         const institutionName =
@@ -86,11 +108,13 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
         setPhase('error')
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [register, toast],
   )
 
   const startWidget = useCallback(async () => {
     cancelledRef.current = false
+    clearConnectingTimer()
     setErrorMsg(null)
     setPhase('loading')
     try {
@@ -102,15 +126,28 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
         onSuccess,
         onError: (err) => {
           if (cancelledRef.current) return
+          clearConnectingTimer()
           const message = err instanceof Error ? err.message : 'reintenta en unos segundos'
           setErrorMsg(message)
           setPhase('error')
         },
         onClose: () => {
-          // User dismissed the widget. If onSuccess already moved us forward
-          // (syncing / done / error), leave that phase alone.
           if (cancelledRef.current) return
-          setPhase((prev) => (prev === 'widget' ? 'idle' : prev))
+          // Widget UI closed — may be user cancel OR the bank is still
+          // processing credentials in the background. Transition to
+          // 'connecting' and wait for the 'success' event. A timeout
+          // surfaces an error if the bank never responds.
+          setPhase((prev) => (prev === 'widget' ? 'connecting' : prev))
+          connectingTimerRef.current = setTimeout(() => {
+            if (cancelledRef.current) return
+            setPhase((prev) => {
+              if (prev !== 'connecting') return prev
+              return 'error'
+            })
+            setErrorMsg(
+              'El banco tardó demasiado en responder. Verifica tus credenciales y reintenta.',
+            )
+          }, CONNECTING_TIMEOUT_MS)
         },
       })
     } catch (err) {
@@ -119,6 +156,7 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
       setErrorMsg(message)
       setPhase('error')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSuccess])
 
   // Cancel from any in-flight phase: mark cancelled, close any open widget,
@@ -127,18 +165,23 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
   // the credential half-registered.
   const cancelFlow = useCallback(() => {
     cancelledRef.current = true
+    clearConnectingTimer()
     try {
       widgetRef.current?.close()
     } catch {
       /* no-op */
     }
     widgetRef.current = null
+    destroyWidgetContainer()
     setPhase('idle')
     setErrorMsg(null)
+    // Re-enable callbacks for next attempt.
+    cancelledRef.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Block the modal's own close affordances while a non-cancellable phase
-  // is active (syncing). Pass-through otherwise.
+  // Block the modal's own close affordances only while syncing — that phase
+  // cannot be safely aborted. All other phases allow the user to walk away.
   const handleModalClose = useCallback(() => {
     if (phase === 'syncing') return
     onClose()
@@ -196,6 +239,13 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
           />
         )}
 
+        {phase === 'connecting' && (
+          <BusyState
+            label="Verificando credenciales con el banco…"
+            sublabel="Esto puede tardar hasta un minuto. No cierres la app."
+          />
+        )}
+
         {phase === 'syncing' && (
           <BusyState
             label="Importando cuentas y movimientos…"
@@ -203,7 +253,7 @@ export function ConnectBankModal({ open, onClose }: ConnectBankModalProps) {
           />
         )}
 
-        {(phase === 'loading' || phase === 'widget') && (
+        {(phase === 'loading' || phase === 'widget' || phase === 'connecting') && (
           <button
             type="button"
             onClick={cancelFlow}
