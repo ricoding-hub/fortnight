@@ -13,6 +13,8 @@ import {
   AccountFormModal,
   type AccountFormMode,
 } from '@/components/AccountFormModal'
+import { AddAccountChooserModal } from '@/components/AddAccountChooserModal'
+import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
@@ -102,6 +104,8 @@ export function MisCuentas() {
     move,
   } = useAccounts()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
+  const [chooserType, setChooserType] = useState<AccountType | null>(null)
+  const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const toast = useToast()
 
@@ -111,6 +115,19 @@ export function MisCuentas() {
     } catch {
       toast.error('Error', 'No se pudo reordenar la cuenta')
     }
+  }
+
+  function openChooser(type: AccountType) {
+    setChooserType(type)
+  }
+  function pickBank() {
+    setChooserType(null)
+    setBankModalOpen(true)
+  }
+  function pickManual() {
+    const type = chooserType ?? 'debit'
+    setChooserType(null)
+    setFormMode({ kind: 'create', type })
   }
 
   if (loading) {
@@ -145,7 +162,7 @@ export function MisCuentas() {
   const sectionProps = {
     onSaveBalance: updateBalance,
     onEditDetails: (account: Account) => setFormMode({ kind: 'edit', account }),
-    onAdd: (type: AccountType) => setFormMode({ kind: 'create', type }),
+    onAdd: openChooser,
     onMove: handleMove,
   }
 
@@ -199,7 +216,7 @@ export function MisCuentas() {
           action={
             <button
               type="button"
-              onClick={() => setFormMode({ kind: 'create', type: 'debit' })}
+              onClick={() => openChooser('debit')}
               className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-text-inverse shadow-card transition-all hover:bg-primary-deep active:scale-[0.97]"
             >
               <IconPlus size={16} /> Agregar cuenta
@@ -212,6 +229,19 @@ export function MisCuentas() {
           <Section title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
         </>
       )}
+
+      <AddAccountChooserModal
+        open={chooserType !== null}
+        type={chooserType ?? 'debit'}
+        onClose={() => setChooserType(null)}
+        onPickBank={pickBank}
+        onPickManual={pickManual}
+      />
+
+      <ConnectBankModal
+        open={bankModalOpen}
+        onClose={() => setBankModalOpen(false)}
+      />
 
       {formMode && (
         <AccountFormModal

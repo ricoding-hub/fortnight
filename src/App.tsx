@@ -8,6 +8,7 @@ import { AuthCallback } from '@/views/auth/AuthCallback'
 import { Resumen } from '@/views/Resumen'
 import { CuentasLayout } from '@/views/Cuentas'
 import { MisCuentas } from '@/views/Cuentas/MisCuentas'
+import { MisBancos } from '@/views/Cuentas/MisBancos'
 import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
 import { MisSuscripciones } from '@/views/Cuentas/MisSuscripciones'
 import { Movimientos } from '@/views/Movimientos'
@@ -71,6 +72,7 @@ export default function App() {
               <Route index element={<Navigate to="mis" replace />} />
               <Route path="mis" element={<MisCuentas />} />
               <Route path="movimientos" element={<Movimientos />} />
+              <Route path="bancos" element={<MisBancos />} />
               <Route path="suscripciones" element={<MisSuscripciones />} />
               <Route path="prestamos" element={<MisPrestamos />} />
             </Route>

@@ -55,13 +55,36 @@ export interface SyncfyWidgetInstance {
   on(event: string, cb: (...args: unknown[]) => void): void
 }
 
-/** Ensures the mount div exists and returns its CSS selector. */
+/**
+ * Ensures the mount div exists and returns its CSS selector.
+ *
+ * Two non-obvious requirements of the v3 widget:
+ *   1. The mount node MUST have a next sibling — internally it does
+ *      `parent.insertBefore(newNode, target.nextSibling)` and dereferences
+ *      `target.nextSibling.parentNode` somewhere, which blows up with
+ *      "null is not an object (evaluating 'e.nextSibling')" when the
+ *      container is body's last child.
+ *   2. Remounting into a non-empty container leaves stale DOM from the
+ *      previous session and triggers similar nullref crashes.
+ *
+ * We insert at the start of <body> (so `#root` becomes the next sibling)
+ * and clear innerHTML before every mount.
+ */
 function ensureContainer(): string {
-  if (!document.getElementById(CONTAINER_ID)) {
-    const div = document.createElement('div')
+  let div = document.getElementById(CONTAINER_ID)
+  if (!div) {
+    div = document.createElement('div')
     div.id = CONTAINER_ID
-    document.body.appendChild(div)
+    // Prepend rather than append so the container always has a next sibling.
+    if (document.body.firstChild) {
+      document.body.insertBefore(div, document.body.firstChild)
+    } else {
+      document.body.appendChild(div)
+    }
   }
+  // Safety net: if the user reconnects in the same session, the previous
+  // mount's residual DOM would confuse the constructor.
+  div.innerHTML = ''
   return `#${CONTAINER_ID}`
 }
 
@@ -123,6 +146,9 @@ export interface OpenSyncfyWidgetOptions {
 /**
  * Loads the widget if needed, mounts it into a dedicated container div,
  * registers callbacks via .on(), and calls open().
+ *
+ * Returns an instance whose `close()` also clears the container — needed
+ * because the widget itself doesn't always clean up after a dismissal.
  */
 export async function openSyncfyWidget(
   opts: OpenSyncfyWidgetOptions,
@@ -133,22 +159,40 @@ export async function openSyncfyWidget(
 
   const element = ensureContainer()
 
-  const instance = new Ctor({
-    token: opts.token,
-    element,
-    config: {
-      locale: 'es',
-      entrypoint: { country: 'MX' },
-      navigation: { displayStatusInToast: true },
-    },
-  })
+  let instance: SyncfyWidgetInstance
+  try {
+    instance = new Ctor({
+      token: opts.token,
+      element,
+      config: {
+        locale: 'es',
+        entrypoint: { country: 'MX' },
+        navigation: { displayStatusInToast: true },
+      },
+    })
+  } catch (err) {
+    // Clean the container so a retry has a fresh slate.
+    document.getElementById(CONTAINER_ID)?.replaceChildren()
+    throw err instanceof Error
+      ? err
+      : new Error('Falló la inicialización del widget')
+  }
 
   // Events registered via .on() after construction.
   // Note: close event name is "closed" in the v3 API.
   instance.on('success', (cred) => opts.onSuccess(cred as SyncfyWidgetCredential))
   instance.on('error', (err) => opts.onError?.(err))
-  instance.on('closed', () => opts.onClose?.())
+  instance.on('closed', () => {
+    // Defensive cleanup so reopening doesn't reuse stale internal state.
+    document.getElementById(CONTAINER_ID)?.replaceChildren()
+    opts.onClose?.()
+  })
 
-  instance.open()
+  try {
+    instance.open()
+  } catch (err) {
+    document.getElementById(CONTAINER_ID)?.replaceChildren()
+    throw err instanceof Error ? err : new Error('Falló la apertura del widget')
+  }
   return instance
 }

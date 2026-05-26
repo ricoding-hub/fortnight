@@ -31,7 +31,6 @@ import { useToast } from '@/hooks/useToast'
 import { Card } from '@/components/ui/Card'
 import { Richeto } from '@/components/Richeto'
 import { Confetti } from '@/components/Confetti'
-import { ConnectedBanksSection } from '@/components/syncfy/ConnectedBanksSection'
 import { supabase } from '@/lib/supabase'
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
 import { calculateScore } from '@/lib/score'
@@ -638,10 +637,6 @@ export function Profile() {
           })}
         </div>
       </div>
-
-      {/* ── Cuentas conectadas ── */}
-      <SectionHeader>Cuentas conectadas</SectionHeader>
-      <ConnectedBanksSection />
 
       {/* ── Cuenta ── */}
       <SectionHeader>Cuenta</SectionHeader>

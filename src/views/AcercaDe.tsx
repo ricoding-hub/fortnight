@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.2.9"
+            version="0.3.0"
             date="25 may 2026"
             current
+            notes={[
+              'Nuevo subtab Bancos en Cuentas: gestiona conexiones, sincroniza y desvincula desde un solo lugar',
+              'Widget de Syncfy: fix del crash "e.nextSibling" + limpieza entre intentos',
+              'Conectar banco ahora bloquea la app mientras carga y muestra un botón Cancelar explícito',
+              'Agregar cuenta abre un chooser: vincular banco o agregar manual',
+              'Bancos conectados sale del Perfil y vive en Cuentas',
+            ]}
+          />
+          <VersionRow
+            version="0.2.9"
+            date="25 may 2026"
             notes={[
               'Cuentas: reordena con el modo "Reordenar" y elige logo del banco + color de acento',
               'Movimientos: por defecto muestra los últimos 30 días; toca un movimiento para ver el detalle completo',

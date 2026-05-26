@@ -48,3 +48,15 @@ export function presetForDomain(domain: string | null | undefined): BankPreset |
   if (!domain) return undefined
   return BY_DOMAIN.get(domain)
 }
+
+/**
+ * Best-effort lookup by institution name (case-insensitive substring match).
+ * Used to render a logo for synced credentials when only the bank name is known.
+ */
+export function presetForInstitutionName(
+  name: string | null | undefined,
+): BankPreset | undefined {
+  if (!name) return undefined
+  const lower = name.toLowerCase()
+  return BANK_PRESETS.find((b) => lower.includes(b.name.toLowerCase()))
+}
