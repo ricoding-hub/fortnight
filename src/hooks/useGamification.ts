@@ -20,16 +20,6 @@ function nextLevelXP(level: number): number {
   return LEVEL_XP[level] ?? LEVEL_XP[LEVEL_XP.length - 1] * 2
 }
 
-function computeStreak(current: number, lastDate: string | null): { streak: number; date: string } {
-  const today = new Date().toISOString().slice(0, 10)
-  if (!lastDate) return { streak: 1, date: today }
-  if (lastDate === today) return { streak: current, date: today }
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yStr = yesterday.toISOString().slice(0, 10)
-  if (lastDate === yStr) return { streak: current + 1, date: today }
-  return { streak: 1, date: today }
-}
 
 const EMPTY: UserGamification = {
   user_id: '',
@@ -114,23 +104,24 @@ export function useGamification() {
     const current = dataRef.current
     const newXP = current.xp + amount
     const newLevel = xpToLevel(newXP)
-    const { streak, date } = computeStreak(current.streak_days, current.last_activity_date)
+    const now = new Date().toISOString()
 
+    // Only update XP + level — streak/last_activity_date are owned by the
+    // server trigger (award_xp_on_transaction). Writing them here from a
+    // potentially-stale client snapshot would overwrite the correct value.
     const patch: Partial<UserGamification> = {
       xp: newXP,
       level: newLevel,
-      streak_days: streak,
-      last_activity_date: date,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     }
 
-    // Optimistic update
     setData((prev) => ({ ...prev, ...patch }))
 
     try {
       await supabase
         .from('user_gamification')
-        .upsert({ user_id: user.id, ...patch })
+        .update(patch)
+        .eq('user_id', user.id)
     } catch {
       // Revert on failure — next realtime event will correct state
     }

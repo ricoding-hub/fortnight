@@ -4,10 +4,12 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconBolt,
+  IconCalendarEvent,
   IconCash,
   IconChevronDown,
   IconChevronRight,
   IconCreditCard,
+  IconInfoCircle,
   IconLink,
   IconRocket,
   IconShoppingBag,
@@ -23,6 +25,7 @@ import { useCategories } from '@/hooks/useCategories'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
+import { useInstallments } from '@/hooks/useInstallments'
 import { Card } from '@/components/ui/Card'
 import { PlanChart } from '@/components/PlanChart'
 import { Richeto } from '@/components/Richeto'
@@ -60,9 +63,16 @@ export function Proyeccion() {
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
+  const { active: activeInstallments } = useInstallments()
+
   const subsMonthly = useMemo(
     () => subs.filter((s) => s.active).reduce((sum, s) => sum + subMonthlyAmount(s.amount, s.frequency), 0),
     [subs],
+  )
+
+  const installmentsMonthly = useMemo(
+    () => activeInstallments.reduce((sum, i) => sum + Number(i.monthly_amount), 0),
+    [activeInstallments],
   )
 
   // Plan-derived fixed/variable/disposable. Source of truth = the live budget
@@ -74,20 +84,16 @@ export function Proyeccion() {
   )
   const { fixedFromPlan, variableFromPlan, disposable } = useMemo(() => {
     if (!plan || monthlyIncome <= 0) {
-      // Fallback to user_config estimate only when the plan isn't loaded yet.
       const fallbackFixed = config?.fixed_monthly ?? 0
       const fallbackVariable = config?.variable_monthly ?? 0
       return {
         fixedFromPlan: fallbackFixed,
         variableFromPlan: fallbackVariable,
-        disposable: monthlyIncome - fallbackFixed - fallbackVariable - subsMonthly,
+        disposable: monthlyIncome - fallbackFixed - fallbackVariable - subsMonthly - installmentsMonthly,
       }
     }
     const needs = plan.buckets.find((b) => b.slug === 'needs')
     const wants = plan.buckets.find((b) => b.slug === 'wants')
-    // The "Suscripciones" item lives inside the wants bucket — we already show
-    // real subs as its own line, so subtract its planned amount from wants to
-    // avoid double-counting.
     const subsItem = wants?.items.find(
       (it) => subsCategoryId !== null && it.category_id === subsCategoryId,
     )
@@ -97,9 +103,9 @@ export function Proyeccion() {
     return {
       fixedFromPlan: fixed,
       variableFromPlan: variable,
-      disposable: monthlyIncome - fixed - variable - subsMonthly,
+      disposable: monthlyIncome - fixed - variable - subsMonthly - installmentsMonthly,
     }
-  }, [plan, monthlyIncome, config, subsMonthly, subsCategoryId])
+  }, [plan, monthlyIncome, config, subsMonthly, installmentsMonthly, subsCategoryId])
 
   const fixedMonthly = fixedFromPlan
   const variableMonthly = variableFromPlan
@@ -336,6 +342,7 @@ export function Proyeccion() {
             icon={IconBolt}
             color="#2A4BFF"
             label="Fijos"
+            sub="del presupuesto de necesidades"
             value={`−${fmtMoney(fixedMonthly)}`}
             onClick={() => navigate('/plan/presupuesto')}
           />
@@ -344,13 +351,22 @@ export function Proyeccion() {
             color="#9B7BFF"
             label="Suscripciones"
             value={`−${fmtMoney(subsMonthly)}`}
-            sub={`${subs.filter((s) => s.active).length} activa${subs.filter((s) => s.active).length === 1 ? '' : 's'}`}
+            sub={`${subs.filter((s) => s.active).length} activa${subs.filter((s) => s.active).length === 1 ? '' : 's'} · ya excluidas de variables`}
             onClick={() => navigate('/cuentas/suscripciones')}
           />
+          {installmentsMonthly > 0 && (
+            <BreakdownRow
+              icon={IconCalendarEvent}
+              color="#6366F1"
+              label="Meses sin intereses"
+              value={`−${fmtMoney(installmentsMonthly)}`}
+              sub={`${activeInstallments.length} activo${activeInstallments.length === 1 ? '' : 's'}`}
+            />
+          )}
           <BreakdownRow
             icon={IconShoppingBag}
             color="#FF8A65"
-            label="Variables estimados"
+            label="Variables (plan)"
             value={`−${fmtMoney(variableMonthly)}`}
           />
           <div className="my-1 h-px bg-border" />
@@ -363,6 +379,9 @@ export function Proyeccion() {
             bold
           />
         </div>
+
+        {/* ¿Cómo se calcula? collapsed section */}
+        <HowCalcSection />
       </Card>
 
       {/* Si aportas más */}
@@ -563,6 +582,51 @@ function BalanceBreakdownCard({ accounts }: { accounts: Account[] }) {
         </div>
       )}
     </Card>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* HowCalcSection — collapsed explanation for the disposable formula   */
+/* ------------------------------------------------------------------ */
+
+function HowCalcSection() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2 border-t border-border pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 py-1 text-left"
+      >
+        <IconInfoCircle size={13} className="shrink-0 text-text-tertiary" />
+        <span className="flex-1 text-[11.5px] font-semibold text-text-tertiary">
+          ¿Cómo se calcula?
+        </span>
+        <IconChevronDown
+          size={13}
+          className={clsx(
+            'shrink-0 text-text-tertiary transition-transform duration-200',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded-xl bg-bg-secondary px-3 py-2.5 text-[11.5px] leading-relaxed text-text-secondary">
+          <p>
+            <b className="text-text">Fijos</b> = % necesidades × ingreso.
+          </p>
+          <p className="mt-1">
+            <b className="text-text">Variables (plan)</b> = % deseos × ingreso − suscripciones planeadas.
+          </p>
+          <p className="mt-1">
+            Las <b className="text-text">suscripciones</b> se listan por separado para no contarse dos veces con las variables.
+          </p>
+          <p className="mt-1">
+            Los <b className="text-text">meses sin intereses</b> se restan del disponible porque son compromisos fijos mensuales.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 

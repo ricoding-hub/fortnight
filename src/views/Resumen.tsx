@@ -23,6 +23,8 @@ import { useGoals } from '@/hooks/useGoals'
 import { useGamification } from '@/hooks/useGamification'
 import { useScoreHistory } from '@/hooks/useScoreHistory'
 import { useMissions } from '@/hooks/useMissions'
+import { useConfig } from '@/hooks/useConfig'
+import { useSubscriptions } from '@/hooks/useSubscriptions'
 
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -39,6 +41,8 @@ import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
 import { useNotifications } from '@/hooks/useNotifications'
+import { computePaydays, fmtPayday } from '@/lib/paydays'
+import type { PayFreq } from '@/lib/paydays'
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
@@ -58,12 +62,14 @@ export function Resumen() {
   const [scoreOpen, setScoreOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
-  const { active: activeLoans } = useLoans()
+  const { active: activeLoans, data: allLoans } = useLoans()
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, nextLevelXP, levelProgress } = useGamification()
   const { unreadCount } = useNotifications()
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
+  const { data: config } = useConfig()
+  const { data: subs } = useSubscriptions()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   /* --------------------------------- derived */
@@ -82,15 +88,23 @@ export function Resumen() {
   const porCobrar = activeLoans.reduce((s, l) => s + l.amount, 0)
   const net = debitTotal - creditDebt
 
-  // 7-day trend — sum of signed amounts on transactions in the last 7 days.
+  // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 7)
     const cutoffISO = cutoff.toISOString().slice(0, 10)
     return recentTx
-      .filter((t) => t.date >= cutoffISO && t.type === 'transaction')
+      .filter((t) => t.date >= cutoffISO && (t.type === 'transaction' || t.type === 'adjustment'))
       .reduce((s, t) => s + Number(t.amount), 0)
   }, [recentTx])
+
+  // Next payday chip
+  const nextPayday = useMemo(() => {
+    if (!config?.pay_reference || !config?.pay_freq) return null
+    const ref = new Date(config.pay_reference + 'T12:00:00')
+    const days = computePaydays(ref, config.pay_freq as PayFreq, 1)
+    return days[0] ?? null
+  }, [config])
 
   // ── Score V2: blends balance sheet + behavioural signals from the last 30 days
   const { monthlyIncome, monthlyExpense } = useMemo(() => {
@@ -190,12 +204,24 @@ export function Resumen() {
         return acc?.type === 'credit' && Number(t.amount) < 0
       })
       .reduce((s, t) => s + -Number(t.amount), 0)
+    const weekAdjustmentCount = recentTx.filter(
+      (t) => t.date >= cutoffISO && t.type === 'adjustment',
+    ).length
+    const weekCategorizedTxCount = weekTx.filter((t) => t.category_id != null).length
+    const loanPaidThisWeek = allLoans.some(
+      (l) => l.paid_at != null && l.paid_at.slice(0, 10) >= cutoffISO,
+    )
     return {
       weekTxCount: weekTx.length,
       score,
       weekDebtPayments,
+      weekAdjustmentCount,
+      hasActiveLoan: activeLoans.length > 0,
+      hasActiveSubscription: subs.some((s) => s.active),
+      loanPaidThisWeek,
+      weekCategorizedTxCount,
     }
-  }, [recentTx, accounts, score])
+  }, [recentTx, accounts, score, allLoans, activeLoans, subs])
 
   const { missions } = useMissions(missionCtx)
 
@@ -371,9 +397,17 @@ export function Resumen() {
           >
             {formatMXN(net)}
           </p>
-          <p className="relative mt-1 text-[11.5px] font-medium text-white/55">
-            activos − deuda total
-          </p>
+          <div className="relative mt-1 flex items-center gap-3">
+            <p className="text-[11.5px] font-medium text-white/55">
+              activos − deuda total
+            </p>
+            {nextPayday && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75 backdrop-blur-sm">
+                <IconCalendarEvent size={10} stroke={2} />
+                Cobro: {fmtPayday(nextPayday)}
+              </span>
+            )}
+          </div>
 
           {/* Stacked split bar */}
           <div className="relative mt-4">

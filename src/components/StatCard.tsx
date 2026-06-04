@@ -13,33 +13,38 @@ interface StatCardProps {
   trend?: string
 }
 
-const toneStyles: Record<string, { value: string; icon: string; accent: string }> = {
+const toneStyles: Record<string, { value: string; icon: string; topBar: string; bg: string }> = {
   asset: {
     value: 'text-asset-deep',
     icon: 'bg-asset-soft text-asset-deep',
-    accent: 'border-l-asset',
+    topBar: 'bg-asset',
+    bg: 'bg-asset-soft/20',
   },
   debt: {
     value: 'text-debt-deep',
     icon: 'bg-debt-soft text-debt-deep',
-    accent: 'border-l-debt',
+    topBar: 'bg-debt',
+    bg: 'bg-debt-soft/20',
   },
   primary: {
     value: 'text-primary-deep',
     icon: 'bg-primary-soft text-primary-deep',
-    accent: 'border-l-primary',
+    topBar: 'bg-primary',
+    bg: 'bg-primary-soft/15',
   },
   accent: {
     value: 'text-lavender-deep',
     icon: 'bg-lavender-soft text-lavender-deep',
-    accent: 'border-l-lavender',
+    topBar: 'bg-lavender',
+    bg: 'bg-lavender-soft/15',
   },
 }
 
 const neutralStyle = {
   value: 'text-text',
   icon: 'bg-bg-secondary text-text-secondary',
-  accent: 'border-l-border-strong',
+  topBar: 'bg-border-strong',
+  bg: '',
 }
 
 /** Compact labelled figure used in the Resumen and Proyección stat grids. */
@@ -50,8 +55,9 @@ export function StatCard({ label, value, tone, icon: IconComponent, trend }: Sta
     <Card
       variant="stat"
       glow={tone === 'asset' ? 'asset' : tone === 'debt' ? 'debt' : tone === 'primary' ? 'primary' : undefined}
-      className={clsx('relative border-l-[3px] p-3.5', styles.accent)}
+      className={clsx('relative overflow-hidden p-3.5', styles.bg)}
     >
+      <div className={clsx('absolute inset-x-0 top-0 h-[3px] rounded-t-xl', styles.topBar)} />
       <div className="flex items-start gap-3">
         {IconComponent && (
           <div

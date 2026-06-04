@@ -148,24 +148,57 @@ export function useGoals() {
 
   async function create(g: NewGoal): Promise<void> {
     if (!user) throw new Error('Not authenticated')
+    const tempId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const today = now.slice(0, 10)
+    const optimistic: Goal = {
+      id: tempId,
+      user_id: user.id,
+      saved: 0,
+      is_debt: false,
+      is_primary: false,
+      linked_account_ids: [],
+      created_at: now,
+      started_at: today,
+      deadline: g.deadline ?? null,
+      icon: g.icon ?? null,
+      color: g.color ?? null,
+      monthly: g.monthly,
+      target: g.target,
+      name: g.name,
+    }
+    setData((prev) => [...prev, optimistic])
     const { error: err } = await supabase.from('goals').insert({
       user_id: user.id,
       saved: 0,
       is_debt: false,
-      started_at: new Date().toISOString().slice(0, 10),
+      started_at: today,
       ...g,
     })
-    if (err) throw err
+    if (err) {
+      setData((prev) => prev.filter((goal) => goal.id !== tempId))
+      throw err
+    }
   }
 
   async function update(id: string, patch: Partial<NewGoal>): Promise<void> {
+    const prev = data.find((g) => g.id === id)
+    setData((cur) => cur.map((g) => (g.id === id ? { ...g, ...patch } : g)))
     const { error: err } = await supabase.from('goals').update(patch).eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => cur.map((g) => (g.id === id ? prev : g)))
+      throw err
+    }
   }
 
   async function remove(id: string): Promise<void> {
+    const prev = data.find((g) => g.id === id)
+    setData((cur) => cur.filter((g) => g.id !== id))
     const { error: err } = await supabase.from('goals').delete().eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => [...cur, prev])
+      throw err
+    }
   }
 
   async function linkAccount(goalId: string, accountId: string): Promise<void> {

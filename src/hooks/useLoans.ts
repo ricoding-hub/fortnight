@@ -65,31 +65,61 @@ export function useLoans() {
 
   async function create(loan: NewLoan) {
     if (!user) throw new Error('Not authenticated')
+    const tempId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const optimistic: Loan = {
+      id: tempId,
+      user_id: user.id,
+      notes: loan.notes ?? null,
+      paid_at: null,
+      created_at: now,
+      ...loan,
+    }
+    setData((prev) => [optimistic, ...prev])
     const { error: err } = await supabase
       .from('loans')
       .insert({ ...loan, user_id: user.id })
-    if (err) throw err
+    if (err) {
+      setData((prev) => prev.filter((l) => l.id !== tempId))
+      throw err
+    }
   }
 
   async function update(id: string, patch: LoanPatch) {
+    const prev = data.find((l) => l.id === id)
+    setData((cur) => cur.map((l) => (l.id === id ? { ...l, ...patch } : l)))
     const { error: err } = await supabase
       .from('loans')
       .update(patch)
       .eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => cur.map((l) => (l.id === id ? prev : l)))
+      throw err
+    }
   }
 
   async function markPaid(id: string) {
+    const paidAt = new Date().toISOString()
+    const prev = data.find((l) => l.id === id)
+    setData((cur) => cur.map((l) => (l.id === id ? { ...l, paid_at: paidAt } : l)))
     const { error: err } = await supabase
       .from('loans')
-      .update({ paid_at: new Date().toISOString() })
+      .update({ paid_at: paidAt })
       .eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => cur.map((l) => (l.id === id ? prev : l)))
+      throw err
+    }
   }
 
   async function deleteLoan(id: string) {
+    const prev = data.find((l) => l.id === id)
+    setData((cur) => cur.filter((l) => l.id !== id))
     const { error: err } = await supabase.from('loans').delete().eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => [prev, ...cur])
+      throw err
+    }
   }
 
   return {

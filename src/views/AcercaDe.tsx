@@ -122,14 +122,18 @@ export function AcercaDe() {
         <Card className="flex flex-col gap-3">
           <VersionRow
             version="0.3.0"
-            date="25 may 2026"
+            date="4 jun 2026"
             current
             notes={[
-              'Nuevo subtab Bancos en Cuentas: gestiona conexiones, sincroniza y desvincula desde un solo lugar',
-              'Widget de Syncfy: fix del crash "e.nextSibling" + limpieza entre intentos',
-              'Conectar banco ahora bloquea la app mientras carga y muestra un botón Cancelar explícito',
-              'Agregar cuenta abre un chooser: vincular banco o agregar manual',
-              'Bancos conectados sale del Perfil y vive en Cuentas',
+              'Optimistic updates: crear/editar/eliminar cuentas, movimientos, préstamos y metas se refleja al instante',
+              'Balance neto: la tendencia de 7 días ahora incluye ajustes de saldo',
+              'Meses sin intereses (MSI): registra gastos a meses con progreso y monto mensual',
+              'Correo de vencimiento: se envía automáticamente cada día vía cron de Vercel',
+              'Misiones ampliadas: 9 misiones nuevas (categorizar, ajustar, préstamos, score, etc.)',
+              'Próxima fecha de cobro en el hero de balance',
+              'StatCards: barra superior de color en lugar de borde lateral',
+              'Proyección: desglose de gastos con etiquetas claras y sección explicativa',
+              'Fix: racha de días ya no se sobreescribe al reclamar misiones',
             ]}
           />
           <VersionRow

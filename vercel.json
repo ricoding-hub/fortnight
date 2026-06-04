@@ -3,6 +3,9 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "crons": [
+    { "path": "/api/cron/payment-alerts", "schedule": "0 15 * * *" }
+  ],
   "rewrites": [
     { "source": "/((?!api|assets|icons|favicon|manifest).*)", "destination": "/index.html" }
   ],

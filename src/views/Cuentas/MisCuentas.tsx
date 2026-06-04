@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  IconCalendarEvent,
   IconPlus,
   IconWallet,
   IconArrowsLeftRight,
@@ -11,6 +12,7 @@ import {
 } from '@tabler/icons-react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
+import { useInstallments } from '@/hooks/useInstallments'
 import { AccountCard } from '@/components/AccountCard'
 import {
   AccountFormModal,
@@ -18,6 +20,8 @@ import {
 } from '@/components/AccountFormModal'
 import { AddAccountChooserModal } from '@/components/AddAccountChooserModal'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
+import { InstallmentCard } from '@/components/InstallmentCard'
+import { InstallmentFormModal } from '@/components/InstallmentFormModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
@@ -107,11 +111,13 @@ export function MisCuentas() {
     move,
   } = useAccounts()
   const { data: credentials, sync } = useSyncedCredentials()
+  const { data: installments, markMonthPaid, remove: removeInstallment, create: createInstallment } = useInstallments()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
   const [chooserType, setChooserType] = useState<AccountType | null>(null)
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
+  const [installmentFormOpen, setInstallmentFormOpen] = useState(false)
   const toast = useToast()
 
   const syncableCredentials = credentials.filter((c) => c.status !== 'disabled' && c.status !== 'error')
@@ -288,8 +294,58 @@ export function MisCuentas() {
               </Link>
             </div>
           )}
+
+          {/* Meses sin intereses */}
+          <section className="px-4 pb-2 pt-2">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">
+                Meses sin intereses
+              </h2>
+              <button
+                type="button"
+                onClick={() => setInstallmentFormOpen(true)}
+                className="flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-bold text-primary-deep transition-colors active:scale-95"
+              >
+                <IconPlus size={12} stroke={2.5} /> Agregar
+              </button>
+            </div>
+            {installments.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setInstallmentFormOpen(true)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-3 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
+              >
+                <IconCalendarEvent size={15} />
+                Registrar gasto a meses
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {installments.map((inst) => (
+                  <InstallmentCard
+                    key={inst.id}
+                    installment={inst}
+                    onMarkPaid={() => void markMonthPaid(inst.id).catch(() => toast.error('Error', 'No se pudo actualizar'))}
+                    onDelete={() => void removeInstallment(inst.id).catch(() => toast.error('Error', 'No se pudo eliminar'))}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setInstallmentFormOpen(true)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
+                >
+                  <IconPlus size={16} /> Agregar otro
+                </button>
+              </div>
+            )}
+          </section>
         </>
       )}
+
+      <InstallmentFormModal
+        open={installmentFormOpen}
+        onClose={() => setInstallmentFormOpen(false)}
+        onSubmit={createInstallment}
+      />
 
       <AddAccountChooserModal
         open={chooserType !== null}

@@ -69,28 +69,64 @@ export function useAccounts() {
 
   async function create(account: NewAccount) {
     if (!user) throw new Error('Not authenticated')
-    // New accounts go to the end of the list.
     const maxSort = data.reduce(
       (max, a) => ((a.sort_order ?? 0) > max ? (a.sort_order ?? 0) : max),
       0,
     )
+    const tempId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const optimistic: Account = {
+      id: tempId,
+      user_id: user.id,
+      sort_order: maxSort + 1,
+      credit_limit: null,
+      cut_day: null,
+      payment_due_day: null,
+      payment_grace_days: null,
+      color: null,
+      logo_domain: null,
+      source: 'manual',
+      syncfy_credential_id: null,
+      external_id: null,
+      institution_name: null,
+      last_synced_at: null,
+      created_at: now,
+      updated_at: now,
+      balance: account.balance ?? 0,
+      ...account,
+    }
+    setData((prev) => [...prev, optimistic])
     const { error: err } = await supabase
       .from('accounts')
       .insert({ ...account, user_id: user.id, sort_order: maxSort + 1 })
-    if (err) throw err
+    if (err) {
+      setData((prev) => prev.filter((a) => a.id !== tempId))
+      throw err
+    }
   }
 
   async function update(id: string, patch: AccountPatch) {
+    const prev = data.find((a) => a.id === id)
+    const now = new Date().toISOString()
+    setData((cur) => cur.map((a) => (a.id === id ? { ...a, ...patch, updated_at: now } : a)))
     const { error: err } = await supabase
       .from('accounts')
-      .update({ ...patch, updated_at: new Date().toISOString() })
+      .update({ ...patch, updated_at: now })
       .eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => cur.map((a) => (a.id === id ? prev : a)))
+      throw err
+    }
   }
 
   async function deleteAccount(id: string) {
+    const prev = data.find((a) => a.id === id)
+    setData((cur) => cur.filter((a) => a.id !== id))
     const { error: err } = await supabase.from('accounts').delete().eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => [...cur, prev].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)))
+      throw err
+    }
   }
 
   /**

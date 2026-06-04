@@ -1,10 +1,26 @@
-import { IconFlame, IconTarget, IconRocket, type Icon } from '@tabler/icons-react'
+import {
+  IconAdjustments,
+  IconBuildingBank,
+  IconCalendarCheck,
+  IconFlame,
+  IconRocket,
+  IconStar,
+  IconTag,
+  IconTarget,
+  IconWriting,
+  type Icon,
+} from '@tabler/icons-react'
 
 /** Inputs that drive mission-progress calculation each render. */
 export interface MissionContext {
   weekTxCount: number
   score: number
   weekDebtPayments: number
+  weekAdjustmentCount: number
+  hasActiveLoan: boolean
+  hasActiveSubscription: boolean
+  loanPaidThisWeek: boolean
+  weekCategorizedTxCount: number
 }
 
 export interface MissionDef {
@@ -35,6 +51,28 @@ export const MISSION_CATALOG: MissionDef[] = [
     }),
   },
   {
+    id: 'log-5',
+    title: 'Registra 5 gastos esta semana',
+    reward: 35,
+    icon: IconWriting,
+    color: '#FF8A65',
+    progress: ({ weekTxCount }) => ({
+      current: Math.min(weekTxCount, 5),
+      total: 5,
+    }),
+  },
+  {
+    id: 'log-10',
+    title: 'Registra 10 gastos esta semana',
+    reward: 60,
+    icon: IconFlame,
+    color: '#F59E0B',
+    progress: ({ weekTxCount }) => ({
+      current: Math.min(weekTxCount, 10),
+      total: 10,
+    }),
+  },
+  {
     id: 'score-up',
     title: 'Mantén tu score en 5+',
     reward: 50,
@@ -42,6 +80,17 @@ export const MISSION_CATALOG: MissionDef[] = [
     color: '#2A4BFF',
     progress: ({ score }) => ({
       current: score >= 5 ? 1 : 0,
+      total: 1,
+    }),
+  },
+  {
+    id: 'score-7',
+    title: 'Mantén tu score financiero en 7+',
+    reward: 75,
+    icon: IconStar,
+    color: '#9B7BFF',
+    progress: ({ score }) => ({
+      current: score >= 7 ? 1 : 0,
       total: 1,
     }),
   },
@@ -54,6 +103,61 @@ export const MISSION_CATALOG: MissionDef[] = [
     progress: ({ weekDebtPayments }) => ({
       current: weekDebtPayments > 0 ? 1 : 0,
       total: 1,
+    }),
+  },
+  {
+    id: 'adjust-balance',
+    title: 'Ajusta el saldo de una cuenta',
+    reward: 10,
+    icon: IconAdjustments,
+    color: '#10B981',
+    progress: ({ weekAdjustmentCount }) => ({
+      current: Math.min(weekAdjustmentCount, 1),
+      total: 1,
+    }),
+  },
+  {
+    id: 'add-loan',
+    title: 'Registra un préstamo',
+    reward: 15,
+    icon: IconBuildingBank,
+    color: '#2A4BFF',
+    progress: ({ hasActiveLoan }) => ({
+      current: hasActiveLoan ? 1 : 0,
+      total: 1,
+    }),
+  },
+  {
+    id: 'pay-loan',
+    title: 'Marca un préstamo como pagado',
+    reward: 40,
+    icon: IconCalendarCheck,
+    color: '#10B981',
+    progress: ({ loanPaidThisWeek }) => ({
+      current: loanPaidThisWeek ? 1 : 0,
+      total: 1,
+    }),
+  },
+  {
+    id: 'add-sub',
+    title: 'Agrega una suscripción activa',
+    reward: 20,
+    icon: IconTag,
+    color: '#6366F1',
+    progress: ({ hasActiveSubscription }) => ({
+      current: hasActiveSubscription ? 1 : 0,
+      total: 1,
+    }),
+  },
+  {
+    id: 'categorize-3',
+    title: 'Categoriza 3 movimientos esta semana',
+    reward: 25,
+    icon: IconTag,
+    color: '#F59E0B',
+    progress: ({ weekCategorizedTxCount }) => ({
+      current: Math.min(weekCategorizedTxCount, 3),
+      total: 3,
     }),
   },
 ]

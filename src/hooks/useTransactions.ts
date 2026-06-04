@@ -79,6 +79,22 @@ export function useTransactions(filters: TransactionFilters = {}) {
 
   async function create(tx: NewTransaction) {
     if (!user) throw new Error('Not authenticated')
+    const tempId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const row: Transaction = {
+      id: tempId,
+      user_id: user.id,
+      account_id: tx.account_id,
+      amount: tx.amount,
+      category_id: tx.category_id ?? null,
+      description: tx.description ?? null,
+      type: tx.type ?? 'transaction',
+      date: tx.date ?? now.slice(0, 10),
+      created_at: now,
+      source: 'manual',
+      external_id: null,
+    }
+    setData((prev) => [row, ...prev])
     const { error: err } = await supabase.from('transactions').insert({
       user_id: user.id,
       account_id: tx.account_id,
@@ -86,17 +102,25 @@ export function useTransactions(filters: TransactionFilters = {}) {
       category_id: tx.category_id ?? null,
       description: tx.description ?? null,
       type: tx.type ?? 'transaction',
-      date: tx.date ?? new Date().toISOString().slice(0, 10),
+      date: tx.date ?? now.slice(0, 10),
     })
-    if (err) throw err
+    if (err) {
+      setData((prev) => prev.filter((t) => t.id !== tempId))
+      throw err
+    }
   }
 
   async function deleteTransaction(id: string) {
+    const prev = data.find((t) => t.id === id)
+    setData((cur) => cur.filter((t) => t.id !== id))
     const { error: err } = await supabase
       .from('transactions')
       .delete()
       .eq('id', id)
-    if (err) throw err
+    if (err) {
+      if (prev) setData((cur) => [prev, ...cur])
+      throw err
+    }
   }
 
   return {

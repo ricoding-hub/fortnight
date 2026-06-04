@@ -280,3 +280,18 @@ export interface Notification {
   email_sent: boolean
   created_at: string
 }
+
+export interface Installment {
+  id: string
+  user_id: string
+  account_id: string | null
+  name: string
+  total_amount: number
+  monthly_amount: number
+  months_total: number
+  months_paid: number
+  start_date: string
+  status: 'active' | 'paid'
+  created_at: string
+  updated_at: string
+}
