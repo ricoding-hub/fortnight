@@ -5,9 +5,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronRight,
-  IconDots,
   IconEdit,
-  IconPlus,
   IconTrash,
   IconUsers,
 } from '@tabler/icons-react'
@@ -16,6 +14,7 @@ import clsx from 'clsx'
 import { useLoans, loanRemaining, type NewLoan } from '@/hooks/useLoans'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useToast } from '@/hooks/useToast'
+import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -26,7 +25,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { StatCard } from '@/components/StatCard'
-import { formatMXN } from '@/lib/format'
+import { formatMXN, formatDateGroupMX } from '@/lib/format'
 import type { Loan, LoanDirection, LoanPayment } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,6 +50,18 @@ function nameColorClass(name: string): string {
     hash = (hash * 31 + name.charCodeAt(i)) % AVATAR_COLORS.length
   }
   return AVATAR_COLORS[Math.abs(hash)]
+}
+
+function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
+  if (loan.paid_at) return `Saldado el ${formatDateGroupMX(loan.paid_at)}`
+  const last = payments[payments.length - 1]
+  if (last) return `Último abono ${formatDateGroupMX(last.created_at)}`
+  return `Desde el ${formatDateGroupMX(loan.created_at)}`
+}
+
+function loanActivityKey(loan: Loan, payments: LoanPayment[]): string {
+  const lastPay = payments.length > 0 ? payments[payments.length - 1].created_at : ''
+  return loan.paid_at ?? (lastPay > loan.created_at ? lastPay : loan.created_at)
 }
 
 interface ContactGroup {
@@ -80,13 +91,14 @@ function LoanRow({
   onDelete: () => void
   onUnmarkPaid: () => void
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const remaining = loanRemaining(loan, payments)
   const hasPayments = payments.length > 0
   const paidPercent =
     Number(loan.amount) > 0
       ? Math.round((1 - remaining / Number(loan.amount)) * 100)
       : 0
+  const dateHint = loanDateHint(loan, payments)
+  const showRemaining = !isPaidSection && hasPayments && remaining < Number(loan.amount)
 
   return (
     <div className="py-3">
@@ -120,21 +132,34 @@ function LoanRow({
               {loan.notes}
             </p>
           )}
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
-            <span
-              className={clsx(
-                'text-sm font-bold tabular-nums',
-                isPaidSection ? 'text-text-tertiary line-through' : 'text-text',
-              )}
-            >
-              {formatMXN(Number(loan.amount))}
-            </span>
-            {!isPaidSection && hasPayments && remaining < Number(loan.amount) && (
-              <span className="text-[11px] text-text-tertiary">
-                · resta {formatMXN(remaining)}
+
+          {/* Amount — remaining first when applicable */}
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-1">
+            {showRemaining ? (
+              <>
+                <span className="text-sm font-bold tabular-nums text-text">
+                  {formatMXN(remaining)}
+                </span>
+                <span className="text-[11px] text-text-tertiary">restante</span>
+                <span className="text-[11px] text-text-tertiary">
+                  · de {formatMXN(Number(loan.amount))}
+                </span>
+              </>
+            ) : (
+              <span
+                className={clsx(
+                  'text-sm font-bold tabular-nums',
+                  isPaidSection ? 'text-text-tertiary line-through' : 'text-text',
+                )}
+              >
+                {formatMXN(Number(loan.amount))}
               </span>
             )}
           </div>
+
+          {/* Date hint */}
+          <p className="mt-0.5 text-[10px] text-text-tertiary">{dateHint}</p>
+
           {!isPaidSection && hasPayments && (
             <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-border">
               <div
@@ -144,67 +169,56 @@ function LoanRow({
             </div>
           )}
         </div>
-
-        {/* Actions toggle */}
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
-          className={clsx(
-            'flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors',
-            menuOpen ? 'bg-primary/10 text-primary' : 'hover:bg-bg-secondary',
-          )}
-          aria-label="Acciones"
-        >
-          <IconDots size={16} />
-        </button>
       </div>
 
-      {/* Inline action buttons */}
-      {menuOpen && (
-        <div className="mt-2 flex flex-wrap gap-1.5 pl-9">
-          {!isPaidSection && (
-            <>
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false); onAbono() }}
-                className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-deep transition-colors hover:bg-primary/20"
-              >
-                + Abono
-              </button>
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false); onMarkPaid() }}
-                className="flex items-center gap-1 rounded-lg bg-asset/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-asset-deep transition-colors hover:bg-asset/20"
-              >
-                <IconCheck size={12} /> Saldado
-              </button>
-            </>
-          )}
-          {isPaidSection && (
+      {/* Always-visible action row */}
+      <div className="mt-2 flex items-center gap-1.5 pl-9">
+        {!isPaidSection && (
+          <>
             <button
               type="button"
-              onClick={() => { setMenuOpen(false); onUnmarkPaid() }}
-              className="rounded-lg bg-bg-secondary px-2.5 py-1.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-border"
+              onClick={onAbono}
+              className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-deep transition-colors hover:bg-primary/20"
             >
-              Desmarcar
+              + Abono
             </button>
-          )}
+            <button
+              type="button"
+              onClick={onMarkPaid}
+              className="flex items-center gap-1 rounded-lg bg-asset/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-asset-deep transition-colors hover:bg-asset/20"
+            >
+              <IconCheck size={12} /> Saldado
+            </button>
+          </>
+        )}
+        {isPaidSection && (
           <button
             type="button"
-            onClick={() => { setMenuOpen(false); onEdit() }}
-            className="flex items-center gap-1 rounded-lg bg-bg-secondary px-2.5 py-1.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-border"
+            onClick={onUnmarkPaid}
+            className="rounded-lg bg-bg-secondary px-2.5 py-1.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-border"
           >
-            <IconEdit size={12} /> Editar
+            ↩ Recuperar
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Editar"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+          >
+            <IconEdit size={15} />
           </button>
           <button
             type="button"
-            onClick={() => { setMenuOpen(false); onDelete() }}
-            className="flex items-center gap-1 rounded-lg bg-debt/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-debt transition-colors hover:bg-debt/20"
+            onClick={onDelete}
+            aria-label="Eliminar"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
           >
-            <IconTrash size={12} /> Eliminar
+            <IconTrash size={15} />
           </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -319,6 +333,8 @@ export function MisPrestamos() {
     addPayment,
   } = useLoans()
   const toast = useToast()
+  const storeLoanOpen = useUiStore((s) => s.loanModalOpen)
+  const closeLoanModal = useUiStore((s) => s.closeLoanModal)
 
   const [loanFormOpen, setLoanFormOpen] = useState(false)
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
@@ -339,6 +355,14 @@ export function MisPrestamos() {
     setFormDefaultDir(loan.direction)
     setLoanFormOpen(true)
   }
+
+  useEffect(() => {
+    if (storeLoanOpen) {
+      openCreate('owed_to_me')
+      closeLoanModal()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeLoanOpen, closeLoanModal])
 
   async function handleUnmarkPaid(loanId: string) {
     try {
@@ -367,15 +391,32 @@ export function MisPrestamos() {
       map.set(key, [...(map.get(key) ?? []), l])
     }
     return Array.from(map.values())
-      .map((loans) => ({
-        name: loans[0].name,
-        loans,
-        net: loans.reduce((s, l) => {
-          const rem = loanRemaining(l, paymentsByLoan[l.id] ?? [])
-          return l.direction === 'owed_to_me' ? s + rem : s - rem
-        }, 0),
-      }))
-      .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+      .map((loans) => {
+        const sorted = [...loans].sort((a, b) =>
+          loanActivityKey(b, paymentsByLoan[b.id] ?? []).localeCompare(
+            loanActivityKey(a, paymentsByLoan[a.id] ?? []),
+          ),
+        )
+        return {
+          name: sorted[0].name,
+          loans: sorted,
+          net: sorted.reduce((s, l) => {
+            const rem = loanRemaining(l, paymentsByLoan[l.id] ?? [])
+            return l.direction === 'owed_to_me' ? s + rem : s - rem
+          }, 0),
+        }
+      })
+      .sort((a, b) => {
+        const aKey = a.loans.reduce((mx, l) => {
+          const k = loanActivityKey(l, paymentsByLoan[l.id] ?? [])
+          return k > mx ? k : mx
+        }, '')
+        const bKey = b.loans.reduce((mx, l) => {
+          const k = loanActivityKey(l, paymentsByLoan[l.id] ?? [])
+          return k > mx ? k : mx
+        }, '')
+        return bKey.localeCompare(aKey)
+      })
   }, [active, paymentsByLoan])
 
   const paidGroups = useMemo<ContactGroup[]>(() => {
@@ -384,11 +425,18 @@ export function MisPrestamos() {
       const key = l.name.trim().toLowerCase()
       map.set(key, [...(map.get(key) ?? []), l])
     }
-    return Array.from(map.values()).map((loans) => ({
-      name: loans[0].name,
-      loans,
-      net: 0,
-    }))
+    return Array.from(map.values())
+      .map((loans) => {
+        const sorted = [...loans].sort((a, b) =>
+          (b.paid_at ?? b.created_at).localeCompare(a.paid_at ?? a.created_at),
+        )
+        return { name: sorted[0].name, loans: sorted, net: 0 }
+      })
+      .sort((a, b) => {
+        const aKey = a.loans.reduce((mx, l) => ((l.paid_at ?? '') > mx ? (l.paid_at ?? '') : mx), '')
+        const bKey = b.loans.reduce((mx, l) => ((l.paid_at ?? '') > mx ? (l.paid_at ?? '') : mx), '')
+        return bKey.localeCompare(aKey)
+      })
   }, [paid])
 
   const allNames = useMemo(() => {
@@ -426,24 +474,9 @@ export function MisPrestamos() {
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
       {/* KPI cards */}
       <div className="grid grid-cols-3 gap-2 px-4 pt-2">
-        <StatCard
-          label="Por cobrar"
-          value={fmtCompact(porCobrar)}
-          tone="primary"
-          icon={IconArrowDown}
-        />
-        <StatCard
-          label="Por pagar"
-          value={fmtCompact(porPagar)}
-          tone="debt"
-          icon={IconArrowUp}
-        />
-        <StatCard
-          label="Saldados"
-          value={fmtCompact(saldados)}
-          tone="asset"
-          icon={IconCheck}
-        />
+        <StatCard compact label="Cobrar" value={fmtCompact(porCobrar)} tone="primary" icon={IconArrowDown} />
+        <StatCard compact label="Pagar" value={fmtCompact(porPagar)} tone="debt" icon={IconArrowUp} />
+        <StatCard compact label="Saldados" value={fmtCompact(saldados)} tone="asset" icon={IconCheck} />
       </div>
 
       {!hasAny ? (
@@ -469,9 +502,18 @@ export function MisPrestamos() {
           {/* Active contact groups */}
           {activeGroups.length > 0 && (
             <div className="flex flex-col gap-2 px-4">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-                Activos
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  Activos
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openCreate()}
+                  className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                >
+                  + Nuevo
+                </button>
+              </div>
               {activeGroups.map((g) => (
                 <ContactGroupCard
                   key={g.name.toLowerCase()}
@@ -522,16 +564,6 @@ export function MisPrestamos() {
             </div>
           )}
 
-          {/* Add loan button */}
-          <div className="px-4">
-            <button
-              type="button"
-              onClick={() => openCreate()}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]"
-            >
-              <IconPlus size={16} /> Agregar préstamo
-            </button>
-          </div>
         </>
       )}
 

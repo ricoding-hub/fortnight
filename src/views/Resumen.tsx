@@ -609,7 +609,7 @@ export function Resumen() {
         />
         <MiniStat
           icon={IconUsers}
-          label="Por cobrar"
+          label="Préstamos"
           value={`$${porCobrar.toLocaleString()}`}
           color="#2A4BFF"
           softColor="var(--color-primary-soft)"

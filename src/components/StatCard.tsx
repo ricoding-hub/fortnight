@@ -11,6 +11,8 @@ interface StatCardProps {
   icon?: Icon
   /** Optional trend text shown below the value. */
   trend?: string
+  /** Compact mode: smaller fonts and padding for 3-col grids. */
+  compact?: boolean
 }
 
 const toneStyles: Record<string, { value: string; icon: string; topBar: string; bg: string }> = {
@@ -48,32 +50,34 @@ const neutralStyle = {
 }
 
 /** Compact labelled figure used in the Resumen and Proyección stat grids. */
-export function StatCard({ label, value, tone, icon: IconComponent, trend }: StatCardProps) {
+export function StatCard({ label, value, tone, icon: IconComponent, trend, compact }: StatCardProps) {
   const styles = tone ? toneStyles[tone] : neutralStyle
 
   return (
     <Card
       variant="stat"
       glow={tone === 'asset' ? 'asset' : tone === 'debt' ? 'debt' : tone === 'primary' ? 'primary' : undefined}
-      className={clsx('relative overflow-hidden p-3.5', styles.bg)}
+      className={clsx('relative overflow-hidden', compact ? 'p-2.5' : 'p-3.5', styles.bg)}
     >
       <div className={clsx('absolute inset-x-0 top-0 h-[3px] rounded-t-xl', styles.topBar)} />
-      <div className="flex items-start gap-3">
+      <div className={clsx('flex items-start', compact ? 'gap-2' : 'gap-3')}>
         {IconComponent && (
           <div
             className={clsx(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+              'flex shrink-0 items-center justify-center rounded-xl',
+              compact ? 'h-7 w-7' : 'h-9 w-9',
               styles.icon,
             )}
           >
-            <IconComponent size={18} stroke={1.75} />
+            <IconComponent size={compact ? 14 : 18} stroke={1.75} />
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium text-text-secondary">{label}</p>
+          <p className={clsx('font-medium text-text-secondary', compact ? 'text-[10px]' : 'text-[11px]')}>{label}</p>
           <p
             className={clsx(
-              'mt-0.5 text-lg font-semibold tabular-nums leading-tight',
+              'mt-0.5 tabular-nums leading-tight',
+              compact ? 'text-sm font-bold' : 'text-lg font-semibold',
               styles.value,
             )}
           >

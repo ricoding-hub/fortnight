@@ -9,12 +9,15 @@ interface UiState {
   addModalDirection: AddDirection
   openAddModal: (direction?: AddDirection) => void
   closeAddModal: () => void
+  /** Pulse signal: FAB on the loans tab sets this; MisPrestamos opens its form then resets it. */
+  loanModalOpen: boolean
+  openLoanModal: () => void
+  closeLoanModal: () => void
 }
 
 /**
- * App-wide UI state. Today this only manages the global "add transaction"
- * bottom sheet so any view can open it (FAB in BottomNav, payday banner CTA,
- * pago próximo Pagar button, etc.) without each view mounting its own modal.
+ * App-wide UI state. Manages the global "add transaction" bottom sheet
+ * and a pulse signal for opening the loan form from the FAB.
  */
 export const useUiStore = create<UiState>((set) => ({
   addModalOpen: false,
@@ -22,4 +25,7 @@ export const useUiStore = create<UiState>((set) => ({
   openAddModal: (direction = 'spend') =>
     set({ addModalOpen: true, addModalDirection: direction }),
   closeAddModal: () => set({ addModalOpen: false }),
+  loanModalOpen: false,
+  openLoanModal: () => set({ loanModalOpen: true }),
+  closeLoanModal: () => set({ loanModalOpen: false }),
 }))

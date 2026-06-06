@@ -55,14 +55,18 @@ export function Sidebar() {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Quick add CTA */}
+      {/* Quick add CTA — context-aware */}
       <button
         type="button"
-        onClick={() => useUiStore.getState().openAddModal('spend')}
+        onClick={() => {
+          const isLoans = location.pathname.startsWith('/cuentas/prestamos')
+          if (isLoans) useUiStore.getState().openLoanModal()
+          else useUiStore.getState().openAddModal('spend')
+        }}
         className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-text-inverse shadow-card transition-all hover:bg-primary-deep hover:shadow-elevated active:scale-[0.97]"
       >
         <IconPlus size={18} />
-        Agregar movimiento
+        {location.pathname.startsWith('/cuentas/prestamos') ? 'Agregar préstamo' : 'Agregar movimiento'}
       </button>
     </aside>
   )
