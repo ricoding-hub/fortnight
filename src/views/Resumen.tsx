@@ -62,7 +62,7 @@ export function Resumen() {
   const [scoreOpen, setScoreOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
-  const { active: activeLoans, data: allLoans } = useLoans()
+  const { active: activeLoans, data: allLoans, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, nextLevelXP, levelProgress } = useGamification()
@@ -85,7 +85,7 @@ export function Resumen() {
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
   const debitTotal = debitAccounts.reduce((s, a) => s + a.balance, 0)
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
-  const porCobrar = activeLoans.reduce((s, l) => s + l.amount, 0)
+  const porCobrar = loansPorCobrar - loansPorPagar
   const net = debitTotal - creditDebt
 
   // 7-day trend — includes both transactions and adjustments (real money moves).

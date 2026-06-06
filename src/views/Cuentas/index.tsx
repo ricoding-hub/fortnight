@@ -17,7 +17,7 @@ export function CuentasLayout() {
             Cuentas
           </h1>
           <p className="mt-0.5 text-[12.5px] font-medium text-text-secondary">
-            Tu dinero y lo que te deben
+            Tu dinero, lo que te deben y lo que debes
           </p>
         </div>
       </header>

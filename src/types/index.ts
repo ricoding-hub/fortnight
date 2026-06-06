@@ -93,15 +93,28 @@ export interface Category {
   created_at: string
 }
 
+export type LoanDirection = 'owed_to_me' | 'i_owe'
+
 export interface Loan {
   id: string
   user_id: string
+  /** Contact / person name. Multiple loans can share the same name for grouping. */
   name: string
   amount: number
   notes: string | null
+  direction: LoanDirection
   created_at: string
   /** Null while active; timestamp once marked paid. */
   paid_at: string | null
+}
+
+export interface LoanPayment {
+  id: string
+  loan_id: string
+  user_id: string
+  amount: number
+  note: string | null
+  created_at: string
 }
 
 export type PayFreq = 'semanal' | 'catorcenal' | 'quincenal' | 'mensual'
