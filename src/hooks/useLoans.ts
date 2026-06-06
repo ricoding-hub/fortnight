@@ -36,6 +36,8 @@ export function useLoans() {
   const [error, setError] = useState<PostgrestError | null>(null)
   const [channelKey] = useState(() => crypto.randomUUID())
 
+  const [paymentsTableReady, setPaymentsTableReady] = useState(false)
+
   const fetchAll = useCallback(async () => {
     if (!user) return
     const [loansRes, paymentsRes] = await Promise.all([
@@ -43,10 +45,13 @@ export function useLoans() {
       supabase.from('loan_payments').select('*').order('created_at', { ascending: true }),
     ])
     if (loansRes.error) { setError(loansRes.error); return }
-    if (paymentsRes.error) { setError(paymentsRes.error); return }
     setError(null)
     setData((loansRes.data ?? []) as Loan[])
-    setPayments((paymentsRes.data ?? []) as LoanPayment[])
+    // Treat a loan_payments error as empty — migration 018 may not be applied yet.
+    if (!paymentsRes.error) {
+      setPayments((paymentsRes.data ?? []) as LoanPayment[])
+      setPaymentsTableReady(true)
+    }
     setLoading(false)
   }, [user])
 
@@ -55,22 +60,27 @@ export function useLoans() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchAll()
 
-    const channel = supabase
-      .channel(`loans:${channelKey}`)
+    const ch = supabase.channel(`loans:${channelKey}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'loans', filter: `user_id=eq.${user.id}` },
         () => void fetchAll(),
       )
-      .on(
+
+    // Only subscribe to loan_payments realtime once we know the table exists,
+    // so a missing table cannot disrupt the shared WebSocket connection.
+    if (paymentsTableReady) {
+      ch.on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'loan_payments', filter: `user_id=eq.${user.id}` },
         () => void fetchAll(),
       )
-      .subscribe()
+    }
 
-    return () => { void supabase.removeChannel(channel) }
-  }, [user, channelKey, fetchAll])
+    ch.subscribe()
+
+    return () => { void supabase.removeChannel(ch) }
+  }, [user, channelKey, fetchAll, paymentsTableReady])
 
   const active = useMemo(() => data.filter((l) => !l.paid_at), [data])
   const paid = useMemo(() => data.filter((l) => l.paid_at), [data])
