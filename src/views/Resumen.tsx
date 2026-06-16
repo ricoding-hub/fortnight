@@ -371,10 +371,11 @@ export function Resumen() {
             style={{ background: 'radial-gradient(circle, rgba(255,90,95,0.22) 0%, transparent 70%)' }}
           />
 
+          {/* Title row */}
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10.5px] font-extrabold uppercase tracking-[0.13em] text-white/55">
-                Deuda en tarjetas
+                Balance neto
               </span>
               <button
                 type="button"
@@ -402,6 +403,7 @@ export function Resumen() {
             </span>
           </div>
 
+          {/* Big number */}
           <p
             className="relative mt-2 font-display text-[44px] font-extrabold leading-[1.05] tracking-tight"
             style={{
@@ -411,13 +413,10 @@ export function Resumen() {
               backgroundClip: 'text',
             }}
           >
-            {formatMXN(creditDebt)}
+            {formatMXN(net)}
           </p>
           <div className="relative mt-1 flex items-center gap-3">
-            <p className="text-[11.5px] font-medium text-white/55">
-              Balance neto{' '}
-              <span className="text-white/80">{formatMXN(net)}</span>
-            </p>
+            <p className="text-[11.5px] font-medium text-white/55">activos — deuda total</p>
             {nextPayday && (
               <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75 backdrop-blur-sm">
                 <IconCalendarEvent size={10} stroke={2} />
@@ -426,53 +425,68 @@ export function Resumen() {
             )}
           </div>
 
-          {/* Activos / Deuda / Este mes breakdown */}
-          <div className="relative mt-4 flex gap-2">
-            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: '#5DD296', boxShadow: '0 0 6px rgba(93,210,150,0.7)' }}
-              />
-              <div className="min-w-0">
-                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
-                  Activos
-                </p>
-                <p className="font-mono text-[13px] font-bold text-white">
-                  {formatMXN(debitTotal)}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full bg-debt"
-                style={{ boxShadow: '0 0 6px rgba(255,90,95,0.7)' }}
-              />
-              <div className="min-w-0">
-                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
-                  Deuda
-                </p>
-                <p className="font-mono text-[13px] font-bold text-white">
-                  {formatMXN(creditDebt)}
-                </p>
-              </div>
-            </div>
-            {activeInstallments.length > 0 && (
-              <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: '#9B7BFF', boxShadow: '0 0 6px rgba(155,123,255,0.7)' }}
+          {/* Activos / Deuda split bar */}
+          <div className="relative mt-4">
+            {debitTotal + creditDebt > 0 ? (
+              <div className="flex h-[7px] w-full overflow-hidden rounded-full">
+                <div
+                  style={{
+                    width: `${Math.max(2, Math.min(98, (debitTotal / (debitTotal + creditDebt)) * 100))}%`,
+                    background: 'linear-gradient(90deg, #2BB673, #5DD296)',
+                  }}
                 />
-                <div className="min-w-0">
-                  <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
-                    Este mes
-                  </p>
-                  <p className="font-mono text-[13px] font-bold text-white">
-                    {formatMXN(estesMes)}
-                  </p>
-                </div>
+                <div
+                  className="flex-1"
+                  style={{ background: 'linear-gradient(90deg, #FF5A5F, #FF8A65)' }}
+                />
               </div>
+            ) : (
+              <div className="h-[7px] w-full rounded-full bg-white/10" />
             )}
+            <div className="mt-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-[7px] w-[7px] shrink-0 rounded-full"
+                  style={{ background: '#5DD296', boxShadow: '0 0 5px rgba(93,210,150,0.8)' }}
+                />
+                <span className="text-[11px] font-bold text-white/65">
+                  Activos {formatMXN(debitTotal)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-white/65">
+                  {formatMXN(creditDebt)} Deuda
+                </span>
+                <span
+                  className="h-[7px] w-[7px] shrink-0 rounded-full"
+                  style={{ background: '#FF5A5F', boxShadow: '0 0 5px rgba(255,90,95,0.8)' }}
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Cuotas mensuales MSI — only when there are active plans */}
+          {activeInstallments.length > 0 && (
+            <div className="relative mt-3 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/8 px-3 py-2.5">
+              <div
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg"
+                style={{ background: 'rgba(155,123,255,0.25)' }}
+              >
+                <IconCalendarEvent size={14} color="#9B7BFF" stroke={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/50">
+                  Cuotas mensuales
+                </p>
+                <p className="font-mono text-[13.5px] font-bold text-white">
+                  {formatMXN(estesMes)}
+                </p>
+              </div>
+              <span className="shrink-0 text-[9.5px] font-semibold text-white/40">
+                {activeInstallments.length} plan{activeInstallments.length === 1 ? '' : 'es'}
+              </span>
+            </div>
+          )}
 
         </div>
       </section>
@@ -521,24 +535,24 @@ export function Resumen() {
       <Modal open={heroInfoOpen} onClose={() => setHeroInfoOpen(false)} title="Cómo se calculan estos números">
         <div className="flex flex-col gap-4 text-[13px]">
           <HeroInfoBlock
-            color="#EF4444"
-            title="Deuda en tarjetas"
-            body="El saldo total que tienes en todas tus tarjetas de crédito en este momento. Cada vez que actualizas el balance de una tarjeta, este número cambia."
+            color="#5DD296"
+            title="Balance neto"
+            body="Tus activos en débito menos tu deuda total en tarjetas. Positivo = tus ahorros superan tus deudas. Negativo = debes más de lo que tienes."
+          />
+          <HeroInfoBlock
+            color="#5DD296"
+            title="Activos vs Deuda (barra)"
+            body="La proporción verde muestra tus cuentas de débito; el rojo, tu deuda en tarjetas. Más verde = mejor salud financiera."
           />
           <HeroInfoBlock
             color="#9B7BFF"
-            title="Este mes"
-            body="Lo que realmente necesitas tener disponible este ciclo: tus mensualidades de planes a meses activos, más el saldo libre en tarjetas (lo que no está en un plan MSI). El saldo restante de tus MSI no cuenta aquí porque ya está comprometido en cuotas futuras."
+            title="Cuotas mensuales"
+            body="La suma de tus mensualidades MSI activas más el saldo libre en tarjetas (lo que no está comprometido en un plan). Es lo que realmente necesitas cubrir este ciclo."
           />
           <HeroInfoBlock
             color="#6366F1"
-            title="Balance neto"
-            body="Total en cuentas de débito (tu efectivo) menos el total de deuda en tarjetas. Positivo = tus ahorros superan tus deudas."
-          />
-          <HeroInfoBlock
-            color="#9B7BFF"
             title="¿Cuándo registro un plan a meses?"
-            body='Cuando compraste algo en "X meses sin interés (MSI)". Ve a Cuentas → sección "Meses sin interés" y regístralo. El app lo separa de tu deuda libre y calcula la mensualidad fija.'
+            body='Cuando compraste algo en "X meses sin interés". Ve a Cuentas → "Meses sin interés" y regístralo para que la app lo separe de tu deuda libre.'
           />
         </div>
       </Modal>
