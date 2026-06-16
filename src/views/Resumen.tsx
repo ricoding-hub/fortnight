@@ -418,6 +418,38 @@ export function Resumen() {
             )}
           </div>
 
+          {/* Activos / Deuda mini breakdown */}
+          <div className="relative mt-4 flex gap-2">
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: '#5DD296', boxShadow: '0 0 6px rgba(93,210,150,0.7)' }}
+              />
+              <div className="min-w-0">
+                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
+                  Activos
+                </p>
+                <p className="font-mono text-[13px] font-bold text-white">
+                  {formatMXN(debitTotal)}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-debt"
+                style={{ boxShadow: '0 0 6px rgba(255,90,95,0.7)' }}
+              />
+              <div className="min-w-0">
+                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
+                  Deuda
+                </p>
+                <p className="font-mono text-[13px] font-bold text-white">
+                  {formatMXN(creditDebt)}
+                </p>
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 
