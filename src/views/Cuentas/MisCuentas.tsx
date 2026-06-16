@@ -113,13 +113,14 @@ export function MisCuentas() {
     move,
   } = useAccounts()
   const { data: credentials, sync } = useSyncedCredentials()
-  const { data: installments, markMonthPaid, remove: removeInstallment, create: createInstallment } = useInstallments()
+  const { data: installments, markMonthPaid, remove: removeInstallment, create: createInstallment, update: updateInstallment } = useInstallments()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
   const [chooserType, setChooserType] = useState<AccountType | null>(null)
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
   const [installmentFormOpen, setInstallmentFormOpen] = useState(false)
+  const [editingInstallment, setEditingInstallment] = useState<import('@/types').Installment | null>(null)
   const toast = useToast()
 
   const syncableCredentials = credentials.filter((c) => c.status !== 'disabled' && c.status !== 'error')
@@ -328,6 +329,7 @@ export function MisCuentas() {
                     installment={inst}
                     onMarkPaid={() => void markMonthPaid(inst.id).catch(() => toast.error('Error', 'No se pudo actualizar'))}
                     onDelete={() => void removeInstallment(inst.id).catch(() => toast.error('Error', 'No se pudo eliminar'))}
+                    onEdit={() => setEditingInstallment(inst)}
                   />
                 ))}
                 <button
@@ -344,9 +346,11 @@ export function MisCuentas() {
       )}
 
       <InstallmentFormModal
-        open={installmentFormOpen}
-        onClose={() => setInstallmentFormOpen(false)}
+        open={installmentFormOpen || editingInstallment != null}
+        onClose={() => { setInstallmentFormOpen(false); setEditingInstallment(null) }}
         onSubmit={createInstallment}
+        editingInstallment={editingInstallment ?? undefined}
+        onUpdate={updateInstallment}
       />
 
       <AddAccountChooserModal

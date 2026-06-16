@@ -7,9 +7,10 @@ interface InstallmentCardProps {
   installment: Installment
   onMarkPaid?: () => void
   onDelete?: () => void
+  onEdit?: () => void
 }
 
-export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: InstallmentCardProps) {
+export function InstallmentCard({ installment: inst, onMarkPaid, onDelete, onEdit }: InstallmentCardProps) {
   const remaining = inst.months_total - inst.months_paid
   const progress = inst.months_total > 0 ? inst.months_paid / inst.months_total : 0
   const isDone = inst.status === 'paid'
@@ -41,7 +42,7 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: Ins
             )}
             {inst.is_zero_interest ? (
               <span className="shrink-0 rounded-full bg-asset/10 px-2 py-0.5 text-[10px] font-extrabold text-asset-deep">
-                0%
+                Sin interés
               </span>
             ) : (
               <span className="shrink-0 rounded-full bg-debt/10 px-2 py-0.5 text-[10px] font-extrabold text-debt-deep">
@@ -80,16 +81,27 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: Ins
       </div>
 
       {/* Actions */}
-      {!isDone && onMarkPaid && (
+      {!isDone && (
         <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
-          <button
-            type="button"
-            onClick={onMarkPaid}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary-soft py-1.5 text-[12px] font-bold text-primary-deep transition-colors active:bg-primary-soft/60"
-          >
-            <IconCheck size={13} stroke={2.5} />
-            Marcar mes pagado
-          </button>
+          {onMarkPaid && (
+            <button
+              type="button"
+              onClick={onMarkPaid}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary-soft py-1.5 text-[12px] font-bold text-primary-deep transition-colors active:bg-primary-soft/60"
+            >
+              <IconCheck size={13} stroke={2.5} />
+              Marcar mes pagado
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-text-secondary transition-colors hover:text-text active:scale-95"
+            >
+              Editar
+            </button>
+          )}
           {onDelete && (
             <button
               type="button"
@@ -101,15 +113,26 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: Ins
           )}
         </div>
       )}
-      {isDone && onDelete && (
-        <div className="mt-2 flex justify-end border-t border-border pt-2">
-          <button
-            type="button"
-            onClick={onDelete}
-            className="text-[11.5px] font-bold text-text-tertiary hover:text-debt"
-          >
-            Eliminar
-          </button>
+      {isDone && (
+        <div className="mt-2 flex items-center justify-end gap-3 border-t border-border pt-2">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="text-[11.5px] font-bold text-text-secondary hover:text-text"
+            >
+              Editar
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-[11.5px] font-bold text-text-tertiary hover:text-debt"
+            >
+              Eliminar
+            </button>
+          )}
         </div>
       )}
     </Card>

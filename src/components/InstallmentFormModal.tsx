@@ -7,7 +7,8 @@ import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useToast } from '@/hooks/useToast'
-import type { NewInstallment } from '@/hooks/useInstallments'
+import type { NewInstallment, InstallmentPatch } from '@/hooks/useInstallments'
+import type { Installment } from '@/types'
 
 const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0
 const isMonths = (v: string) => {
@@ -35,9 +36,12 @@ interface InstallmentFormModalProps {
   open: boolean
   onClose: () => void
   onSubmit: (data: NewInstallment) => Promise<void>
+  editingInstallment?: Installment
+  onUpdate?: (id: string, patch: InstallmentPatch) => Promise<void>
 }
 
-export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFormModalProps) {
+export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallment, onUpdate }: InstallmentFormModalProps) {
+  const isEditing = editingInstallment != null
   const { data: accounts } = useAccounts()
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
   const toast = useToast()
@@ -57,10 +61,22 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
 
   useEffect(() => {
     if (open) {
-      reset({ months_total: '12', months_paid: '0', is_zero_interest: true })
       setSaveError(null)
+      if (editingInstallment) {
+        reset({
+          name: editingInstallment.name,
+          total_amount: String(editingInstallment.total_amount),
+          months_total: String(editingInstallment.months_total),
+          months_paid: String(editingInstallment.months_paid),
+          is_zero_interest: editingInstallment.is_zero_interest,
+          account_id: editingInstallment.account_id ?? '',
+          start_date: editingInstallment.start_date,
+        })
+      } else {
+        reset({ months_total: '12', months_paid: '0', is_zero_interest: true })
+      }
     }
-  }, [open, reset])
+  }, [open, editingInstallment, reset])
 
   const totalAmountStr = watch('total_amount')
   const monthsTotalStr = watch('months_total')
@@ -76,18 +92,35 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
 
   async function handleFormSubmit(values: FormValues) {
     setSaveError(null)
+    const monthsPaid = Number(values.months_paid) || 0
+    const mTotal = Number(values.months_total)
     try {
-      await onSubmit({
-        name: values.name,
-        total_amount: Number(values.total_amount),
-        monthly_amount: monthlyAmount,
-        months_total: Number(values.months_total),
-        months_paid: Number(values.months_paid) || 0,
-        is_zero_interest: values.is_zero_interest,
-        account_id: values.account_id || null,
-        start_date: values.start_date || undefined,
-      })
-      toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
+      if (isEditing && onUpdate && editingInstallment) {
+        await onUpdate(editingInstallment.id, {
+          name: values.name,
+          total_amount: Number(values.total_amount),
+          monthly_amount: monthlyAmount,
+          months_total: mTotal,
+          months_paid: monthsPaid,
+          is_zero_interest: values.is_zero_interest,
+          account_id: values.account_id || null,
+          start_date: values.start_date || undefined,
+          status: monthsPaid >= mTotal ? 'paid' : 'active',
+        })
+        toast.success('Plan actualizado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
+      } else {
+        await onSubmit({
+          name: values.name,
+          total_amount: Number(values.total_amount),
+          monthly_amount: monthlyAmount,
+          months_total: mTotal,
+          months_paid: monthsPaid,
+          is_zero_interest: values.is_zero_interest,
+          account_id: values.account_id || null,
+          start_date: values.start_date || undefined,
+        })
+        toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
+      }
       onClose()
     } catch (err) {
       const msg =
@@ -100,7 +133,7 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo gasto a meses">
+    <Modal open={open} onClose={onClose} title={isEditing ? 'Editar plan a meses' : 'Nuevo gasto a meses'}>
       <form onSubmit={handleSubmit(handleFormSubmit)} className="flex flex-col gap-4">
         {/* Name */}
         <div>
@@ -262,7 +295,7 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
           disabled={isSubmitting}
           className="mt-1 rounded-xl bg-primary py-3 text-[13.5px] font-extrabold text-white transition-opacity disabled:opacity-60"
         >
-          {isSubmitting ? 'Guardando…' : 'Guardar'}
+          {isSubmitting ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Guardar'}
         </button>
       </form>
     </Modal>

@@ -17,6 +17,7 @@ import clsx from 'clsx'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useInstallments } from '@/hooks/useInstallments'
 import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
@@ -37,6 +38,7 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
+import { getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
@@ -71,6 +73,7 @@ export function Resumen() {
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
+  const { active: activeInstallments } = useInstallments()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   /* --------------------------------- derived */
@@ -88,6 +91,11 @@ export function Resumen() {
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
   const porCobrar = loansPorCobrar - loansPorPagar
   const net = debitTotal - creditDebt
+
+  const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)
+  const msiPrincipalTotal = activeInstallments.reduce((s, i) => s + getInstallmentRemaining(i), 0)
+  const freeBalance = Math.max(0, creditDebt - msiPrincipalTotal)
+  const estesMes = freeBalance + msiMonthlyTotal
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -366,12 +374,12 @@ export function Resumen() {
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10.5px] font-extrabold uppercase tracking-[0.13em] text-white/55">
-                A pagar este mes
+                Deuda en tarjetas
               </span>
               <button
                 type="button"
                 onClick={() => setHeroInfoOpen(true)}
-                aria-label="Cómo se calcula A pagar este mes"
+                aria-label="Cómo se calculan estos números"
                 className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/15 text-white/60 transition-colors hover:bg-white/25"
               >
                 <IconInfoCircle size={10} stroke={2} />
@@ -418,7 +426,7 @@ export function Resumen() {
             )}
           </div>
 
-          {/* Activos / Deuda mini breakdown */}
+          {/* Activos / Deuda / Este mes breakdown */}
           <div className="relative mt-4 flex gap-2">
             <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
               <span
@@ -448,6 +456,22 @@ export function Resumen() {
                 </p>
               </div>
             </div>
+            {activeInstallments.length > 0 && (
+              <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: '#9B7BFF', boxShadow: '0 0 6px rgba(155,123,255,0.7)' }}
+                />
+                <div className="min-w-0">
+                  <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
+                    Este mes
+                  </p>
+                  <p className="font-mono text-[13px] font-bold text-white">
+                    {formatMXN(estesMes)}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
@@ -498,8 +522,13 @@ export function Resumen() {
         <div className="flex flex-col gap-4 text-[13px]">
           <HeroInfoBlock
             color="#EF4444"
-            title="A pagar este mes"
-            body="Es el saldo total de tus tarjetas de crédito en este momento. Cada vez que actualizas el balance de una tarjeta, este número refleja lo que debes en total."
+            title="Deuda en tarjetas"
+            body="El saldo total que tienes en todas tus tarjetas de crédito en este momento. Cada vez que actualizas el balance de una tarjeta, este número cambia."
+          />
+          <HeroInfoBlock
+            color="#9B7BFF"
+            title="Este mes"
+            body="Lo que realmente necesitas tener disponible este ciclo: tus mensualidades de planes a meses activos, más el saldo libre en tarjetas (lo que no está en un plan MSI). El saldo restante de tus MSI no cuenta aquí porque ya está comprometido en cuotas futuras."
           />
           <HeroInfoBlock
             color="#6366F1"
