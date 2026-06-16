@@ -30,6 +30,7 @@ import { formatMXN } from '@/lib/format'
 import type { Account, AccountType, Installment } from '@/types'
 
 interface SectionProps {
+  id?: string
   title: string
   type: AccountType
   accounts: Account[]
@@ -43,6 +44,7 @@ interface SectionProps {
 }
 
 function Section({
+  id,
   title,
   type,
   accounts,
@@ -55,7 +57,7 @@ function Section({
   onMove,
 }: SectionProps) {
   return (
-    <section className="px-4 py-2">
+    <section id={id} className="px-4 py-2">
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">
           {title}
@@ -284,8 +286,8 @@ export function MisCuentas() {
         />
       ) : (
         <>
-          <Section title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
-          <Section title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
+          <Section id="tour-cuentas-debito" title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
+          <Section id="tour-cuentas-credito" title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
           {hasConnectedBanks && !reorderMode && (
             <div className="px-4 pb-2">
               <Link
@@ -300,7 +302,7 @@ export function MisCuentas() {
           )}
 
           {/* Meses sin intereses */}
-          <section className="px-4 pb-2 pt-2">
+          <section id="tour-cuentas-msi" className="px-4 pb-2 pt-2">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">
                 Meses sin intereses

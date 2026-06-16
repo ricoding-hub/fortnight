@@ -333,7 +333,7 @@ export function Proyeccion() {
       </div>
 
       {/* Chart */}
-      <Card>
+      <Card id="tour-plan-chart">
         <div className="mb-3 flex items-baseline justify-between">
           <span className="text-sm font-extrabold text-text">
             {isDebt ? 'Deuda restante' : 'Ahorro acumulado'}
@@ -449,7 +449,7 @@ export function Proyeccion() {
 
       {/* Compromisos y colchón */}
       {committedData.some((d) => d.total > 0) && (
-        <Card>
+        <Card id="tour-plan-colchon">
           <p className="mb-1 text-[13px] font-extrabold text-text">Compromisos mes a mes</p>
           <p className="mb-3 text-[11px] font-medium text-text-tertiary">
             Tus pagos comprometidos bajan conforme terminan los MSI

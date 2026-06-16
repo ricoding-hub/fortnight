@@ -512,22 +512,27 @@ export function Resumen() {
           <HeroInfoBlock
             color="#EF4444"
             title="A pagar este mes"
-            body="Es la suma de los pagos mínimos exigibles de todas tus tarjetas de crédito. Para cada tarjeta: [% mínimo × saldo revolvente] + [mensualidades MSI activas] − [buffer de adelanto]. No es tu deuda total, sino lo que el banco requiere este ciclo."
+            body="Es la suma de los pagos mínimos de todas tus tarjetas: [% mínimo × saldo libre] + [mensualidades de planes a meses activos]. No es tu deuda total, sino lo que el banco requiere este ciclo."
           />
           <HeroInfoBlock
             color="#6366F1"
             title="Balance neto"
-            body="Total en tus cuentas de débito (activos líquidos) menos el total de deuda en tarjetas de crédito. Un balance neto positivo significa que tus activos superan tus deudas."
+            body="Total en cuentas de débito (tu efectivo) menos el total de deuda en tarjetas. Positivo = tus ahorros superan tus deudas."
           />
           <HeroInfoBlock
             color="#EF4444"
-            title='Chip "Con costo"'
-            body='Saldo revolvente de tarjetas marcadas "Con costo" (con APR > 0). Este saldo genera intereses y es sobre el que se calcula el pago mínimo porcentual.'
+            title='Chip "Con costo" — saldo libre'
+            body='La parte de tu tarjeta que NO está en un plan de meses. Si no la pagas completa al corte, el banco cobra intereses sobre este monto.'
           />
           <HeroInfoBlock
             color="#2BB673"
-            title='Chip "MSI 0%"'
-            body='Principal pendiente de tus planes de meses sin interés. Es un compromiso fijo mensual pero no acumula intereses mientras lo pagues a tiempo.'
+            title='Chip "MSI 0%" — planes a meses'
+            body='El principal pendiente de tus compras a meses sin interés. Genera una mensualidad fija pero sin costo mientras pagues a tiempo.'
+          />
+          <HeroInfoBlock
+            color="#9B7BFF"
+            title="¿Cuándo registro un plan a meses?"
+            body='Cuando compraste algo en "X meses sin interés (MSI)". Ve a Cuentas → sección "Meses sin interés" y regístralo. El app lo descuenta del saldo libre de tu tarjeta automáticamente.'
           />
         </div>
       </Modal>

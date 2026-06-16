@@ -214,11 +214,11 @@ export function AccountCard({
           {isCredit && (
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums text-text-tertiary">
               <span>
-                Exigible{' '}
+                Pago mín.{' '}
                 <span className="font-semibold text-debt">{formatMXN(exigible)}</span>
               </span>
               <span className="text-border">·</span>
-              <span>Revolvente {formatMXN(revolving)}</span>
+              <span>Libre {formatMXN(revolving)}</span>
             </div>
           )}
           {isCredit && account.prepay_buffer > 0 && (

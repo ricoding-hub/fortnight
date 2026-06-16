@@ -153,7 +153,11 @@ export function PetCompanion() {
             className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary/10 py-2 text-[11.5px] font-bold text-primary transition-colors hover:bg-primary/20"
           >
             <IconPlayerPlay size={12} stroke={2.5} />
-            Ver tour guiado
+            {location.pathname.startsWith('/cuentas')
+              ? '¿Cómo funciona esto?'
+              : location.pathname.startsWith('/plan')
+              ? '¿Qué significa esto?'
+              : 'Ver tour guiado'}
           </button>
         </div>
       )}
