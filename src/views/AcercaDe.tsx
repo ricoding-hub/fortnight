@@ -121,9 +121,52 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.6.4"
+            date="16 jun 2026"
+            current
+            notes={[
+              'Hero restaurado: balance neto como número principal, barra split Activos / Deuda',
+              'Chip "Cuotas mensuales" (morado) muestra lo que debes cubrir este ciclo si tienes planes MSI activos',
+              'Planes MSI muestran monto restante ($) en lugar del total, para comparar contra estado de cuenta',
+            ]}
+          />
+          <VersionRow
+            version="0.6.3"
+            date="15 jun 2026"
+            notes={[
+              'Editar plan MSI: corrige meses pagados, monto, nombre — incluyendo deshacer "marcar mes pagado"',
+              'Badge de tipo cambia de "0%" a "Sin interés" (eliminaba la confusión con el porcentaje de progreso)',
+              'Chip "Este mes" en hero mostrando obligación mensual real (mensualidades MSI + saldo libre)',
+            ]}
+          />
+          <VersionRow
+            version="0.6.2"
+            date="15 jun 2026"
+            notes={[
+              'Revertida la complejidad de deuda v0.5.0: APR, tipo de costo y % mínimo eliminados del formulario',
+              'Error silencioso al guardar MSI corregido: ahora muestra toast de error con el mensaje real',
+              'AccountCard simplificada: elimina línea de pago mínimo y buffer de prepago',
+              'Hero restaurado con mini dashboard Activos / Deuda',
+            ]}
+          />
+          <VersionRow
+            version="0.5.0"
+            date="10 jun 2026"
+            notes={[
+              'Inteligencia de deuda: clasificación stock vs flujo, APR, buffer de prepago y bandera MSI',
+              'Columna is_zero_interest en planes a meses',
+            ]}
+          />
+          <VersionRow
+            version="0.4.1"
+            date="7 jun 2026"
+            notes={[
+              'Préstamos: acciones siempre visibles, KPIs responsive, FAB contextual y ordenamiento por fecha',
+            ]}
+          />
+          <VersionRow
             version="0.3.0"
             date="4 jun 2026"
-            current
             notes={[
               'Optimistic updates: crear/editar/eliminar cuentas, movimientos, préstamos y metas se refleja al instante',
               'Balance neto: la tendencia de 7 días ahora incluye ajustes de saldo',
