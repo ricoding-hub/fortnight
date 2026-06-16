@@ -90,9 +90,12 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
       toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
       onClose()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { message?: string })?.message ?? 'Error desconocido'
       setSaveError(msg)
-      toast.error('Error al guardar', 'No se pudo registrar el gasto a meses.')
+      toast.error('Error al guardar', msg)
     }
   }
 
