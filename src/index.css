@@ -1,5 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Geist+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
+@import 'driver.js/dist/driver.css';
+
+/* ── driver.js theme — Fortnight dark-ink style ── */
+:root {
+  --driver-popover-bg-color: #1A1F36;
+  --driver-popover-title-color: #ffffff;
+  --driver-popover-description-color: rgba(255, 255, 255, 0.75);
+  --driver-popover-border-radius: 16px;
+  --driver-popover-progress-color: #2A4BFF;
+  --driver-overlay-color: rgba(15, 13, 46, 0.72);
+  --driver-next-btn-color: #ffffff;
+  --driver-next-btn-bg-color: #2A4BFF;
+  --driver-prev-btn-color: rgba(255, 255, 255, 0.7);
+  --driver-close-btn-color: rgba(255, 255, 255, 0.5);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    Fortnight — Design tokens (Quest cozy palette)

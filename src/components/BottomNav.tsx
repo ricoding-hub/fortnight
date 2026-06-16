@@ -59,6 +59,11 @@ interface NavItemProps {
   location: string
 }
 
+const NAV_IDS: Record<string, string> = {
+  '/cuentas': 'tour-nav-cuentas',
+  '/plan': 'tour-nav-plan',
+}
+
 function NavItem({ tab, location }: NavItemProps) {
   const isActive = tab.to === '/' ? location === '/' : location.startsWith(tab.to)
   const Icon = tab.icon
@@ -66,6 +71,7 @@ function NavItem({ tab, location }: NavItemProps) {
     <NavLink
       to={tab.to}
       end={tab.to === '/'}
+      id={NAV_IDS[tab.to]}
       className="flex min-w-[50px] flex-col items-center gap-0.5 px-2 py-1.5 text-[10.5px] font-bold transition-colors"
       aria-current={isActive ? 'page' : undefined}
     >

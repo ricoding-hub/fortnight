@@ -62,6 +62,7 @@ function shortMonth(d: Date): string {
 export function Resumen() {
   const navigate = useNavigate()
   const [scoreOpen, setScoreOpen] = useState(false)
+  const [heroInfoOpen, setHeroInfoOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
   const { data: installments } = useInstallments()
@@ -356,7 +357,7 @@ export function Resumen() {
       <PaydayBanner onApply={() => openAddModal('receive')} />
 
       {/* ── Hero balance — deep-ink card with split bar ── */}
-      <section className="px-4 pt-1">
+      <section id="tour-hero" className="px-4 pt-1">
         <div
           className="relative overflow-hidden rounded-xl px-5 py-5 text-white shadow-hero"
           style={{
@@ -374,9 +375,19 @@ export function Resumen() {
           />
 
           <div className="relative flex items-center justify-between">
-            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.13em] text-white/55">
-              A pagar este mes
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10.5px] font-extrabold uppercase tracking-[0.13em] text-white/55">
+                A pagar este mes
+              </span>
+              <button
+                type="button"
+                onClick={() => setHeroInfoOpen(true)}
+                aria-label="Cómo se calcula A pagar este mes"
+                className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/15 text-white/60 transition-colors hover:bg-white/25"
+              >
+                <IconInfoCircle size={10} stroke={2} />
+              </button>
+            </div>
             <span
               className={clsx(
                 'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[10.5px] font-extrabold',
@@ -420,7 +431,7 @@ export function Resumen() {
 
           {/* Debt breakdown chips */}
           <div className="relative mt-4 flex gap-2">
-            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+            <div id="tour-con-costo" className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
               <span
                 className="h-2 w-2 shrink-0 rounded-full bg-debt"
                 style={{ boxShadow: '0 0 6px rgba(255,90,95,0.7)' }}
@@ -434,7 +445,7 @@ export function Resumen() {
                 </p>
               </div>
             </div>
-            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+            <div id="tour-msi" className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{
@@ -456,7 +467,7 @@ export function Resumen() {
       </section>
 
       {/* ── Score card with ring + sparkline ── */}
-      <section className="px-4 pt-2">
+      <section id="tour-score" className="px-4 pt-2">
         <button
           type="button"
           className="w-full text-left transition-transform active:scale-[0.985]"
@@ -495,6 +506,31 @@ export function Resumen() {
         scoreTier={scoreTier}
         breakdown={breakdown}
       />
+
+      <Modal open={heroInfoOpen} onClose={() => setHeroInfoOpen(false)} title="Cómo se calculan estos números">
+        <div className="flex flex-col gap-4 text-[13px]">
+          <HeroInfoBlock
+            color="#EF4444"
+            title="A pagar este mes"
+            body="Es la suma de los pagos mínimos exigibles de todas tus tarjetas de crédito. Para cada tarjeta: [% mínimo × saldo revolvente] + [mensualidades MSI activas] − [buffer de adelanto]. No es tu deuda total, sino lo que el banco requiere este ciclo."
+          />
+          <HeroInfoBlock
+            color="#6366F1"
+            title="Balance neto"
+            body="Total en tus cuentas de débito (activos líquidos) menos el total de deuda en tarjetas de crédito. Un balance neto positivo significa que tus activos superan tus deudas."
+          />
+          <HeroInfoBlock
+            color="#EF4444"
+            title='Chip "Con costo"'
+            body='Saldo revolvente de tarjetas marcadas "Con costo" (con APR > 0). Este saldo genera intereses y es sobre el que se calcula el pago mínimo porcentual.'
+          />
+          <HeroInfoBlock
+            color="#2BB673"
+            title='Chip "MSI 0%"'
+            body='Principal pendiente de tus planes de meses sin interés. Es un compromiso fijo mensual pero no acumula intereses mientras lo pagues a tiempo.'
+          />
+        </div>
+      </Modal>
 
       {/* ── Streak + Mes libre dual cards ── */}
       <section className="grid grid-cols-2 gap-2 px-4 pt-2">
@@ -729,6 +765,21 @@ function MiniStat({
         {value}
       </p>
     </Card>
+  )
+}
+
+function HeroInfoBlock({ color, title, body }: { color: string; title: string; body: string }) {
+  return (
+    <div className="flex gap-3">
+      <div
+        className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
+        style={{ background: color, marginTop: '3px' }}
+      />
+      <div>
+        <p className="font-bold text-text">{title}</p>
+        <p className="mt-0.5 leading-relaxed text-text-secondary">{body}</p>
+      </div>
+    </div>
   )
 }
 

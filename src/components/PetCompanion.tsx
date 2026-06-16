@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { IconPlayerPlay } from '@tabler/icons-react'
 import { useConfig } from '@/hooks/useConfig'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
 import { Richeto } from '@/components/Richeto'
 import { richetoAdvice, type AdviceTip } from '@/lib/advice'
 import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
+import { useUiStore } from '@/store/uiStore'
 import type { BucketWithSpend } from '@/lib/plan'
 
 /**
@@ -57,6 +59,7 @@ export function PetCompanion() {
   const { data: goals } = useGoals()
   const [open, setOpen] = useState(false)
   const [tipIdx, setTipIdx] = useState(0)
+  const openTour = useUiStore((s) => s.openTour)
 
   // Smart tips — only computed on home where they make sense.
   const tips = useMemo<AdviceTip[]>(() => {
@@ -97,6 +100,7 @@ export function PetCompanion() {
 
   return (
     <div
+      id="tour-pet"
       className="pointer-events-none fixed z-40 flex flex-col items-end gap-1.5 lg:bottom-6 lg:right-6"
       style={{
         bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))',
@@ -143,6 +147,14 @@ export function PetCompanion() {
               {fallbackMessage(location.pathname)}
             </p>
           )}
+          <button
+            type="button"
+            onClick={() => { openTour(); setOpen(false) }}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary/10 py-2 text-[11.5px] font-bold text-primary transition-colors hover:bg-primary/20"
+          >
+            <IconPlayerPlay size={12} stroke={2.5} />
+            Ver tour guiado
+          </button>
         </div>
       )}
       <button

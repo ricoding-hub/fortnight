@@ -13,6 +13,10 @@ interface UiState {
   loanModalOpen: boolean
   openLoanModal: () => void
   closeLoanModal: () => void
+  /** Guided tour (driver.js). */
+  tourOpen: boolean
+  openTour: () => void
+  closeTour: () => void
 }
 
 /**
@@ -28,4 +32,7 @@ export const useUiStore = create<UiState>((set) => ({
   loanModalOpen: false,
   openLoanModal: () => set({ loanModalOpen: true }),
   closeLoanModal: () => set({ loanModalOpen: false }),
+  tourOpen: false,
+  openTour: () => set({ tourOpen: true }),
+  closeTour: () => set({ tourOpen: false }),
 }))

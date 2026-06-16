@@ -1,7 +1,8 @@
-import { type ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useAutoSync } from '@/hooks/useAutoSync'
+import { useUiStore } from '@/store/uiStore'
 import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
@@ -20,6 +21,7 @@ import { Presupuesto } from '@/views/Plan/Presupuesto'
 import { Objetivos } from '@/views/Plan/Objetivos'
 import { Proyeccion } from '@/views/Plan/Proyeccion'
 import { ToastContainer } from '@/components/ui/Toast'
+import { AppTour } from '@/components/AppTour'
 
 function Splash({ label }: { label: string }) {
   return (
@@ -31,10 +33,20 @@ function Splash({ label }: { label: string }) {
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth()
+  const openTour = useUiStore((s) => s.openTour)
   // Kicks off a background refresh of synced bank credentials when the
   // session is fresh and the last sync is older than 6 hours. The hook
   // is a no-op when there is no user.
   useAutoSync()
+
+  // Auto-trigger tour on first visit (once per device).
+  useEffect(() => {
+    if (!session) return
+    if (localStorage.getItem('fortnight_tour_seen')) return
+    const t = window.setTimeout(openTour, 1000)
+    return () => window.clearTimeout(t)
+  }, [session, openTour])
+
   if (loading) return <Splash label="Cargando…" />
   return session ? <>{children}</> : <Navigate to="/login" replace />
 }
@@ -98,6 +110,7 @@ export default function App() {
         </Routes>
       </BrowserRouter>
       <ToastContainer />
+      <AppTour />
     </AuthProvider>
   )
 }
