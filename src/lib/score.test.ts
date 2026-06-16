@@ -23,6 +23,10 @@ function debit(balance: number): Account {
     external_id: null,
     institution_name: null,
     last_synced_at: null,
+    cost_type: 'con_costo',
+    apr: null,
+    min_payment_pct: null,
+    prepay_buffer: 0,
   }
 }
 

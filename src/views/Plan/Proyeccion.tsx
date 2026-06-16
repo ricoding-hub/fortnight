@@ -28,10 +28,17 @@ import { useTransactions } from '@/hooks/useTransactions'
 import { useInstallments } from '@/hooks/useInstallments'
 import { Card } from '@/components/ui/Card'
 import { PlanChart } from '@/components/PlanChart'
+import { CommitmentsChart } from '@/components/CommitmentsChart'
+import { ColchonChart } from '@/components/ColchonChart'
 import { Richeto } from '@/components/Richeto'
 import { iconFor } from '@/lib/icons'
 import { monthsToGoal, projectGoal, expectedToday } from '@/lib/goals'
 import { subMonthlyAmount } from '@/lib/projections'
+import {
+  getMensualidadesComprometidas,
+  getColchonReal,
+  getRevolvingBalance,
+} from '@/lib/debt'
 
 interface PlanContext {
   monthlyIncome: number
@@ -63,7 +70,8 @@ export function Proyeccion() {
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
-  const { active: activeInstallments } = useInstallments()
+  const { data: installments, active: activeInstallments } = useInstallments()
+  const [debtMode, setDebtMode] = useState<'all' | 'con_costo'>('all')
 
   const subsMonthly = useMemo(
     () => subs.filter((s) => s.active).reduce((sum, s) => sum + subMonthlyAmount(s.amount, s.frequency), 0),
@@ -140,18 +148,36 @@ export function Proyeccion() {
 
   // For unlinked debt goals: patch both `saved` (use real credit total) and
   // `monthly` (use actual disposable income so the projection is actionable).
+  const conCostoRevolving = useMemo(
+    () =>
+      accounts
+        .filter((a) => a.type === 'credit' && a.cost_type === 'con_costo')
+        .reduce((s, a) => s + getRevolvingBalance(a, installments), 0),
+    [accounts, installments],
+  )
+
   const patchedPrimary = useMemo(() => {
     if (!primary) return null
     if (primary.is_debt && primary.linked_account_ids.length === 0) {
       const totalCreditDebt = accounts
         .filter((a) => a.type === 'credit')
         .reduce((s, a) => s + Number(a.balance), 0)
-      const derivedSaved = Math.max(0, primary.target - totalCreditDebt)
+      const targetDebt = debtMode === 'con_costo' ? conCostoRevolving : totalCreditDebt
+      const derivedSaved = Math.max(0, primary.target - targetDebt)
       const derivedMonthly = disposable > 0 ? disposable : primary.monthly
       return { ...primary, saved: derivedSaved, monthly: derivedMonthly }
     }
     return primary
-  }, [primary, accounts, disposable])
+  }, [primary, accounts, disposable, debtMode, conCostoRevolving])
+
+  const committedData = useMemo(
+    () => getMensualidadesComprometidas(installments, accounts),
+    [installments, accounts],
+  )
+  const colchonData = useMemo(
+    () => getColchonReal(disposable + installmentsMonthly, committedData),
+    [disposable, installmentsMonthly, committedData],
+  )
 
   // Monthly shown in hero — patched value when auto-derived.
   const displayMonthly = (patchedPrimary ?? primary)?.monthly ?? 0
@@ -324,6 +350,43 @@ export function Proyeccion() {
         />
       </Card>
 
+      {/* Agresivo toggle — only for unlinked debt goals */}
+      {isDebt && primary.linked_account_ids.length === 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDebtMode('all')}
+              className={clsx(
+                'flex-1 rounded-full py-2 text-[12px] font-extrabold transition-all',
+                debtMode === 'all'
+                  ? 'bg-primary text-white shadow-[0_2px_8px_rgba(99,102,241,0.3)]'
+                  : 'bg-bg-secondary text-text-secondary',
+              )}
+            >
+              Toda la deuda
+            </button>
+            <button
+              type="button"
+              onClick={() => setDebtMode('con_costo')}
+              className={clsx(
+                'flex-1 rounded-full py-2 text-[12px] font-extrabold transition-all',
+                debtMode === 'con_costo'
+                  ? 'bg-debt text-white shadow-[0_2px_8px_rgba(239,68,68,0.3)]'
+                  : 'bg-bg-secondary text-text-secondary',
+              )}
+            >
+              Solo con costo
+            </button>
+          </div>
+          {debtMode === 'con_costo' && (
+            <p className="rounded-xl bg-primary/5 px-3 py-2 text-[11px] font-medium text-text-secondary">
+              Los MSI 0% siguen su calendario propio. Tu excedente va a ahorro.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Balance breakdown — collapsible, collapsed by default */}
       <BalanceBreakdownCard accounts={accounts} />
 
@@ -383,6 +446,24 @@ export function Proyeccion() {
         {/* ¿Cómo se calcula? collapsed section */}
         <HowCalcSection />
       </Card>
+
+      {/* Compromisos y colchón */}
+      {committedData.some((d) => d.total > 0) && (
+        <Card>
+          <p className="mb-1 text-[13px] font-extrabold text-text">Compromisos mes a mes</p>
+          <p className="mb-3 text-[11px] font-medium text-text-tertiary">
+            Tus pagos comprometidos bajan conforme terminan los MSI
+          </p>
+          <CommitmentsChart data={committedData} />
+          <div className="mt-5">
+            <p className="mb-1 text-[12.5px] font-extrabold text-text">Colchón real disponible</p>
+            <p className="mb-3 text-[11px] font-medium text-text-tertiary">
+              Lo que sobra de tu disponible tras cubrir todos los compromisos
+            </p>
+            <ColchonChart data={colchonData} />
+          </div>
+        </Card>
+      )}
 
       {/* Si aportas más */}
       <Card>

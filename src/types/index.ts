@@ -18,7 +18,7 @@ export interface Account {
   user_id: string
   name: string
   type: AccountType
-  /** Always a positive number. For credit accounts, this is the debt amount. */
+  /** Always a positive number. For credit accounts, this is the debt amount (includes MSI principal). */
   balance: number
   /** Credit accounts only. */
   credit_limit: number | null
@@ -45,6 +45,14 @@ export interface Account {
   external_id: string | null
   institution_name: string | null
   last_synced_at: string | null
+  /** Credit accounts: 'con_costo' (APR > 0, revolving) or 'sin_costo' (MSI-only, no interest). */
+  cost_type: 'con_costo' | 'sin_costo'
+  /** Annual percentage rate, e.g. 42.5 for 42.5%. Null = unknown. */
+  apr: number | null
+  /** Minimum monthly payment as % of revolving balance. Null = use 1.5% default. */
+  min_payment_pct: number | null
+  /** Pre-payment buffer: credited against upcoming MSI monthly amounts. */
+  prepay_buffer: number
 }
 
 export interface Transaction {
@@ -305,6 +313,8 @@ export interface Installment {
   months_paid: number
   start_date: string
   status: 'active' | 'paid'
+  /** True (default) = MSI 0%, no interest charged. False = plan with interest. */
+  is_zero_interest: boolean
   created_at: string
   updated_at: string
 }

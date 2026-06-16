@@ -9,8 +9,10 @@ export interface NewInstallment {
   total_amount: number
   monthly_amount: number
   months_total: number
+  months_paid?: number
   account_id?: string | null
   start_date?: string
+  is_zero_interest?: boolean
 }
 
 export type InstallmentPatch = Partial<NewInstallment> & { months_paid?: number; status?: 'active' | 'paid' }
@@ -66,6 +68,7 @@ export function useInstallments() {
     if (!user) throw new Error('Not authenticated')
     const tempId = crypto.randomUUID()
     const now = new Date().toISOString()
+    const startMonthsPaid = inst.months_paid ?? 0
     const optimistic: Installment = {
       id: tempId,
       user_id: user.id,
@@ -74,9 +77,10 @@ export function useInstallments() {
       total_amount: inst.total_amount,
       monthly_amount: inst.monthly_amount,
       months_total: inst.months_total,
-      months_paid: 0,
+      months_paid: startMonthsPaid,
       start_date: inst.start_date ?? now.slice(0, 10),
-      status: 'active',
+      status: startMonthsPaid >= inst.months_total ? 'paid' : 'active',
+      is_zero_interest: inst.is_zero_interest ?? true,
       created_at: now,
       updated_at: now,
     }
@@ -84,8 +88,9 @@ export function useInstallments() {
     const { error: err } = await supabase.from('installments').insert({
       ...inst,
       user_id: user.id,
-      months_paid: 0,
-      status: 'active',
+      months_paid: startMonthsPaid,
+      status: startMonthsPaid >= inst.months_total ? 'paid' : 'active',
+      is_zero_interest: inst.is_zero_interest ?? true,
       start_date: inst.start_date ?? now.slice(0, 10),
     })
     if (err) {
