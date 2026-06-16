@@ -17,6 +17,7 @@ import clsx from 'clsx'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useInstallments } from '@/hooks/useInstallments'
 import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
@@ -37,6 +38,7 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
+import { getTotalExigible, getRevolvingBalance, getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
@@ -62,6 +64,7 @@ export function Resumen() {
   const [scoreOpen, setScoreOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
+  const { data: installments } = useInstallments()
   const { active: activeLoans, data: allLoans, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
@@ -87,6 +90,14 @@ export function Resumen() {
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
   const porCobrar = loansPorCobrar - loansPorPagar
   const net = debitTotal - creditDebt
+
+  const totalExigible = getTotalExigible(creditAccounts, installments)
+  const conCostoRevolving = creditAccounts
+    .filter((a) => a.cost_type === 'con_costo')
+    .reduce((s, a) => s + getRevolvingBalance(a, installments), 0)
+  const msiBalance = installments
+    .filter((i) => i.status === 'active')
+    .reduce((s, i) => s + getInstallmentRemaining(i), 0)
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -262,9 +273,6 @@ export function Resumen() {
 
   const activosShown = debitTotal
   const deudaShown = creditDebt
-  const assetsRatio = activosShown + deudaShown > 0
-    ? activosShown / (activosShown + deudaShown)
-    : 1
 
   return (
     <div className="flex flex-col animate-[fade-in_300ms_ease-out]">
@@ -367,7 +375,7 @@ export function Resumen() {
 
           <div className="relative flex items-center justify-between">
             <span className="text-[10.5px] font-extrabold uppercase tracking-[0.13em] text-white/55">
-              Balance neto
+              A pagar este mes
             </span>
             <span
               className={clsx(
@@ -395,11 +403,12 @@ export function Resumen() {
               backgroundClip: 'text',
             }}
           >
-            {formatMXN(net)}
+            {formatMXN(totalExigible)}
           </p>
           <div className="relative mt-1 flex items-center gap-3">
             <p className="text-[11.5px] font-medium text-white/55">
-              activos − deuda total
+              Balance neto{' '}
+              <span className="text-white/80">{formatMXN(net)}</span>
             </p>
             {nextPayday && (
               <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75 backdrop-blur-sm">
@@ -409,46 +418,37 @@ export function Resumen() {
             )}
           </div>
 
-          {/* Stacked split bar */}
-          <div className="relative mt-4">
-            <div
-              className="flex h-2.5 overflow-hidden rounded-full"
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05)',
-              }}
-            >
-              <div
+          {/* Debt breakdown chips */}
+          <div className="relative mt-4 flex gap-2">
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-debt"
+                style={{ boxShadow: '0 0 6px rgba(255,90,95,0.7)' }}
+              />
+              <div className="min-w-0">
+                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
+                  Con costo
+                </p>
+                <p className="font-mono text-[13px] font-bold text-white">
+                  {formatMXN(conCostoRevolving)}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
                 style={{
-                  width: `${assetsRatio * 100}%`,
-                  background: 'linear-gradient(90deg, #2BB673 0%, #5DD296 100%)',
+                  background: '#5DD296',
+                  boxShadow: '0 0 6px rgba(93,210,150,0.7)',
                 }}
               />
-              <div
-                className="flex-1"
-                style={{ background: 'linear-gradient(90deg, #FF5A5F 0%, #FF8085 100%)' }}
-              />
-            </div>
-            <div className="mt-2 flex justify-between text-[11px] font-bold">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="h-2 w-2 rounded-full bg-asset"
-                  style={{ boxShadow: '0 0 8px rgba(43,182,115,0.6)' }}
-                />
-                <span className="text-white/70">Activos</span>
-                <span className="font-mono text-white">
-                  ${(activosShown / 1000).toFixed(1)}k
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-white">
-                  ${(deudaShown / 1000).toFixed(1)}k
-                </span>
-                <span className="text-white/70">Deuda</span>
-                <span
-                  className="h-2 w-2 rounded-full bg-debt"
-                  style={{ boxShadow: '0 0 8px rgba(255,90,95,0.6)' }}
-                />
+              <div className="min-w-0">
+                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
+                  MSI 0%
+                </p>
+                <p className="font-mono text-[13px] font-bold text-white">
+                  {formatMXN(msiBalance)}
+                </p>
               </div>
             </div>
           </div>

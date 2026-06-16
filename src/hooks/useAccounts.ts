@@ -14,6 +14,10 @@ export interface NewAccount {
   payment_grace_days?: number | null
   color?: string | null
   logo_domain?: string | null
+  cost_type?: Account['cost_type']
+  apr?: number | null
+  min_payment_pct?: number | null
+  prepay_buffer?: number
 }
 
 export type AccountPatch = Partial<NewAccount>
@@ -90,6 +94,10 @@ export function useAccounts() {
       external_id: null,
       institution_name: null,
       last_synced_at: null,
+      cost_type: 'con_costo',
+      apr: null,
+      min_payment_pct: null,
+      prepay_buffer: 0,
       created_at: now,
       updated_at: now,
       balance: account.balance ?? 0,

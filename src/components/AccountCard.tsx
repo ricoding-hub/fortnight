@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { addMonths, format } from 'date-fns'
+import { es } from 'date-fns/locale'
 import clsx from 'clsx'
 import {
   IconBuildingBank,
@@ -14,7 +16,12 @@ import { CreditCycleBadge } from '@/components/CreditCycleBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
 import { bankLogoUrl } from '@/lib/banks'
-import type { Account } from '@/types'
+import {
+  getExigibleEsteCiclo,
+  getRevolvingBalance,
+  prepayMonthsCovered,
+} from '@/lib/debt'
+import type { Account, Installment } from '@/types'
 
 function SyncedLabel({ name }: { name: string }) {
   const label = name !== 'Banco conectado' ? name : null
@@ -28,6 +35,7 @@ function SyncedLabel({ name }: { name: string }) {
 
 interface AccountCardProps {
   account: Account
+  installments?: Installment[]
   /** Persists a new balance; the hook records the delta as an adjustment. */
   onSaveBalance: (account: Account, newBalance: number) => Promise<void>
   onEditDetails: (account: Account) => void
@@ -81,6 +89,7 @@ function Avatar({ account }: AvatarProps) {
 
 export function AccountCard({
   account,
+  installments = [],
   onSaveBalance,
   onEditDetails,
   reorderMode = false,
@@ -96,6 +105,15 @@ export function AccountCard({
 
   const isCredit = account.type === 'credit'
   const isSynced = account.source === 'syncfy'
+
+  const exigible = isCredit ? getExigibleEsteCiclo(account, installments) : 0
+  const revolving = isCredit ? getRevolvingBalance(account, installments) : 0
+  const monthsCovered =
+    isCredit && account.prepay_buffer > 0 ? prepayMonthsCovered(account, installments) : null
+  const coveredUntil =
+    monthsCovered != null
+      ? format(addMonths(new Date(), monthsCovered), 'MMM yyyy', { locale: es })
+      : null
 
   function startEdit() {
     setValue(String(account.balance))
@@ -193,6 +211,22 @@ export function AccountCard({
             )}
             {isCredit && <CreditCycleBadge account={account} />}
           </div>
+          {isCredit && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums text-text-tertiary">
+              <span>
+                Exigible{' '}
+                <span className="font-semibold text-debt">{formatMXN(exigible)}</span>
+              </span>
+              <span className="text-border">·</span>
+              <span>Revolvente {formatMXN(revolving)}</span>
+            </div>
+          )}
+          {isCredit && account.prepay_buffer > 0 && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-asset/10 px-2 py-0.5 text-[10px] font-semibold text-asset-deep">
+              Buffer {formatMXN(account.prepay_buffer)}
+              {coveredUntil && ` · hasta ${coveredUntil}`}
+            </span>
+          )}
         </div>
       </Link>
 

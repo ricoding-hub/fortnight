@@ -28,7 +28,7 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: Ins
           />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <p className="truncate text-[13px] font-bold text-text">{inst.name}</p>
             {isDone ? (
               <span className="shrink-0 rounded-full bg-asset-soft px-2 py-0.5 text-[10px] font-extrabold text-asset-deep">
@@ -37,6 +37,15 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete }: Ins
             ) : (
               <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-extrabold text-primary-deep">
                 {remaining} mes{remaining === 1 ? '' : 'es'} restante{remaining === 1 ? '' : 's'}
+              </span>
+            )}
+            {inst.is_zero_interest ? (
+              <span className="shrink-0 rounded-full bg-asset/10 px-2 py-0.5 text-[10px] font-extrabold text-asset-deep">
+                0%
+              </span>
+            ) : (
+              <span className="shrink-0 rounded-full bg-debt/10 px-2 py-0.5 text-[10px] font-extrabold text-debt-deep">
+                Con interés
               </span>
             )}
           </div>
