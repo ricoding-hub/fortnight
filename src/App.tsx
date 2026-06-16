@@ -108,9 +108,9 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <AppTour />
       </BrowserRouter>
       <ToastContainer />
-      <AppTour />
     </AuthProvider>
   )
 }
