@@ -200,7 +200,6 @@ export function MisCuentas() {
   const creditTotal = credit.reduce((s, a) => s + Math.abs(a.balance), 0)
 
   const sectionProps = {
-    installments,
     onSaveBalance: updateBalance,
     onEditDetails: (account: Account) => setFormMode({ kind: 'edit', account }),
     onAdd: openChooser,

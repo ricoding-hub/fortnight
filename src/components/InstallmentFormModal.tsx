@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -6,6 +6,7 @@ import { IconCalendarEvent } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useToast } from '@/hooks/useToast'
 import type { NewInstallment } from '@/hooks/useInstallments'
 
 const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0
@@ -39,6 +40,8 @@ interface InstallmentFormModalProps {
 export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFormModalProps) {
   const { data: accounts } = useAccounts()
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
+  const toast = useToast()
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const {
     register,
@@ -53,7 +56,10 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
   })
 
   useEffect(() => {
-    if (open) reset({ months_total: '12', months_paid: '0', is_zero_interest: true })
+    if (open) {
+      reset({ months_total: '12', months_paid: '0', is_zero_interest: true })
+      setSaveError(null)
+    }
   }, [open, reset])
 
   const totalAmountStr = watch('total_amount')
@@ -69,17 +75,25 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
       : 0
 
   async function handleFormSubmit(values: FormValues) {
-    await onSubmit({
-      name: values.name,
-      total_amount: Number(values.total_amount),
-      monthly_amount: monthlyAmount,
-      months_total: Number(values.months_total),
-      months_paid: Number(values.months_paid) || 0,
-      is_zero_interest: values.is_zero_interest,
-      account_id: values.account_id || null,
-      start_date: values.start_date || undefined,
-    })
-    onClose()
+    setSaveError(null)
+    try {
+      await onSubmit({
+        name: values.name,
+        total_amount: Number(values.total_amount),
+        monthly_amount: monthlyAmount,
+        months_total: Number(values.months_total),
+        months_paid: Number(values.months_paid) || 0,
+        is_zero_interest: values.is_zero_interest,
+        account_id: values.account_id || null,
+        start_date: values.start_date || undefined,
+      })
+      toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
+      onClose()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setSaveError(msg)
+      toast.error('Error al guardar', 'No se pudo registrar el gasto a meses.')
+    }
   }
 
   return (
@@ -233,6 +247,12 @@ export function InstallmentFormModal({ open, onClose, onSubmit }: InstallmentFor
             className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
+
+        {saveError && (
+          <p className="rounded-xl bg-debt/8 px-3.5 py-2.5 text-[12px] font-semibold text-debt">
+            {saveError}
+          </p>
+        )}
 
         <button
           type="submit"
