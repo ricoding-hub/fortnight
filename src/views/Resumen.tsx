@@ -93,7 +93,7 @@ export function Resumen() {
 
   const totalExigible = getTotalExigible(creditAccounts, installments)
   const conCostoRevolving = creditAccounts
-    .filter((a) => a.cost_type === 'con_costo')
+    .filter((a) => (a.cost_type ?? 'con_costo') === 'con_costo')
     .reduce((s, a) => s + getRevolvingBalance(a, installments), 0)
   const msiBalance = installments
     .filter((i) => i.status === 'active')
