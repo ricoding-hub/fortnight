@@ -1,6 +1,7 @@
 import { IconCalendarEvent, IconCheck } from '@tabler/icons-react'
 import { Card } from '@/components/ui/Card'
 import { formatMXN } from '@/lib/format'
+import { getInstallmentRemaining } from '@/lib/debt'
 import type { Installment } from '@/types'
 
 interface InstallmentCardProps {
@@ -14,6 +15,7 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete, onEdi
   const remaining = inst.months_total - inst.months_paid
   const progress = inst.months_total > 0 ? inst.months_paid / inst.months_total : 0
   const isDone = inst.status === 'paid'
+  const remainingAmount = getInstallmentRemaining(inst)
 
   return (
     <Card className="p-3.5">
@@ -52,7 +54,12 @@ export function InstallmentCard({ installment: inst, onMarkPaid, onDelete, onEdi
           </div>
           <p className="mt-0.5 font-mono text-[12px] font-semibold text-text-secondary">
             {formatMXN(inst.monthly_amount)}/mes
-            <span className="ml-1.5 text-text-tertiary">· total {formatMXN(inst.total_amount)}</span>
+            {!isDone && (
+              <span className="ml-1.5 text-text-tertiary">· restante {formatMXN(remainingAmount)}</span>
+            )}
+            {isDone && (
+              <span className="ml-1.5 text-text-tertiary">· total {formatMXN(inst.total_amount)}</span>
+            )}
           </p>
 
           {/* Progress bar */}
