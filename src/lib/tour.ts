@@ -52,21 +52,11 @@ export function createResumenTour(onDone: () => void): Driver {
       {
         element: '#tour-hero',
         popover: {
-          title: 'Lo que debes pagar este mes',
+          title: 'Tu saldo total en tarjetas',
           description:
-            'Es la suma de los pagos mínimos de todas tus tarjetas: el porcentaje mínimo de tu saldo libre más las mensualidades de tus planes a meses. No es tu deuda total.',
+            'Es la suma de los balances de todas tus tarjetas de crédito. Cada vez que actualizas el saldo de una tarjeta, este número refleja lo que debes en total.',
           side: 'bottom',
           align: 'center',
-        },
-      },
-      {
-        element: '#tour-con-costo',
-        popover: {
-          title: 'Saldo libre (con interés)',
-          description:
-            'La parte de tu deuda que NO está en un plan de meses. Si no la pagas completa, el banco te cobra intereses.',
-          side: 'top',
-          align: 'start',
         },
       },
       {

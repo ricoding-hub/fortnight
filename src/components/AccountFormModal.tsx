@@ -40,8 +40,6 @@ const isGraceDays = (v: string) => {
   return Number.isInteger(n) && n >= 1 && n <= 365
 }
 
-const isPositiveDecimal = (v: string) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0)
-
 // The form holds raw strings; values are coerced to the schema's types on submit.
 const accountSchema = z.object({
   name: z.string().trim().min(1, 'Escribe un nombre'),
@@ -56,8 +54,6 @@ const accountSchema = z.object({
   payment_grace_days: z
     .string()
     .refine((v) => v === '' || isGraceDays(v), 'Entre 1 y 365 días'),
-  apr: z.string().refine(isPositiveDecimal, 'Número inválido'),
-  min_payment_pct: z.string().refine(isPositiveDecimal, 'Número inválido'),
 })
 
 type AccountFormValues = z.infer<typeof accountSchema>
@@ -103,10 +99,6 @@ export function AccountFormModal({
     mode.kind === 'edit' && mode.account.payment_grace_days != null ? 'grace_days' : 'fixed_day',
   )
 
-  const [costType, setCostType] = useState<'con_costo' | 'sin_costo'>(
-    mode.kind === 'edit' ? mode.account.cost_type : 'con_costo',
-  )
-
   const {
     register,
     handleSubmit,
@@ -122,8 +114,6 @@ export function AccountFormModal({
             cut_day: '',
             payment_due_day: '',
             payment_grace_days: '',
-            apr: '',
-            min_payment_pct: '',
           }
         : {
             name: mode.account.name,
@@ -142,11 +132,6 @@ export function AccountFormModal({
               mode.account.payment_grace_days != null
                 ? String(mode.account.payment_grace_days)
                 : '',
-            apr: mode.account.apr != null ? String(mode.account.apr) : '',
-            min_payment_pct:
-              mode.account.min_payment_pct != null
-                ? String(mode.account.min_payment_pct)
-                : '',
           },
   })
 
@@ -159,9 +144,6 @@ export function AccountFormModal({
       cut_day: isCredit ? num(values.cut_day) : null,
       payment_due_day: isCredit && dueDateMode === 'fixed_day' ? num(values.payment_due_day) : null,
       payment_grace_days: isCredit && dueDateMode === 'grace_days' ? num(values.payment_grace_days) : null,
-      cost_type: isCredit ? costType : undefined,
-      apr: isCredit && costType === 'con_costo' ? num(values.apr) : null,
-      min_payment_pct: isCredit ? num(values.min_payment_pct) : null,
     }
     try {
       if (mode.kind === 'create') {
@@ -379,58 +361,6 @@ export function AccountFormModal({
 
         {isCredit && (
           <>
-            {/* Cost type toggle */}
-            <div>
-              <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
-                Tipo de deuda
-              </p>
-              <div className="flex overflow-hidden rounded-xl border border-border">
-                <button
-                  type="button"
-                  onClick={() => setCostType('con_costo')}
-                  className={clsx(
-                    'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                    costType === 'con_costo'
-                      ? 'bg-debt text-white'
-                      : 'bg-bg text-text-secondary hover:bg-debt/5',
-                  )}
-                >
-                  Con costo (APR)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCostType('sin_costo')}
-                  className={clsx(
-                    'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                    costType === 'sin_costo'
-                      ? 'bg-primary text-white'
-                      : 'bg-bg text-text-secondary hover:bg-primary/5',
-                  )}
-                >
-                  Sin costo (MSI)
-                </button>
-              </div>
-            </div>
-
-            {costType === 'con_costo' && (
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="APR (% anual)"
-                  inputMode="decimal"
-                  placeholder="Ej: 42.5"
-                  error={errors.apr?.message}
-                  {...register('apr')}
-                />
-                <Input
-                  label="% mínimo"
-                  inputMode="decimal"
-                  placeholder="1.5"
-                  error={errors.min_payment_pct?.message}
-                  {...register('min_payment_pct')}
-                />
-              </div>
-            )}
-
             <Input
               label="Límite de crédito"
               inputMode="decimal"

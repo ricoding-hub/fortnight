@@ -17,7 +17,6 @@ import clsx from 'clsx'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
-import { useInstallments } from '@/hooks/useInstallments'
 import { useLoans } from '@/hooks/useLoans'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
@@ -38,7 +37,6 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
-import { getTotalExigible, getRevolvingBalance, getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
@@ -65,7 +63,6 @@ export function Resumen() {
   const [heroInfoOpen, setHeroInfoOpen] = useState(false)
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
-  const { data: installments } = useInstallments()
   const { active: activeLoans, data: allLoans, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
@@ -91,14 +88,6 @@ export function Resumen() {
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
   const porCobrar = loansPorCobrar - loansPorPagar
   const net = debitTotal - creditDebt
-
-  const totalExigible = getTotalExigible(creditAccounts, installments)
-  const conCostoRevolving = creditAccounts
-    .filter((a) => (a.cost_type ?? 'con_costo') === 'con_costo')
-    .reduce((s, a) => s + getRevolvingBalance(a, installments), 0)
-  const msiBalance = installments
-    .filter((i) => i.status === 'active')
-    .reduce((s, i) => s + getInstallmentRemaining(i), 0)
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -414,7 +403,7 @@ export function Resumen() {
               backgroundClip: 'text',
             }}
           >
-            {formatMXN(totalExigible)}
+            {formatMXN(creditDebt)}
           </p>
           <div className="relative mt-1 flex items-center gap-3">
             <p className="text-[11.5px] font-medium text-white/55">
@@ -429,40 +418,6 @@ export function Resumen() {
             )}
           </div>
 
-          {/* Debt breakdown chips */}
-          <div className="relative mt-4 flex gap-2">
-            <div id="tour-con-costo" className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full bg-debt"
-                style={{ boxShadow: '0 0 6px rgba(255,90,95,0.7)' }}
-              />
-              <div className="min-w-0">
-                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
-                  Con costo
-                </p>
-                <p className="font-mono text-[13px] font-bold text-white">
-                  {formatMXN(conCostoRevolving)}
-                </p>
-              </div>
-            </div>
-            <div id="tour-msi" className="flex flex-1 items-center gap-2 rounded-xl bg-white/8 px-3 py-2">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{
-                  background: '#5DD296',
-                  boxShadow: '0 0 6px rgba(93,210,150,0.7)',
-                }}
-              />
-              <div className="min-w-0">
-                <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/55">
-                  MSI 0%
-                </p>
-                <p className="font-mono text-[13px] font-bold text-white">
-                  {formatMXN(msiBalance)}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -512,7 +467,7 @@ export function Resumen() {
           <HeroInfoBlock
             color="#EF4444"
             title="A pagar este mes"
-            body="Es la suma de los pagos mínimos de todas tus tarjetas: [% mínimo × saldo libre] + [mensualidades de planes a meses activos]. No es tu deuda total, sino lo que el banco requiere este ciclo."
+            body="Es el saldo total de tus tarjetas de crédito en este momento. Cada vez que actualizas el balance de una tarjeta, este número refleja lo que debes en total."
           />
           <HeroInfoBlock
             color="#6366F1"
@@ -520,19 +475,9 @@ export function Resumen() {
             body="Total en cuentas de débito (tu efectivo) menos el total de deuda en tarjetas. Positivo = tus ahorros superan tus deudas."
           />
           <HeroInfoBlock
-            color="#EF4444"
-            title='Chip "Con costo" — saldo libre'
-            body='La parte de tu tarjeta que NO está en un plan de meses. Si no la pagas completa al corte, el banco cobra intereses sobre este monto.'
-          />
-          <HeroInfoBlock
-            color="#2BB673"
-            title='Chip "MSI 0%" — planes a meses'
-            body='El principal pendiente de tus compras a meses sin interés. Genera una mensualidad fija pero sin costo mientras pagues a tiempo.'
-          />
-          <HeroInfoBlock
             color="#9B7BFF"
             title="¿Cuándo registro un plan a meses?"
-            body='Cuando compraste algo en "X meses sin interés (MSI)". Ve a Cuentas → sección "Meses sin interés" y regístralo. El app lo descuenta del saldo libre de tu tarjeta automáticamente.'
+            body='Cuando compraste algo en "X meses sin interés (MSI)". Ve a Cuentas → sección "Meses sin interés" y regístralo. El app lo separa de tu deuda libre y calcula la mensualidad fija.'
           />
         </div>
       </Modal>

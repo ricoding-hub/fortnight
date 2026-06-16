@@ -27,14 +27,13 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
-import type { Account, AccountType, Installment } from '@/types'
+import type { Account, AccountType } from '@/types'
 
 interface SectionProps {
   id?: string
   title: string
   type: AccountType
   accounts: Account[]
-  installments: Installment[]
   total: number
   reorderMode: boolean
   onSaveBalance: (account: Account, newBalance: number) => Promise<void>
@@ -48,7 +47,6 @@ function Section({
   title,
   type,
   accounts,
-  installments,
   total,
   reorderMode,
   onSaveBalance,
@@ -77,7 +75,6 @@ function Section({
               <li key={a.id}>
                 <AccountCard
                   account={a}
-                  installments={installments}
                   onSaveBalance={onSaveBalance}
                   onEditDetails={onEditDetails}
                   reorderMode={reorderMode}
