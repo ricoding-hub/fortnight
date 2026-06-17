@@ -27,6 +27,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
+import { getInstallmentRemaining } from '@/lib/debt'
 import type { Account, AccountType } from '@/types'
 
 interface SectionProps {
@@ -323,10 +324,30 @@ export function MisCuentas() {
               </button>
             ) : (
               <div className="flex flex-col gap-2">
+                {(() => {
+                  const active = installments.filter((i) => i.status === 'active')
+                  if (active.length === 0) return null
+                  const totalRestante = active.reduce((s, i) => s + getInstallmentRemaining(i), 0)
+                  const totalMensual = active.reduce((s, i) => s + i.monthly_amount, 0)
+                  return (
+                    <div className="flex items-stretch gap-2 rounded-xl bg-primary-soft/25 px-3.5 py-3">
+                      <div className="flex-1">
+                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">Deuda restante</p>
+                        <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">{formatMXN(totalRestante)}</p>
+                      </div>
+                      <div className="w-px bg-primary/15" />
+                      <div className="flex-1 pl-3">
+                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">Mensualidad total</p>
+                        <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">{formatMXN(totalMensual)}</p>
+                      </div>
+                    </div>
+                  )
+                })()}
                 {installments.map((inst) => (
                   <InstallmentCard
                     key={inst.id}
                     installment={inst}
+                    linkedAccount={accounts.find((a) => a.id === inst.account_id)}
                     onMarkPaid={() => void markMonthPaid(inst.id).catch(() => toast.error('Error', 'No se pudo actualizar'))}
                     onDelete={() => void removeInstallment(inst.id).catch(() => toast.error('Error', 'No se pudo eliminar'))}
                     onEdit={() => setEditingInstallment(inst)}

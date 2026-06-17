@@ -46,7 +46,7 @@ export function CommitmentsChart({ data }: CommitmentsChartProps) {
           }}
           formatter={(value, name) => [
             typeof value === 'number' ? `$${Math.round(value).toLocaleString()}` : '—',
-            name === 'msi' ? 'MSI 0%' : 'Revolvente',
+            name === 'msi' ? 'MSI 0%' : 'Pago mín. libre',
           ]}
           cursor={{ fill: 'var(--color-border)', opacity: 0.4 }}
         />

@@ -1,34 +1,54 @@
+import { useState } from 'react'
 import { IconCalendarEvent, IconCheck } from '@tabler/icons-react'
 import { Card } from '@/components/ui/Card'
 import { formatMXN } from '@/lib/format'
 import { getInstallmentRemaining } from '@/lib/debt'
-import type { Installment } from '@/types'
+import { bankLogoUrl } from '@/lib/banks'
+import type { Account, Installment } from '@/types'
 
 interface InstallmentCardProps {
   installment: Installment
+  linkedAccount?: Account
   onMarkPaid?: () => void
   onDelete?: () => void
   onEdit?: () => void
 }
 
-export function InstallmentCard({ installment: inst, onMarkPaid, onDelete, onEdit }: InstallmentCardProps) {
+export function InstallmentCard({ installment: inst, linkedAccount, onMarkPaid, onDelete, onEdit }: InstallmentCardProps) {
+  const [logoFailed, setLogoFailed] = useState(false)
   const remaining = inst.months_total - inst.months_paid
   const progress = inst.months_total > 0 ? inst.months_paid / inst.months_total : 0
   const isDone = inst.status === 'paid'
   const remainingAmount = getInstallmentRemaining(inst)
+  const showLogo = !!linkedAccount?.logo_domain && !logoFailed
 
   return (
     <Card className="p-3.5">
       <div className="flex items-start gap-3">
         <div
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-          style={{ background: isDone ? 'var(--color-asset-soft)' : 'var(--color-primary-soft)' }}
+          className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl"
+          style={{
+            background: showLogo
+              ? 'white'
+              : isDone
+                ? 'var(--color-asset-soft)'
+                : 'var(--color-primary-soft)',
+          }}
         >
-          <IconCalendarEvent
-            size={18}
-            stroke={1.75}
-            color={isDone ? 'var(--color-asset-deep)' : 'var(--color-primary-deep)'}
-          />
+          {showLogo ? (
+            <img
+              src={bankLogoUrl(linkedAccount!.logo_domain!)}
+              alt={linkedAccount!.name}
+              className="h-6 w-6 object-contain"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <IconCalendarEvent
+              size={18}
+              stroke={1.75}
+              color={isDone ? 'var(--color-asset-deep)' : 'var(--color-primary-deep)'}
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">

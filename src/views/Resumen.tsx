@@ -38,7 +38,6 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
-import { getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
@@ -93,9 +92,6 @@ export function Resumen() {
   const net = debitTotal - creditDebt
 
   const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)
-  const msiPrincipalTotal = activeInstallments.reduce((s, i) => s + getInstallmentRemaining(i), 0)
-  const freeBalance = Math.max(0, creditDebt - msiPrincipalTotal)
-  const estesMes = freeBalance + msiMonthlyTotal
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -479,7 +475,7 @@ export function Resumen() {
                   Cuotas mensuales
                 </p>
                 <p className="font-mono text-[13.5px] font-bold text-white">
-                  {formatMXN(estesMes)}
+                  {formatMXN(msiMonthlyTotal)}
                 </p>
               </div>
               <span className="shrink-0 text-[9.5px] font-semibold text-white/40">
@@ -547,7 +543,7 @@ export function Resumen() {
           <HeroInfoBlock
             color="#9B7BFF"
             title="Cuotas mensuales"
-            body="La suma de tus mensualidades MSI activas más el saldo libre en tarjetas (lo que no está comprometido en un plan). Es lo que realmente necesitas cubrir este ciclo."
+            body="La suma fija de tus mensualidades MSI activas. Es el compromiso de pago mensual que ya está acordado con la tienda o banco, independientemente del saldo total de tu tarjeta."
           />
           <HeroInfoBlock
             color="#6366F1"
