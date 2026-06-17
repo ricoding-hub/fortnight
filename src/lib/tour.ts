@@ -52,9 +52,9 @@ export function createResumenTour(onDone: () => void): Driver {
       {
         element: '#tour-hero',
         popover: {
-          title: 'Tu saldo total en tarjetas',
+          title: 'Balance neto y deuda a la vista',
           description:
-            'Es la suma de los balances de todas tus tarjetas de crédito. Cada vez que actualizas el saldo de una tarjeta, este número refleja lo que debes en total.',
+            'El número grande es tu balance neto (activos − deudas). La barra muestra la proporción entre lo que tienes y lo que debes. El chip morado "Deuda a la vista" es lo que ya está en tus estados de cuenta este ciclo: saldo libre en tarjetas + cuotas MSI del mes. Toca el ícono (i) para ver el desglose completo.',
           side: 'bottom',
           align: 'center',
         },
@@ -111,7 +111,7 @@ export function createCuentasTour(onDone: () => void): Driver {
         popover: {
           title: '¿Compraste algo a meses sin interés?',
           description:
-            'Regístralo aquí. El app calcula tu mensualidad fija y la resta del saldo libre de la tarjeta, para que los números sean precisos.',
+            'Regístralo aquí. El app calcula tu mensualidad fija, la resta de la deuda futura de tu tarjeta y la suma al chip "Deuda a la vista" del Resumen. Así siempre sabes qué es exigible este mes y qué es deuda futura.',
           side: 'top',
           align: 'center',
         },
@@ -158,7 +158,7 @@ export function createPlanTour(onDone: () => void): Driver {
         popover: {
           title: 'Compromisos y colchón',
           description:
-            'Cuánto se llevan tus planes a meses cada mes (va bajando cuando terminan) y cuánto te sobra de tu disponible.',
+            'La barra azul son tus cuotas MSI fijas del mes (bajan conforme terminan los planes). La barra roja es el pago mínimo sobre el saldo libre en tarjetas. El colchón es lo que te sobra de tu disponible tras cubrir todo.',
           side: 'top',
           align: 'center',
         },

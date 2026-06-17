@@ -38,6 +38,7 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
+import { getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2 } from '@/lib/score'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
@@ -62,6 +63,7 @@ export function Resumen() {
   const navigate = useNavigate()
   const [scoreOpen, setScoreOpen] = useState(false)
   const [heroInfoOpen, setHeroInfoOpen] = useState(false)
+  const [heroTab, setHeroTab] = useState<'info' | 'desglose'>('info')
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
   const { active: activeLoans, data: allLoans, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
@@ -92,6 +94,8 @@ export function Resumen() {
   const net = debitTotal - creditDebt
 
   const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)
+  const msiPrincipalTotal = activeInstallments.reduce((s, i) => s + getInstallmentRemaining(i), 0)
+  const deudaALaVista = Math.max(0, creditDebt - msiPrincipalTotal) + msiMonthlyTotal
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -461,7 +465,7 @@ export function Resumen() {
             </div>
           </div>
 
-          {/* Cuotas mensuales MSI — only when there are active plans */}
+          {/* Deuda a la vista — only when there are active MSI plans */}
           {activeInstallments.length > 0 && (
             <div className="relative mt-3 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/8 px-3 py-2.5">
               <div
@@ -472,15 +476,19 @@ export function Resumen() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[9.5px] font-bold uppercase tracking-wide text-white/50">
-                  Cuotas mensuales
+                  Deuda a la vista
                 </p>
                 <p className="font-mono text-[13.5px] font-bold text-white">
-                  {formatMXN(msiMonthlyTotal)}
+                  {formatMXN(deudaALaVista)}
                 </p>
               </div>
-              <span className="shrink-0 text-[9.5px] font-semibold text-white/40">
-                {activeInstallments.length} plan{activeInstallments.length === 1 ? '' : 'es'}
-              </span>
+              <button
+                type="button"
+                onClick={() => { setHeroInfoOpen(true); setHeroTab('desglose') }}
+                className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[9.5px] font-semibold text-white/55 transition-colors hover:bg-white/20"
+              >
+                Ver
+              </button>
             </div>
           )}
 
@@ -528,29 +536,121 @@ export function Resumen() {
         breakdown={breakdown}
       />
 
-      <Modal open={heroInfoOpen} onClose={() => setHeroInfoOpen(false)} title="Cómo se calculan estos números">
-        <div className="flex flex-col gap-4 text-[13px]">
-          <HeroInfoBlock
-            color="#5DD296"
-            title="Balance neto"
-            body="Tus activos en débito menos tu deuda total en tarjetas. Positivo = tus ahorros superan tus deudas. Negativo = debes más de lo que tienes."
-          />
-          <HeroInfoBlock
-            color="#5DD296"
-            title="Activos vs Deuda (barra)"
-            body="La proporción verde muestra tus cuentas de débito; el rojo, tu deuda en tarjetas. Más verde = mejor salud financiera."
-          />
-          <HeroInfoBlock
-            color="#9B7BFF"
-            title="Cuotas mensuales"
-            body="La suma fija de tus mensualidades MSI activas. Es el compromiso de pago mensual que ya está acordado con la tienda o banco, independientemente del saldo total de tu tarjeta."
-          />
-          <HeroInfoBlock
-            color="#6366F1"
-            title="¿Cuándo registro un plan a meses?"
-            body='Cuando compraste algo en "X meses sin interés". Ve a Cuentas → "Meses sin interés" y regístralo para que la app lo separe de tu deuda libre.'
-          />
+      <Modal open={heroInfoOpen} onClose={() => { setHeroInfoOpen(false); setHeroTab('info') }} title="Cómo se calculan estos números">
+        {/* Tab selector */}
+        <div className="mb-4 flex overflow-hidden rounded-xl border border-border">
+          <button
+            type="button"
+            onClick={() => setHeroTab('info')}
+            className={clsx(
+              'flex-1 py-2 text-[12px] font-bold transition-colors',
+              heroTab === 'info' ? 'bg-primary text-white' : 'bg-bg text-text-secondary hover:bg-primary/5',
+            )}
+          >
+            Explicación
+          </button>
+          <button
+            type="button"
+            onClick={() => setHeroTab('desglose')}
+            className={clsx(
+              'flex-1 py-2 text-[12px] font-bold transition-colors',
+              heroTab === 'desglose' ? 'bg-primary text-white' : 'bg-bg text-text-secondary hover:bg-primary/5',
+            )}
+          >
+            Desglose
+          </button>
         </div>
+
+        {heroTab === 'info' ? (
+          <div className="flex flex-col gap-4 text-[13px]">
+            <HeroInfoBlock
+              color="#5DD296"
+              title="Balance neto"
+              body="Tus activos en débito menos tu deuda total en tarjetas. Positivo = tus ahorros superan tus deudas. Negativo = debes más de lo que tienes."
+            />
+            <HeroInfoBlock
+              color="#5DD296"
+              title="Activos vs Deuda (barra)"
+              body="La proporción verde muestra tus cuentas de débito; el rojo, tu deuda en tarjetas. Más verde = mejor salud financiera."
+            />
+            <HeroInfoBlock
+              color="#9B7BFF"
+              title="Deuda a la vista"
+              body="Lo que ya está reflejado en tus estados de cuenta y debes atender este ciclo: el saldo libre en tarjetas (lo que no está en un plan MSI) más las cuotas MSI de este mes. La deuda futura de tus planes a meses NO cuenta aquí — aún no ha aparecido en tu estado de cuenta."
+            />
+            <HeroInfoBlock
+              color="#6366F1"
+              title="¿Cuándo registro un plan a meses?"
+              body='Cuando compraste algo en "X meses sin interés". Ve a Cuentas → "Meses sin interés" y regístralo. El app lo separa de tu deuda libre automáticamente.'
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 text-[12.5px]">
+            {/* Tarjetas */}
+            <p className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-text-tertiary">
+              Tarjetas de crédito
+            </p>
+            {creditAccounts.map((a) => (
+              <div key={a.id} className="flex items-center justify-between py-1">
+                <span className="text-text-secondary">{a.name}</span>
+                <span className="font-mono font-semibold text-text">{formatMXN(a.balance)}</span>
+              </div>
+            ))}
+            <div className="my-1.5 flex items-center justify-between border-t border-border pt-1.5 font-bold">
+              <span className="text-text">Total tarjetas</span>
+              <span className="font-mono text-text">{formatMXN(creditDebt)}</span>
+            </div>
+
+            {/* Menos MSI restante */}
+            {activeInstallments.length > 0 && (
+              <>
+                <p className="mb-1 mt-3 text-[10.5px] font-extrabold uppercase tracking-wide text-text-tertiary">
+                  Menos: deuda futura MSI (no exigible aún)
+                </p>
+                {activeInstallments.map((i) => (
+                  <div key={i.id} className="flex items-center justify-between py-1">
+                    <span className="text-text-secondary">{i.name}</span>
+                    <span className="font-mono font-semibold text-debt">
+                      -{formatMXN(getInstallmentRemaining(i))}
+                    </span>
+                  </div>
+                ))}
+                <div className="my-1.5 flex items-center justify-between border-t border-border pt-1.5 font-bold">
+                  <span className="text-text">MSI restante</span>
+                  <span className="font-mono text-debt">-{formatMXN(msiPrincipalTotal)}</span>
+                </div>
+
+                {/* Más cuota mensual */}
+                <p className="mb-1 mt-3 text-[10.5px] font-extrabold uppercase tracking-wide text-text-tertiary">
+                  Más: cuota MSI este mes
+                </p>
+                {activeInstallments.map((i) => (
+                  <div key={i.id} className="flex items-center justify-between py-1">
+                    <span className="text-text-secondary">{i.name}</span>
+                    <span className="font-mono font-semibold text-asset-deep">
+                      +{formatMXN(i.monthly_amount)}
+                    </span>
+                  </div>
+                ))}
+                <div className="my-1.5 flex items-center justify-between border-t border-border pt-1.5 font-bold">
+                  <span className="text-text">Mensualidades</span>
+                  <span className="font-mono text-asset-deep">+{formatMXN(msiMonthlyTotal)}</span>
+                </div>
+              </>
+            )}
+
+            {/* Total */}
+            <div
+              className="mt-3 flex items-center justify-between rounded-xl px-3.5 py-3"
+              style={{ background: 'rgba(155,123,255,0.12)' }}
+            >
+              <span className="text-[13px] font-extrabold text-text">Deuda a la vista</span>
+              <span className="font-mono text-[15px] font-extrabold" style={{ color: '#9B7BFF' }}>
+                {formatMXN(deudaALaVista)}
+              </span>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── Streak + Mes libre dual cards ── */}

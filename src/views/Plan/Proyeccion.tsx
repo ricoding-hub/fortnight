@@ -452,7 +452,7 @@ export function Proyeccion() {
         <Card id="tour-plan-colchon">
           <p className="mb-1 text-[13px] font-extrabold text-text">Compromisos mes a mes</p>
           <p className="mb-3 text-[11px] font-medium text-text-tertiary">
-            Azul: cuota MSI fija · Rojo: pago mín. del saldo libre en tarjetas (~1.5%)
+            Azul: cuotas MSI del mes · Rojo: pago mín. saldo libre (~1.5%) — ambos suman tu "Deuda a la vista"
           </p>
           <CommitmentsChart data={committedData} />
           <div className="mt-5">
