@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState } from 'react'
 import {
   IconBackspace,
   IconCheck,
@@ -86,9 +86,15 @@ export function TransactionFormModal({
 
   /* ------------ reset state when (re)opened ------------ */
 
+  // Track previous open value so we only reset when transitioning false→true.
+  // Without this, any accounts realtime update (e.g. balance change after a tx)
+  // would re-run the effect while open=true and reset step back to 0, causing
+  // the success screen to flash and disappear.
+  const prevOpenRef = useRef(false)
   useEffect(() => {
-    if (!open) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const justOpened = open && !prevOpenRef.current
+    prevOpenRef.current = open
+    if (!justOpened) return
     setStep(0)
     setAmount('')
     setCategoryId('')
@@ -128,7 +134,6 @@ export function TransactionFormModal({
     const kinds = direction === 'spend' ? (['variable', 'fixed'] as const) : (['income'] as const)
     return categories
       .filter((c) => (kinds as readonly string[]).includes(c.kind))
-      .slice(0, 6)
   }, [categories, direction])
 
   const selectedAccount = accounts.find((a) => a.id === accountId)
@@ -294,7 +299,7 @@ export function TransactionFormModal({
                 )}
               </div>
 
-              {/* Account chips */}
+              {/* Account grid */}
               <div
                 className={clsx(
                   'rounded-lg transition-all',
@@ -304,7 +309,7 @@ export function TransactionFormModal({
                 <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-text-tertiary">
                   Cuenta
                 </p>
-                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <div className="grid grid-cols-2 gap-1.5">
                   {accounts.map((a) => {
                     const sel = accountId === a.id
                     return (
@@ -313,16 +318,24 @@ export function TransactionFormModal({
                         type="button"
                         onClick={() => setAccountId(a.id)}
                         className={clsx(
-                          'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-extrabold transition-all active:scale-[0.96]',
+                          'flex items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all active:scale-[0.97]',
                           sel ? 'text-white' : 'bg-bg-elevated text-text shadow-card',
                         )}
                         style={sel ? { background: 'var(--color-text)' } : undefined}
                       >
                         <span
-                          className="h-2 w-2 rounded-full"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
                           style={{ background: a.color ?? 'var(--color-primary)' }}
                         />
-                        {a.name}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-extrabold leading-tight">{a.name}</span>
+                          <span className={clsx(
+                            'text-[10px] font-semibold leading-tight',
+                            sel ? 'text-white/70' : 'text-text-tertiary',
+                          )}>
+                            {a.type === 'credit' ? 'Crédito' : 'Débito'}
+                          </span>
+                        </span>
                       </button>
                     )
                   })}

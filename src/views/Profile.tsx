@@ -22,7 +22,7 @@ import {
 
 import { useAuth } from '@/hooks/useAuth'
 import { useConfig } from '@/hooks/useConfig'
-import { useGamification } from '@/hooks/useGamification'
+import { useGamification, LEVEL_XP } from '@/hooks/useGamification'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useLoans } from '@/hooks/useLoans'
@@ -67,8 +67,6 @@ function initial(s: string | null | undefined): string {
   return (s?.trim()?.[0] ?? '?').toUpperCase()
 }
 
-/** Level XP thresholds (index = level - 1). */
-const LEVEL_XP = [0, 500, 1500, 3500, 7000] as const
 function nextLevelFor(lv: number) { return LEVEL_XP[lv] ?? (LEVEL_XP[LEVEL_XP.length - 1] * 2) }
 
 /** Resize an image to max side via canvas, return a Blob. */
@@ -131,10 +129,10 @@ function useAchievements(xp: number, streakDays: number, txCount: number, score:
     {
       id: 'xp-500',
       title: 'Nivel 2',
-      description: 'Ganaste 500 XP con tu consistencia.',
+      description: 'Ganaste 100 XP con tu consistencia.',
       icon: IconRocket,
       color: '#9B7BFF',
-      unlocked: xp >= 500,
+      unlocked: xp >= 100,
     },
   ], [xp, streakDays, txCount, score])
 }

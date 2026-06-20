@@ -3,17 +3,16 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { UserGamification } from '@/types'
 
-const XP_PER_TX = 15
+export const XP_PER_TX = 15
 
-/** XP threshold for each level (index = level - 1). Level 5+ is open-ended. */
-const LEVEL_XP = [0, 500, 1500, 3500, 7000] as const
+/** XP threshold for each level (index = level - 1). Level 6+ is open-ended. */
+export const LEVEL_XP = [0, 100, 250, 500, 900, 1500] as const
 
 function xpToLevel(xp: number): number {
-  let lv = 1
   for (let i = LEVEL_XP.length - 1; i >= 0; i--) {
-    if (xp >= LEVEL_XP[i]) { lv = i + 1; break }
+    if (xp >= LEVEL_XP[i]) return i + 1
   }
-  return lv
+  return 1
 }
 
 function nextLevelXP(level: number): number {
@@ -29,8 +28,6 @@ const EMPTY: UserGamification = {
   last_activity_date: null,
   updated_at: new Date().toISOString(),
 }
-
-export { XP_PER_TX }
 
 export function useGamification() {
   const { user } = useAuth()

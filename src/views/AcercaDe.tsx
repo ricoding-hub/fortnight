@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.7.0"
+            date="20 jun 2026"
+            current
+            notes={[
+              'Agregar gasto rediseñado: cuentas en grilla 2 columnas, todas las categorías visibles',
+              'Bug crítico corregido: pantalla de éxito ya no destella y regresa al formulario',
+              'XP y rachas arreglados: umbrales más accesibles (nivel 2 a los 100 XP)',
+              'Fórmula de nivel unificada entre cliente y servidor',
+            ]}
+          />
+          <VersionRow
             version="0.6.4"
             date="16 jun 2026"
-            current
             notes={[
               'Hero restaurado: balance neto como número principal, barra split Activos / Deuda',
               'Chip "Cuotas mensuales" (morado) muestra lo que debes cubrir este ciclo si tienes planes MSI activos',
