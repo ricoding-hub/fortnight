@@ -9,6 +9,8 @@ export interface NewLoan {
   amount: number
   direction?: LoanDirection
   notes?: string | null
+  /** Split group to stamp the loan into (direct 2-person group). */
+  group_id?: string | null
 }
 
 export type LoanPatch = Partial<Pick<NewLoan, 'name' | 'amount' | 'notes' | 'direction'>>
@@ -125,11 +127,20 @@ export function useLoans() {
       created_at: now,
       amount: loan.amount,
       name: loan.name,
+      group_id: loan.group_id ?? null,
     }
     setData((prev) => [optimistic, ...prev])
+    // Omit group_id entirely when absent so the insert still works against a
+    // database where migration 021 hasn't been applied yet.
+    const { group_id, ...rest } = loan
     const { error: err } = await supabase
       .from('loans')
-      .insert({ ...loan, direction: loan.direction ?? 'owed_to_me', user_id: user.id })
+      .insert({
+        ...rest,
+        direction: loan.direction ?? 'owed_to_me',
+        user_id: user.id,
+        ...(group_id ? { group_id } : {}),
+      })
     if (err) {
       setData((prev) => prev.filter((l) => l.id !== tempId))
       throw err

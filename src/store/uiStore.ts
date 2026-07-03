@@ -13,6 +13,10 @@ interface UiState {
   loanModalOpen: boolean
   openLoanModal: () => void
   closeLoanModal: () => void
+  /** Pulse signal: FAB on a group detail sets this; PrestamoGrupo opens its expense form then resets it. */
+  expenseModalOpen: boolean
+  openExpenseModal: () => void
+  closeExpenseModal: () => void
   /** Guided tour (driver.js). */
   tourOpen: boolean
   openTour: () => void
@@ -32,6 +36,9 @@ export const useUiStore = create<UiState>((set) => ({
   loanModalOpen: false,
   openLoanModal: () => set({ loanModalOpen: true }),
   closeLoanModal: () => set({ loanModalOpen: false }),
+  expenseModalOpen: false,
+  openExpenseModal: () => set({ expenseModalOpen: true }),
+  closeExpenseModal: () => set({ expenseModalOpen: false }),
   tourOpen: false,
   openTour: () => set({ tourOpen: true }),
   closeTour: () => set({ tourOpen: false }),

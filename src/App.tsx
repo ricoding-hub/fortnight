@@ -11,6 +11,7 @@ import { CuentasLayout } from '@/views/Cuentas'
 import { MisCuentas } from '@/views/Cuentas/MisCuentas'
 import { MisBancos } from '@/views/Cuentas/MisBancos'
 import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
+import { PrestamoGrupo } from '@/views/Cuentas/PrestamoGrupo'
 import { MisSuscripciones } from '@/views/Cuentas/MisSuscripciones'
 import { Movimientos } from '@/views/Movimientos'
 import { Profile } from '@/views/Profile'
@@ -87,6 +88,7 @@ export default function App() {
               <Route path="bancos" element={<MisBancos />} />
               <Route path="suscripciones" element={<MisSuscripciones />} />
               <Route path="prestamos" element={<MisPrestamos />} />
+              <Route path="prestamos/:groupId" element={<PrestamoGrupo />} />
             </Route>
             <Route
               path="/movimientos"

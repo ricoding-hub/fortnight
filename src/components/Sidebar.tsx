@@ -59,14 +59,20 @@ export function Sidebar() {
       <button
         type="button"
         onClick={() => {
+          const isGroupDetail = /^\/cuentas\/prestamos\/.+/.test(location.pathname)
           const isLoans = location.pathname.startsWith('/cuentas/prestamos')
-          if (isLoans) useUiStore.getState().openLoanModal()
+          if (isGroupDetail) useUiStore.getState().openExpenseModal()
+          else if (isLoans) useUiStore.getState().openLoanModal()
           else useUiStore.getState().openAddModal('spend')
         }}
         className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-text-inverse shadow-card transition-all hover:bg-primary-deep hover:shadow-elevated active:scale-[0.97]"
       >
         <IconPlus size={18} />
-        {location.pathname.startsWith('/cuentas/prestamos') ? 'Agregar préstamo' : 'Agregar movimiento'}
+        {/^\/cuentas\/prestamos\/.+/.test(location.pathname)
+          ? 'Agregar gasto'
+          : location.pathname.startsWith('/cuentas/prestamos')
+            ? 'Agregar préstamo'
+            : 'Agregar movimiento'}
       </button>
     </aside>
   )

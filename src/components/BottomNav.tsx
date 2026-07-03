@@ -13,7 +13,9 @@ export function BottomNav() {
   const location = useLocation()
   const openAddModal = useUiStore((s) => s.openAddModal)
   const openLoanModal = useUiStore((s) => s.openLoanModal)
-  const isLoansTab = location.pathname.startsWith('/cuentas/prestamos')
+  const openExpenseModal = useUiStore((s) => s.openExpenseModal)
+  const isGroupDetail = /^\/cuentas\/prestamos\/.+/.test(location.pathname)
+  const isLoansTab = !isGroupDetail && location.pathname.startsWith('/cuentas/prestamos')
 
   const leftTabs = NAV_TABS.filter((t) => t.to === '/' || t.to === '/cuentas')
   const rightTabs = NAV_TABS.filter((t) => t.to === '/plan' || t.to === '/perfil')
@@ -38,8 +40,12 @@ export function BottomNav() {
         {/* Center FAB — raised; context-aware */}
         <button
           type="button"
-          onClick={() => isLoansTab ? openLoanModal() : openAddModal('spend')}
-          aria-label={isLoansTab ? 'Agregar préstamo' : 'Agregar movimiento'}
+          onClick={() =>
+            isGroupDetail ? openExpenseModal() : isLoansTab ? openLoanModal() : openAddModal('spend')
+          }
+          aria-label={
+            isGroupDetail ? 'Agregar gasto al grupo' : isLoansTab ? 'Agregar préstamo' : 'Agregar movimiento'
+          }
           className="grid h-12 w-12 -translate-y-1 cursor-pointer place-items-center rounded-full bg-primary text-white transition-transform active:scale-95"
           style={{ boxShadow: '0 6px 14px rgba(42,75,255,0.4)' }}
         >

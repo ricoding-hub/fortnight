@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.8.0"
+            date="3 jul 2026"
+            current
+            notes={[
+              'Mini split: grupos de gastos compartidos entre varias personas',
+              'Repartición por igual, porcentaje, monto exacto o partes',
+              'Simplificación de deudas: pagos mínimos sugeridos para saldar el grupo',
+              'Los préstamos 1:1 existentes se conservan y conviven con los grupos',
+            ]}
+          />
+          <VersionRow
             version="0.7.0"
             date="20 jun 2026"
-            current
             notes={[
               'Agregar gasto rediseñado: cuentas en grilla 2 columnas, todas las categorías visibles',
               'Bug crítico corregido: pantalla de éxito ya no destella y regresa al formulario',

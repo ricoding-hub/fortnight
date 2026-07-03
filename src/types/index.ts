@@ -114,6 +114,8 @@ export interface Loan {
   created_at: string
   /** Null while active; timestamp once marked paid. */
   paid_at: string | null
+  /** Split group this loan belongs to; null for pre-migration legacy rows. */
+  group_id: string | null
 }
 
 export interface LoanPayment {
@@ -122,6 +124,68 @@ export interface LoanPayment {
   user_id: string
   amount: number
   note: string | null
+  created_at: string
+}
+
+/* ------------------------------------------------------------------ */
+/* Mini-split — shared expense groups                                  */
+/* ------------------------------------------------------------------ */
+
+export type SplitMethod = 'equal' | 'percentage' | 'exact' | 'shares'
+
+export interface SplitGroup {
+  id: string
+  user_id: string
+  name: string
+  emoji: string | null
+  created_at: string
+  archived_at: string | null
+}
+
+export interface SplitMember {
+  id: string
+  group_id: string
+  user_id: string
+  name: string
+  /** True for the app user's own member row (one per group). */
+  is_me: boolean
+  created_at: string
+}
+
+export interface SplitExpense {
+  id: string
+  group_id: string
+  user_id: string
+  description: string
+  amount: number
+  paid_by_member_id: string
+  split_method: SplitMethod
+  /** Account the expense was paid from (only meaningful when payer is me). */
+  account_id: string | null
+  expense_date: string
+  created_at: string
+}
+
+export interface SplitExpenseShare {
+  id: string
+  expense_id: string
+  member_id: string
+  user_id: string
+  amount: number
+  /** Raw pct / parts input; null for equal & exact splits. */
+  weight: number | null
+  created_at: string
+}
+
+export interface SplitSettlement {
+  id: string
+  group_id: string
+  user_id: string
+  from_member_id: string
+  to_member_id: string
+  amount: number
+  note: string | null
+  account_id: string | null
   created_at: string
 }
 

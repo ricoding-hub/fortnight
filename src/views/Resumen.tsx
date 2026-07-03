@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useInstallments } from '@/hooks/useInstallments'
 import { useLoans } from '@/hooks/useLoans'
+import { useSplitGroups } from '@/hooks/useSplitGroups'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
 import { useGamification } from '@/hooks/useGamification'
@@ -66,7 +67,8 @@ export function Resumen() {
   const [heroTab, setHeroTab] = useState<'info' | 'desglose'>('info')
   const { user } = useAuth()
   const { data: accounts, loading, error } = useAccounts()
-  const { active: activeLoans, data: allLoans, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
+  const { active: activeLoans, data: allLoans, paymentsByLoan, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
+  const { splitCobrar, splitPagar } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, nextLevelXP, levelProgress } = useGamification()
@@ -90,7 +92,8 @@ export function Resumen() {
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
   const debitTotal = debitAccounts.reduce((s, a) => s + a.balance, 0)
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
-  const porCobrar = loansPorCobrar - loansPorPagar
+  // Loans net + shared-groups net (split-only, so nothing is double counted)
+  const porCobrar = loansPorCobrar - loansPorPagar + splitCobrar - splitPagar
   const net = debitTotal - creditDebt
 
   const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)

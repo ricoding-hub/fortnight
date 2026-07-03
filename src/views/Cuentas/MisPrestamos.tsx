@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   IconArrowDown,
   IconArrowUp,
@@ -12,15 +13,17 @@ import {
 import clsx from 'clsx'
 
 import { useLoans, loanRemaining, type NewLoan } from '@/hooks/useLoans'
+import { useSplitGroups } from '@/hooks/useSplitGroups'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
+import { GroupFormModal } from '@/components/split/GroupFormModal'
+import { AccountLinkField } from '@/components/split/AccountLinkField'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -317,6 +320,7 @@ function ContactGroupCard({
 
 export function MisPrestamos() {
   const {
+    data: allLoans,
     active,
     paid,
     paymentsByLoan,
@@ -332,11 +336,20 @@ export function MisPrestamos() {
     deleteLoan,
     addPayment,
   } = useLoans()
+  const {
+    groups: splitGroups,
+    splitCobrar,
+    splitPagar,
+    ready: splitReady,
+    createGroup,
+  } = useSplitGroups({ loans: allLoans, paymentsByLoan })
+  const navigate = useNavigate()
   const toast = useToast()
   const storeLoanOpen = useUiStore((s) => s.loanModalOpen)
   const closeLoanModal = useUiStore((s) => s.closeLoanModal)
 
   const [loanFormOpen, setLoanFormOpen] = useState(false)
+  const [groupFormOpen, setGroupFormOpen] = useState(false)
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
   const [formDefaultDir, setFormDefaultDir] = useState<LoanDirection>('owed_to_me')
   const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
@@ -358,10 +371,10 @@ export function MisPrestamos() {
 
   useEffect(() => {
     if (storeLoanOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       openCreate('owed_to_me')
       closeLoanModal()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeLoanOpen, closeLoanModal])
 
   async function handleUnmarkPaid(loanId: string) {
@@ -444,6 +457,13 @@ export function MisPrestamos() {
     return Array.from(names).sort()
   }, [active, paid])
 
+  // Shared groups worth their own card: N>2 people or any split activity.
+  // Backfilled 2-person shells (isDirect) keep rendering as contact cards only.
+  const sharedGroups = useMemo(
+    () => splitGroups.filter((g) => !g.isDirect),
+    [splitGroups],
+  )
+
   if (loading) {
     return (
       <div className="flex flex-col gap-2 px-4 py-3 animate-[fade-in_300ms_ease-out]">
@@ -468,14 +488,14 @@ export function MisPrestamos() {
     )
   }
 
-  const hasAny = active.length > 0 || paid.length > 0
+  const hasAny = active.length > 0 || paid.length > 0 || sharedGroups.length > 0
 
   return (
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
-      {/* KPI cards */}
+      {/* KPI cards — loans + split nets, no double count */}
       <div className="grid grid-cols-3 gap-2 px-4 pt-2">
-        <StatCard compact label="Cobrar" value={fmtCompact(porCobrar)} tone="primary" icon={IconArrowDown} />
-        <StatCard compact label="Pagar" value={fmtCompact(porPagar)} tone="debt" icon={IconArrowUp} />
+        <StatCard compact label="Cobrar" value={fmtCompact(porCobrar + splitCobrar)} tone="primary" icon={IconArrowDown} />
+        <StatCard compact label="Pagar" value={fmtCompact(porPagar + splitPagar)} tone="debt" icon={IconArrowUp} />
         <StatCard compact label="Saldados" value={fmtCompact(saldados)} tone="asset" icon={IconCheck} />
       </div>
 
@@ -484,21 +504,78 @@ export function MisPrestamos() {
           <EmptyState
             icon={IconUsers}
             title="Sin préstamos"
-            description="Registra lo que te deben o lo que debes para no perder el hilo."
+            description="Registra lo que te deben, lo que debes, o crea un grupo para dividir gastos."
             action={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-center gap-2">
                 <Button compact onClick={() => openCreate('owed_to_me')}>
                   <IconArrowDown size={14} /> Me deben
                 </Button>
                 <Button compact variant="secondary" onClick={() => openCreate('i_owe')}>
                   <IconArrowUp size={14} /> Yo debo
                 </Button>
+                {splitReady && (
+                  <Button compact variant="secondary" onClick={() => setGroupFormOpen(true)}>
+                    <IconUsers size={14} /> Grupo
+                  </Button>
+                )}
               </div>
             }
           />
         </div>
       ) : (
         <>
+          {/* Shared expense groups */}
+          {sharedGroups.length > 0 && (
+            <div className="flex flex-col gap-2 px-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  Grupos
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setGroupFormOpen(true)}
+                  className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                >
+                  + Grupo
+                </button>
+              </div>
+              {sharedGroups.map((g) => {
+                const me = g.members.find((m) => m.is_me)
+                const net = me ? (g.nets.get(me.id) ?? 0) : 0
+                return (
+                  <Card key={g.group.id} className="overflow-hidden px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => void navigate(`/cuentas/prestamos/${g.group.id}`)}
+                      className="flex w-full items-center gap-3 py-2"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
+                        <IconUsers size={17} stroke={2} />
+                      </div>
+                      <div className="min-w-0 flex-1 text-left">
+                        <p className="text-sm font-semibold text-text">{g.group.name}</p>
+                        <p
+                          className={clsx(
+                            'text-[11px] font-medium',
+                            net > 0 ? 'text-primary-deep' : net < 0 ? 'text-debt-deep' : 'text-text-tertiary',
+                          )}
+                        >
+                          {net > 0
+                            ? `Te deben ${fmtCompact(net)}`
+                            : net < 0
+                              ? `Debes ${fmtCompact(Math.abs(net))}`
+                              : 'Grupo saldado'}
+                          {` · ${g.members.length} personas`}
+                        </p>
+                      </div>
+                      <IconChevronRight size={16} className="shrink-0 text-text-tertiary" />
+                    </button>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
           {/* Active contact groups */}
           {activeGroups.length > 0 && (
             <div className="flex flex-col gap-2 px-4">
@@ -506,13 +583,24 @@ export function MisPrestamos() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
                   Activos
                 </p>
-                <button
-                  type="button"
-                  onClick={() => openCreate()}
-                  className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
-                >
-                  + Nuevo
-                </button>
+                <div className="flex items-center gap-3">
+                  {splitReady && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupFormOpen(true)}
+                      className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                    >
+                      + Grupo
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => openCreate()}
+                    className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                  >
+                    + Nuevo
+                  </button>
+                </div>
               </div>
               {activeGroups.map((g) => (
                 <ContactGroupCard
@@ -620,6 +708,16 @@ export function MisPrestamos() {
         destructive
         onConfirm={() => void handleDelete()}
         onClose={() => setDeletingLoan(null)}
+      />
+
+      <GroupFormModal
+        open={groupFormOpen}
+        onClose={() => setGroupFormOpen(false)}
+        onCreate={async (name, memberNames) => {
+          const id = await createGroup(name, memberNames)
+          toast.success('Grupo creado', `${name} · ${memberNames.length + 1} personas`)
+          void navigate(`/cuentas/prestamos/${id}`)
+        }}
       />
     </div>
   )
@@ -870,57 +968,13 @@ function AbonoModal({
           onChange={(e) => setNote(e.target.value)}
         />
 
-        {/* Account link toggle */}
-        <label className="flex cursor-pointer items-center gap-3">
-          <div
-            role="switch"
-            aria-checked={linkAccount}
-            tabIndex={0}
-            onClick={() => {
-              const next = !linkAccount
-              setLinkAccount(next)
-              if (next && !accountId && accounts.length > 0) {
-                setAccountId(accounts[0].id)
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === ' ' || e.key === 'Enter') {
-                e.preventDefault()
-                const next = !linkAccount
-                setLinkAccount(next)
-                if (next && !accountId && accounts.length > 0) {
-                  setAccountId(accounts[0].id)
-                }
-              }
-            }}
-            className={clsx(
-              'relative h-5 w-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-              linkAccount ? 'bg-primary' : 'bg-border',
-            )}
-          >
-            <div
-              className={clsx(
-                'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
-                linkAccount ? 'translate-x-4' : 'translate-x-0.5',
-              )}
-            />
-          </div>
-          <span className="text-sm font-medium text-text">Registrar en cuenta</span>
-        </label>
-
-        {linkAccount && accounts.length > 0 && (
-          <Select
-            label="Cuenta"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
-        )}
+        <AccountLinkField
+          accounts={accounts}
+          linked={linkAccount}
+          accountId={accountId}
+          onToggle={(next, defaultId) => { setLinkAccount(next); setAccountId(defaultId) }}
+          onAccountChange={setAccountId}
+        />
 
         {formError && <p className="text-xs text-debt">• {formError}</p>}
 
@@ -993,69 +1047,24 @@ function MarkPaidModal({
           <p className="text-base font-bold text-text">{formatMXN(remaining)}</p>
         </div>
 
-        {/* Account link toggle */}
-        <label className="flex cursor-pointer items-center gap-3">
-          <div
-            role="switch"
-            aria-checked={linkAccount}
-            tabIndex={0}
-            onClick={() => {
-              const next = !linkAccount
-              setLinkAccount(next)
-              if (next && !accountId && accounts.length > 0) {
-                setAccountId(accounts[0].id)
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === ' ' || e.key === 'Enter') {
-                e.preventDefault()
-                const next = !linkAccount
-                setLinkAccount(next)
-                if (next && !accountId && accounts.length > 0) {
-                  setAccountId(accounts[0].id)
-                }
-              }
-            }}
-            className={clsx(
-              'relative h-5 w-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-              linkAccount ? 'bg-primary' : 'bg-border',
-            )}
-          >
-            <div
-              className={clsx(
-                'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
-                linkAccount ? 'translate-x-4' : 'translate-x-0.5',
-              )}
-            />
-          </div>
-          <span className="text-sm font-medium text-text">Registrar en cuenta</span>
-        </label>
+        <AccountLinkField
+          accounts={accounts}
+          linked={linkAccount}
+          accountId={accountId}
+          onToggle={(next, defaultId) => { setLinkAccount(next); setAccountId(defaultId) }}
+          onAccountChange={setAccountId}
+        />
 
         {linkAccount && (
-          <>
-            <Input
-              label="Monto a registrar"
-              type="number"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              min="0.01"
-              step="any"
-            />
-            {accounts.length > 0 && (
-              <Select
-                label="Cuenta"
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </>
+          <Input
+            label="Monto a registrar"
+            type="number"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            min="0.01"
+            step="any"
+          />
         )}
 
         <div className="rounded-xl bg-asset/10 px-3.5 py-2.5">
