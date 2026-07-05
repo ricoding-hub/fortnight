@@ -145,11 +145,64 @@ export interface SplitGroup {
 export interface SplitMember {
   id: string
   group_id: string
+  /** Group owner (creator of the member row), NOT the member's identity. */
   user_id: string
   name: string
   /** True for the app user's own member row (one per group). */
   is_me: boolean
+  /** Real linked Fortnight user; null for local name-only members. */
+  member_user_id: string | null
+  /** Soft leave — member stays for share history but is out of new activity. */
+  left_at: string | null
   created_at: string
+}
+
+/** Public identity, readable by yourself and your group co-members. */
+export interface Profile {
+  id: string
+  display_name: string | null
+  avatar_url: string | null
+  email: string
+  created_at: string
+}
+
+export type SplitActivityVerb =
+  | 'group_created'
+  | 'group_renamed'
+  | 'member_added'
+  | 'member_linked'
+  | 'member_left'
+  | 'expense_added'
+  | 'expense_edited'
+  | 'expense_deleted'
+  | 'settlement_added'
+  | 'invite_sent'
+
+/** Audit history row, written exclusively by DB triggers. */
+export interface SplitActivity {
+  id: string
+  group_id: string
+  actor_user_id: string | null
+  /** Display name snapshot at write time. */
+  actor_name: string
+  verb: SplitActivityVerb
+  subject: string | null
+  amount: number | null
+  /** e.g. { shares: [{member_id, amount}] } on expense_deleted. */
+  meta: Record<string, unknown>
+  created_at: string
+}
+
+/** Email invitation. The token column is never readable from the client. */
+export interface SplitInvite {
+  id: string
+  group_id: string
+  inviter_user_id: string
+  invited_member_id: string | null
+  email: string
+  status: 'pending' | 'accepted' | 'declined' | 'revoked'
+  created_at: string
+  responded_at: string | null
 }
 
 export interface SplitExpense {
@@ -328,7 +381,7 @@ export interface Subscription {
 export type NewSubscription = Omit<Subscription, 'id' | 'user_id' | 'created_at' | 'updated_at'>
 export type SubscriptionPatch = Partial<NewSubscription>
 
-export type NotificationType = 'payment_due' | 'payday' | 'goal' | 'mission'
+export type NotificationType = 'payment_due' | 'payday' | 'goal' | 'mission' | 'split'
 
 export interface ScoreSnapshot {
   user_id: string
@@ -363,6 +416,8 @@ export interface Notification {
   account_id: string | null
   dedup_key: string
   email_sent: boolean
+  /** In-app destination (e.g. /cuentas/prestamos/{id} or /invite/{token}). */
+  link: string | null
   created_at: string
 }
 

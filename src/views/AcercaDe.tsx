@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.9.0"
+            date="5 jul 2026"
+            current
+            notes={[
+              'Grupos compartidos multi-usuario: invita amigos por correo y dividan gastos en tiempo real',
+              'Historial de actividad por grupo: quién agregó, editó o eliminó cada gasto',
+              'Notificaciones de grupo: gastos nuevos, pagos e invitaciones, con acceso directo',
+              'Cualquier miembro puede registrar y editar gastos; los balances se mantienen coherentes para todos',
+            ]}
+          />
+          <VersionRow
             version="0.8.0"
             date="3 jul 2026"
-            current
             notes={[
               'Mini split: grupos de gastos compartidos entre varias personas',
               'Repartición por igual, porcentaje, monto exacto o partes',

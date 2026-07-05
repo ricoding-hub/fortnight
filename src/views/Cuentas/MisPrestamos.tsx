@@ -341,7 +341,9 @@ export function MisPrestamos() {
     splitCobrar,
     splitPagar,
     ready: splitReady,
+    multiUserReady,
     createGroup,
+    invite,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const navigate = useNavigate()
   const toast = useToast()
@@ -713,9 +715,30 @@ export function MisPrestamos() {
       <GroupFormModal
         open={groupFormOpen}
         onClose={() => setGroupFormOpen(false)}
-        onCreate={async (name, memberNames) => {
-          const id = await createGroup(name, memberNames)
-          toast.success('Grupo creado', `${name} · ${memberNames.length + 1} personas`)
+        invitesEnabled={multiUserReady}
+        onCreate={async (name, memberDrafts) => {
+          const { id, members: created } = await createGroup(
+            name,
+            memberDrafts.map((m) => m.name),
+          )
+          // Fire invitations for members that came with an email.
+          const withEmail = memberDrafts.filter((m) => m.email)
+          for (const draft of withEmail) {
+            const slot = created.find(
+              (c) => !c.is_me && c.name.trim().toLowerCase() === draft.name.trim().toLowerCase(),
+            )
+            try {
+              await invite(id, draft.email, slot?.id)
+            } catch {
+              toast.error('Invitación no enviada', `No se pudo invitar a ${draft.email}`)
+            }
+          }
+          toast.success(
+            'Grupo creado',
+            withEmail.length > 0
+              ? `${name} · ${withEmail.length} invitación${withEmail.length === 1 ? '' : 'es'} enviada${withEmail.length === 1 ? '' : 's'}`
+              : `${name} · ${memberDrafts.length + 1} personas`,
+          )
           void navigate(`/cuentas/prestamos/${id}`)
         }}
       />

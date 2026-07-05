@@ -8,6 +8,7 @@ import {
   IconCreditCard,
   IconRocket,
   IconTarget,
+  IconUsers,
   IconX,
 } from '@tabler/icons-react'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -22,6 +23,7 @@ const TYPE_META: Record<
   payday: { icon: IconCash, bg: 'bg-asset-soft', fg: 'text-asset-deep' },
   goal: { icon: IconRocket, bg: 'bg-lavender-soft', fg: 'text-lavender-deep' },
   mission: { icon: IconTarget, bg: 'bg-primary-soft', fg: 'text-primary-deep' },
+  split: { icon: IconUsers, bg: 'bg-primary-soft', fg: 'text-primary-deep' },
 }
 
 export function Notificaciones() {
@@ -93,7 +95,10 @@ export function Notificaciones() {
             <NotifItem
               key={notif.id}
               notif={notif}
-              onRead={() => void markRead(notif.id)}
+              onRead={() => {
+                void markRead(notif.id)
+                if (notif.link) void navigate(notif.link)
+              }}
               onDismiss={() => void dismiss(notif.id)}
             />
           ))}
