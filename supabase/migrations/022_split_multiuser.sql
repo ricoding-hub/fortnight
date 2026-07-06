@@ -9,7 +9,7 @@
 -- 1. profiles — public identity readable by group co-members
 -- ============================================================
 
-create table public.profiles (
+create table if not exists public.profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   display_name text,
   avatar_url   text,
@@ -19,21 +19,15 @@ create table public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "own profile" on public.profiles;
 create policy "own profile"
   on public.profiles for all
   using  (auth.uid() = id)
   with check (auth.uid() = id);
 
--- Co-members of any shared group can see each other's profile.
-create policy "co-member profiles"
-  on public.profiles for select
-  using (exists (
-    select 1
-    from public.split_members m1
-    join public.split_members m2 on m1.group_id = m2.group_id
-    where m1.member_user_id = auth.uid()
-      and m2.member_user_id = profiles.id
-  ));
+-- NOTE: the "co-member profiles" policy (any co-member can read your
+-- profile) is created further below, AFTER split_members.member_user_id
+-- exists (added in Section 2) — it cannot be created here.
 
 grant select, insert, update on public.profiles to authenticated;
 grant all on public.profiles to service_role;
@@ -102,6 +96,19 @@ create index if not exists idx_split_members_member_user
 -- Backfill: the owner's is_me row IS the owner.
 update public.split_members set member_user_id = user_id where is_me and member_user_id is null;
 
+-- Co-members of any shared group can see each other's profile. Must come
+-- after member_user_id exists on split_members (added just above).
+drop policy if exists "co-member profiles" on public.profiles;
+create policy "co-member profiles"
+  on public.profiles for select
+  using (exists (
+    select 1
+    from public.split_members m1
+    join public.split_members m2 on m1.group_id = m2.group_id
+    where m1.member_user_id = auth.uid()
+      and m2.member_user_id = profiles.id
+  ));
+
 -- ============================================================
 -- 3. split_expense_shares — denormalize group_id for sane RLS
 -- ============================================================
@@ -148,73 +155,93 @@ grant execute on function public.is_group_member(uuid) to authenticated;
 --    ops stay with the owner. INSERT attribution: user_id = creator.
 -- ============================================================
 
-drop policy "own split_groups"         on public.split_groups;
-drop policy "own split_members"        on public.split_members;
-drop policy "own split_expenses"       on public.split_expenses;
-drop policy "own split_expense_shares" on public.split_expense_shares;
-drop policy "own split_settlements"    on public.split_settlements;
+drop policy if exists "own split_groups"         on public.split_groups;
+drop policy if exists "own split_members"        on public.split_members;
+drop policy if exists "own split_expenses"       on public.split_expenses;
+drop policy if exists "own split_expense_shares" on public.split_expense_shares;
+drop policy if exists "own split_settlements"    on public.split_settlements;
 
+drop policy if exists "member select groups" on public.split_groups;
 create policy "member select groups"
   on public.split_groups for select
   using (public.is_group_member(id));
+drop policy if exists "creator insert groups" on public.split_groups;
 create policy "creator insert groups"
   on public.split_groups for insert
   with check (auth.uid() = user_id);
+drop policy if exists "member update groups" on public.split_groups;
 create policy "member update groups"
   on public.split_groups for update
   using (public.is_group_member(id));
+drop policy if exists "owner delete groups" on public.split_groups;
 create policy "owner delete groups"
   on public.split_groups for delete
   using (auth.uid() = user_id);
 
+drop policy if exists "member select members" on public.split_members;
 create policy "member select members"
   on public.split_members for select
   using (public.is_group_member(group_id));
+drop policy if exists "member insert members" on public.split_members;
 create policy "member insert members"
   on public.split_members for insert
   with check (public.is_group_member(group_id) and auth.uid() = user_id);
+drop policy if exists "member update members" on public.split_members;
 create policy "member update members"
   on public.split_members for update
   using (public.is_group_member(group_id));
+drop policy if exists "owner delete members" on public.split_members;
 create policy "owner delete members"
   on public.split_members for delete
   using (auth.uid() = (select g.user_id from public.split_groups g where g.id = group_id));
 
+drop policy if exists "member select expenses" on public.split_expenses;
 create policy "member select expenses"
   on public.split_expenses for select
   using (public.is_group_member(group_id));
+drop policy if exists "member insert expenses" on public.split_expenses;
 create policy "member insert expenses"
   on public.split_expenses for insert
   with check (public.is_group_member(group_id) and auth.uid() = user_id);
+drop policy if exists "member update expenses" on public.split_expenses;
 create policy "member update expenses"
   on public.split_expenses for update
   using (public.is_group_member(group_id));
+drop policy if exists "member delete expenses" on public.split_expenses;
 create policy "member delete expenses"
   on public.split_expenses for delete
   using (public.is_group_member(group_id));
 
+drop policy if exists "member select shares" on public.split_expense_shares;
 create policy "member select shares"
   on public.split_expense_shares for select
   using (public.is_group_member(group_id));
+drop policy if exists "member insert shares" on public.split_expense_shares;
 create policy "member insert shares"
   on public.split_expense_shares for insert
   with check (public.is_group_member(group_id) and auth.uid() = user_id);
+drop policy if exists "member update shares" on public.split_expense_shares;
 create policy "member update shares"
   on public.split_expense_shares for update
   using (public.is_group_member(group_id));
+drop policy if exists "member delete shares" on public.split_expense_shares;
 create policy "member delete shares"
   on public.split_expense_shares for delete
   using (public.is_group_member(group_id));
 
+drop policy if exists "member select settlements" on public.split_settlements;
 create policy "member select settlements"
   on public.split_settlements for select
   using (public.is_group_member(group_id));
+drop policy if exists "member insert settlements" on public.split_settlements;
 create policy "member insert settlements"
   on public.split_settlements for insert
   with check (public.is_group_member(group_id) and auth.uid() = user_id);
+drop policy if exists "member update settlements" on public.split_settlements;
 create policy "member update settlements"
   on public.split_settlements for update
   using (public.is_group_member(group_id));
+drop policy if exists "member delete settlements" on public.split_settlements;
 create policy "member delete settlements"
   on public.split_settlements for delete
   using (public.is_group_member(group_id));
@@ -223,7 +250,7 @@ create policy "member delete settlements"
 -- 6. split_activity — trigger-written audit history
 -- ============================================================
 
-create table public.split_activity (
+create table if not exists public.split_activity (
   id            uuid primary key default gen_random_uuid(),
   group_id      uuid not null references public.split_groups(id) on delete cascade,
   actor_user_id uuid references auth.users(id) on delete set null,
@@ -240,6 +267,7 @@ create table public.split_activity (
 
 alter table public.split_activity enable row level security;
 
+drop policy if exists "member activity" on public.split_activity;
 create policy "member activity"
   on public.split_activity for select
   using (public.is_group_member(group_id));
@@ -248,9 +276,15 @@ create policy "member activity"
 grant select on public.split_activity to authenticated;
 grant all on public.split_activity to service_role;
 
-create index idx_split_activity_group on public.split_activity(group_id, created_at desc);
+create index if not exists idx_split_activity_group on public.split_activity(group_id, created_at desc);
 
-alter publication supabase_realtime add table public.split_activity;
+-- Idempotent add-to-publication (pattern from 011_gamification_score_missions.sql).
+do $$
+begin
+  alter publication supabase_realtime add table public.split_activity;
+exception
+  when duplicate_object then null;
+end $$;
 
 -- Snapshot of the acting user's display name at write time.
 create or replace function public.split_actor_name()
@@ -413,7 +447,7 @@ create trigger tr_log_split_settlement
 -- 7. notifications — new 'split' type + tappable link + producer
 -- ============================================================
 
-alter table public.notifications drop constraint notifications_type_check;
+alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check
   check (type in ('payment_due','payday','goal','mission','split'));
 
@@ -471,7 +505,7 @@ create trigger tr_notify_split_activity
 -- 8. split_invites — email invitations (token hidden from clients)
 -- ============================================================
 
-create table public.split_invites (
+create table if not exists public.split_invites (
   id                uuid primary key default gen_random_uuid(),
   group_id          uuid not null references public.split_groups(id) on delete cascade,
   inviter_user_id   uuid not null references auth.users(id) on delete cascade,
@@ -486,6 +520,7 @@ create table public.split_invites (
 
 alter table public.split_invites enable row level security;
 
+drop policy if exists "member invites" on public.split_invites;
 create policy "member invites"
   on public.split_invites for select
   using (public.is_group_member(group_id));
@@ -497,8 +532,8 @@ grant select (id, group_id, inviter_user_id, invited_member_id, email, status, c
   on public.split_invites to authenticated;
 grant all on public.split_invites to service_role;
 
-create index idx_split_invites_group on public.split_invites(group_id);
-create index idx_split_invites_token on public.split_invites(token) where status = 'pending';
+create index if not exists idx_split_invites_group on public.split_invites(group_id);
+create index if not exists idx_split_invites_token on public.split_invites(token) where status = 'pending';
 
 -- ============================================================
 -- 9. service_role grants for new tables (pattern from 012)
