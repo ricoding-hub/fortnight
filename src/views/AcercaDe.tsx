@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="0.9.1"
+            date="6 jul 2026"
+            current
+            notes={[
+              'Invitación por enlace: comparte el link del grupo y quien lo abre elige quién es o se agrega como nueva persona',
+              'Contactos recientes: agrega a tu grupo gente de grupos anteriores con un toque',
+              'Nuevo: editar gastos, renombrar grupo, agregar personas a grupos existentes y deshacer liquidaciones',
+              'Corregido: miembros invitados ya pueden registrar gastos y liquidaciones en sus propias cuentas',
+            ]}
+          />
+          <VersionRow
             version="0.9.0"
             date="5 jul 2026"
-            current
             notes={[
               'Grupos compartidos multi-usuario: invita amigos por correo y dividan gastos en tiempo real',
               'Historial de actividad por grupo: quién agregó, editó o eliminó cada gasto',

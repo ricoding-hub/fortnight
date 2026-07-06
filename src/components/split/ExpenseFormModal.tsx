@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
+import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -7,9 +8,10 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { AccountLinkField } from '@/components/split/AccountLinkField'
 import { computeShares, fromCents, toCents, SplitValidationError } from '@/lib/split'
+import { buildEditInputs } from '@/lib/splitEdit'
 import { formatMXN } from '@/lib/format'
-import type { NewExpense } from '@/hooks/useSplitGroups'
-import type { SplitMember, SplitMethod } from '@/types'
+import { memberIsMe, type NewExpense } from '@/hooks/useSplitGroups'
+import type { SplitExpense, SplitExpenseShare, SplitMember, SplitMethod } from '@/types'
 
 const METHOD_LABELS: Record<SplitMethod, string> = {
   equal: 'Igual',
@@ -22,10 +24,13 @@ interface ExpenseFormModalProps {
   open: boolean
   onClose: () => void
   members: SplitMember[]
+  /** When set, the modal opens prefilled and submits as an edit. */
+  editing?: { expense: SplitExpense; shares: SplitExpenseShare[] } | null
   onSubmit: (expense: NewExpense) => Promise<void>
 }
 
-export function ExpenseFormModal({ open, onClose, members, onSubmit }: ExpenseFormModalProps) {
+export function ExpenseFormModal({ open, onClose, members, editing = null, onSubmit }: ExpenseFormModalProps) {
+  const { user } = useAuth()
   const { data: accounts } = useAccounts()
 
   const [description, setDescription] = useState('')
@@ -41,20 +46,33 @@ export function ExpenseFormModal({ open, onClose, members, onSubmit }: ExpenseFo
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
 
-  const me = members.find((m) => m.is_me)
+  const isEdit = editing != null
+  // memberIsMe (not is_me): a joined member's row has is_me=false — only
+  // member_user_id identifies them. Using is_me broke non-owner members.
+  const me = members.find((m) => memberIsMe(m, user?.id))
 
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDescription('')
-      setAmount('')
-      setPaidBy(me?.id ?? members[0]?.id ?? '')
-      setMethod('equal')
-      setInputs({})
-      setParticipants(new Set(members.map((m) => m.id)))
       setLinkAccount(false)
       setAccountId('')
       setFormError('')
+      if (editing) {
+        const state = buildEditInputs(editing.expense, editing.shares)
+        setDescription(editing.expense.description)
+        setAmount(String(Number(editing.expense.amount)))
+        setPaidBy(editing.expense.paid_by_member_id)
+        setMethod(state.method)
+        setInputs(state.inputs)
+        setParticipants(new Set(state.participantIds))
+      } else {
+        setDescription('')
+        setAmount('')
+        setPaidBy(me?.id ?? members[0]?.id ?? '')
+        setMethod('equal')
+        setInputs({})
+        setParticipants(new Set(members.map((m) => m.id)))
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -143,10 +161,11 @@ export function ExpenseFormModal({ open, onClose, members, onSubmit }: ExpenseFo
     }
   }
 
-  const payerIsMe = members.find((m) => m.id === paidBy)?.is_me ?? false
+  const payerMember = members.find((m) => m.id === paidBy)
+  const payerIsMe = payerMember ? memberIsMe(payerMember, user?.id) : false
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo gasto compartido">
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Editar gasto' : 'Nuevo gasto compartido'}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <Input
           label="Descripción"
@@ -269,7 +288,7 @@ export function ExpenseFormModal({ open, onClose, members, onSubmit }: ExpenseFo
           <p className="text-[12px] font-semibold text-text-secondary">{previewError.message}</p>
         )}
 
-        {payerIsMe && (
+        {payerIsMe && !isEdit && (
           <AccountLinkField
             accounts={accounts}
             linked={linkAccount}
@@ -279,11 +298,16 @@ export function ExpenseFormModal({ open, onClose, members, onSubmit }: ExpenseFo
             label="Registrar el gasto en mi cuenta"
           />
         )}
+        {isEdit && (
+          <p className="text-[11px] leading-snug text-text-tertiary">
+            Editar no modifica movimientos ya registrados en cuentas.
+          </p>
+        )}
 
         {formError && <p className="text-xs text-debt">• {formError}</p>}
 
         <Button type="submit" loading={submitting} disabled={!previewShares} className="mt-1">
-          Registrar gasto
+          {isEdit ? 'Guardar cambios' : 'Registrar gasto'}
         </Button>
       </form>
     </Modal>

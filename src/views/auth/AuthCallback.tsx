@@ -15,6 +15,11 @@ export function AuthCallback() {
   useEffect(() => {
     if (loading) return
     if (session) {
+      const pendingJoin = localStorage.getItem('fortnight_pending_join')
+      if (pendingJoin) {
+        navigate(`/join/${pendingJoin}`, { replace: true })
+        return
+      }
       const pendingInvite = localStorage.getItem('fortnight_pending_invite')
       if (pendingInvite) {
         navigate(`/invite/${pendingInvite}`, { replace: true })

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { AccountLinkField } from '@/components/split/AccountLinkField'
 import { formatMXN } from '@/lib/format'
-import type { NewSettlement } from '@/hooks/useSplitGroups'
+import { memberIsMe, type NewSettlement } from '@/hooks/useSplitGroups'
 import type { SplitMember } from '@/types'
 
 interface SettleModalProps {
@@ -19,8 +20,11 @@ interface SettleModalProps {
 }
 
 export function SettleModal({ open, onClose, from, to, suggestedAmount, onSubmit }: SettleModalProps) {
+  const { user } = useAuth()
   const { data: accounts } = useAccounts()
-  const involvesMe = from.is_me || to.is_me
+  // memberIsMe (not is_me): joined members have is_me=false — using is_me
+  // hid the account field from every non-owner member.
+  const involvesMe = memberIsMe(from, user?.id) || memberIsMe(to, user?.id)
 
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')

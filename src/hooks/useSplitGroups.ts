@@ -326,6 +326,28 @@ export function useSplitGroups(legacy: LegacyInputs) {
     [computed],
   )
 
+  /**
+   * People I've shared any group with, deduped (linked contacts by user id,
+   * local members by normalized name), most-recent group first. Used by the
+   * "Recientes" chips when creating groups or adding members.
+   */
+  const recentContacts = useMemo(() => {
+    if (!user) return [] as Array<{ name: string; memberUserId: string | null }>
+    const seen = new Set<string>()
+    const out: Array<{ name: string; memberUserId: string | null }> = []
+    for (const g of computed) {
+      for (const m of g.members) {
+        if (memberIsMe(m, user.id)) continue
+        const key = m.member_user_id ?? `local:${normName(m.name)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const p = m.member_user_id ? profiles.get(m.member_user_id) : undefined
+        out.push({ name: p?.display_name ?? m.name, memberUserId: m.member_user_id })
+      }
+    }
+    return out
+  }, [user, computed, profiles])
+
   /** Display name for a member: linked profile name wins over the local label. */
   const displayName = useCallback(
     (m: SplitMember): string => {
@@ -342,7 +364,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
 
   async function createGroup(
     name: string,
-    memberNames: string[],
+    members: Array<{ name: string; memberUserId?: string | null }>,
     emoji?: string | null,
   ): Promise<{ id: string; members: SplitMember[] }> {
     if (!user) throw new Error('Not authenticated')
@@ -353,7 +375,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
       .single()
     if (gErr || !g) throw gErr ?? new Error('No se pudo crear el grupo')
 
-    const meName = memberNames.some((n) => normName(n) === 'yo') ? 'Tú' : 'Yo'
+    const meName = members.some((m) => normName(m.name) === 'yo') ? 'Tú' : 'Yo'
     const meRow: Record<string, unknown> = {
       group_id: g.id,
       user_id: user.id,
@@ -363,10 +385,17 @@ export function useSplitGroups(legacy: LegacyInputs) {
     if (multiUserReady) meRow.member_user_id = user.id
     const rows = [
       meRow,
-      ...memberNames
-        .map((n) => n.trim())
-        .filter((n) => n.length > 0)
-        .map((n) => ({ group_id: g.id, user_id: user.id, name: n, is_me: false })),
+      ...members
+        .map((m) => ({ ...m, name: m.name.trim() }))
+        .filter((m) => m.name.length > 0)
+        .map((m) => ({
+          group_id: g.id,
+          user_id: user.id,
+          name: m.name,
+          is_me: false,
+          // Linked recent contact → they see the group instantly via RLS.
+          ...(multiUserReady && m.memberUserId ? { member_user_id: m.memberUserId } : {}),
+        })),
     ]
     const { data: created, error: mErr } = await supabase
       .from('split_members')
@@ -380,11 +409,25 @@ export function useSplitGroups(legacy: LegacyInputs) {
     return { id: g.id as string, members: (created ?? []) as SplitMember[] }
   }
 
-  async function addMember(groupId: string, name: string) {
+  async function addMember(groupId: string, name: string, memberUserId?: string | null) {
     if (!user) throw new Error('Not authenticated')
+    const { error: err } = await supabase.from('split_members').insert({
+      group_id: groupId,
+      user_id: user.id,
+      name: name.trim(),
+      is_me: false,
+      ...(multiUserReady && memberUserId ? { member_user_id: memberUserId } : {}),
+    })
+    if (err) throw err
+    await fetchAll()
+  }
+
+  /** Rename a group (any member). The DB trigger logs group_renamed. */
+  async function updateGroup(groupId: string, patch: { name: string }) {
     const { error: err } = await supabase
-      .from('split_members')
-      .insert({ group_id: groupId, user_id: user.id, name: name.trim(), is_me: false })
+      .from('split_groups')
+      .update({ name: patch.name.trim() })
+      .eq('id', groupId)
     if (err) throw err
     await fetchAll()
   }
@@ -447,6 +490,52 @@ export function useSplitGroups(legacy: LegacyInputs) {
   async function deleteExpense(expenseId: string) {
     const { error: err } = await supabase.from('split_expenses').delete().eq('id', expenseId)
     if (err) throw err
+    await fetchAll()
+  }
+
+  /**
+   * Edit an expense: recompute shares and replace them. Does NOT touch
+   * account transactions — an edit's account adjustment stays manual.
+   * The DB trigger logs expense_edited.
+   */
+  async function updateExpense(expenseId: string, groupId: string, exp: NewExpense) {
+    if (!user) throw new Error('Not authenticated')
+    const totalCents = toCents(exp.amount)
+    const shareInputs: ShareInput[] = exp.inputs.map((i) => ({
+      memberId: i.memberId,
+      weight: i.weight,
+      exactCents: i.exactAmount != null ? toCents(i.exactAmount) : undefined,
+    }))
+    const computedShares = computeShares(totalCents, exp.method, shareInputs)
+
+    const { error: eErr } = await supabase
+      .from('split_expenses')
+      .update({
+        description: exp.description.trim(),
+        amount: exp.amount,
+        paid_by_member_id: exp.paidByMemberId,
+        split_method: exp.method,
+        ...(exp.date ? { expense_date: exp.date } : {}),
+      })
+      .eq('id', expenseId)
+    if (eErr) throw eErr
+
+    const { error: dErr } = await supabase
+      .from('split_expense_shares')
+      .delete()
+      .eq('expense_id', expenseId)
+    if (dErr) throw dErr
+
+    const shareRows = exp.inputs.map((i) => ({
+      expense_id: expenseId,
+      member_id: i.memberId,
+      user_id: user.id,
+      amount: fromCents(computedShares.get(i.memberId) ?? 0),
+      weight: exp.method === 'percentage' || exp.method === 'shares' ? (i.weight ?? null) : null,
+      ...(multiUserReady ? { group_id: groupId } : {}),
+    }))
+    const { error: sErr } = await supabase.from('split_expense_shares').insert(shareRows)
+    if (sErr) throw sErr
     await fetchAll()
   }
 
@@ -546,34 +635,15 @@ export function useSplitGroups(legacy: LegacyInputs) {
     await fetchAll()
   }
 
-  /* ─────────────── multi-user mutations (via service-role API) ─────────────── */
-
-  async function callSplitApi(path: string, body: unknown): Promise<Record<string, unknown>> {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) throw new Error('Not authenticated')
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    })
-    const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    if (!res.ok) throw new Error((payload.error as string) ?? 'request_failed')
-    return payload
-  }
-
-  /** Send an email invitation; optionally links an existing local member slot. */
-  async function invite(groupId: string, email: string, memberId?: string) {
-    const result = await callSplitApi('/api/split/invite', { groupId, email: email.trim(), memberId })
+  /** Undo a mistaken settlement. Loan payments / account transactions
+   *  created alongside it are NOT reverted — warn in the confirm dialog. */
+  async function deleteSettlement(settlementId: string) {
+    const { error: err } = await supabase
+      .from('split_settlements')
+      .delete()
+      .eq('id', settlementId)
+    if (err) throw err
     await fetchAll()
-    return result
-  }
-
-  /** Accept or decline an invitation token (from email link or notification). */
-  async function respondInvite(token: string, action: 'accept' | 'decline') {
-    const result = await callSplitApi('/api/split/accept', { token, action })
-    await fetchAll()
-    return result
   }
 
   /** Soft-leave: caller must verify my net is 0 before offering this. */
@@ -592,6 +662,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
   return {
     groups: user ? computed : EMPTY_GROUPS,
     profiles,
+    recentContacts,
     splitCobrar,
     splitPagar,
     loading: user ? loading : false,
@@ -603,12 +674,13 @@ export function useSplitGroups(legacy: LegacyInputs) {
     displayName,
     createGroup,
     addMember,
+    updateGroup,
     addExpense,
+    updateExpense,
     deleteExpense,
     addSettlement,
+    deleteSettlement,
     deleteGroup,
-    invite,
-    respondInvite,
     leaveGroup,
     refetch: fetchAll,
   }

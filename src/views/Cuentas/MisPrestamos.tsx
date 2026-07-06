@@ -338,12 +338,11 @@ export function MisPrestamos() {
   } = useLoans()
   const {
     groups: splitGroups,
+    recentContacts,
     splitCobrar,
     splitPagar,
     ready: splitReady,
-    multiUserReady,
     createGroup,
-    invite,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const navigate = useNavigate()
   const toast = useToast()
@@ -665,7 +664,16 @@ export function MisPrestamos() {
         editingLoan={editingLoan}
         existingNames={allNames}
         onCreate={async (data) => {
-          await create(data)
+          // Stamp the loan into the contact's group when one exists, so the
+          // group↔loan link doesn't depend on exact name matching alone.
+          const contactKey = data.name.trim().toLowerCase()
+          const directGroup = splitGroups.find(
+            (g) =>
+              !g.isConnected &&
+              g.members.length === 2 &&
+              g.members.some((m) => !m.is_me && m.name.trim().toLowerCase() === contactKey),
+          )
+          await create({ ...data, group_id: directGroup?.group.id ?? null })
           toast.success('Préstamo registrado', `Guardaste un préstamo con ${data.name}`)
         }}
         onEdit={async (id, patch) => {
@@ -715,28 +723,14 @@ export function MisPrestamos() {
       <GroupFormModal
         open={groupFormOpen}
         onClose={() => setGroupFormOpen(false)}
-        invitesEnabled={multiUserReady}
+        recentContacts={recentContacts}
         onCreate={async (name, memberDrafts) => {
-          const { id, members: created } = await createGroup(
-            name,
-            memberDrafts.map((m) => m.name),
-          )
-          // Fire invitations for members that came with an email.
-          const withEmail = memberDrafts.filter((m) => m.email)
-          for (const draft of withEmail) {
-            const slot = created.find(
-              (c) => !c.is_me && c.name.trim().toLowerCase() === draft.name.trim().toLowerCase(),
-            )
-            try {
-              await invite(id, draft.email, slot?.id)
-            } catch {
-              toast.error('Invitación no enviada', `No se pudo invitar a ${draft.email}`)
-            }
-          }
+          const { id } = await createGroup(name, memberDrafts)
+          const linked = memberDrafts.filter((m) => m.memberUserId).length
           toast.success(
             'Grupo creado',
-            withEmail.length > 0
-              ? `${name} · ${withEmail.length} invitación${withEmail.length === 1 ? '' : 'es'} enviada${withEmail.length === 1 ? '' : 's'}`
+            linked > 0
+              ? `${name} · ${linked} contacto${linked === 1 ? '' : 's'} conectado${linked === 1 ? '' : 's'} ya lo ve${linked === 1 ? '' : 'n'}`
               : `${name} · ${memberDrafts.length + 1} personas`,
           )
           void navigate(`/cuentas/prestamos/${id}`)

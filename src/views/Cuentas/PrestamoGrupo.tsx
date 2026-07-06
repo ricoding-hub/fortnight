@@ -9,10 +9,11 @@ import {
   IconChevronRight,
   IconHistory,
   IconLogout,
-  IconMailForward,
+  IconPencil,
   IconPlus,
   IconReceipt,
   IconTrash,
+  IconUserPlus,
   IconUsers,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
@@ -32,9 +33,10 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { ExpenseFormModal } from '@/components/split/ExpenseFormModal'
 import { SettleModal } from '@/components/split/SettleModal'
+import { AddMemberModal } from '@/components/split/AddMemberModal'
 import { activityLabel } from '@/lib/splitActivity'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
-import type { SplitExpense, SplitMember } from '@/types'
+import type { SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
 const AVATAR_COLORS = [
   'bg-primary/15 text-primary-deep',
@@ -61,15 +63,19 @@ export function PrestamoGrupo() {
   const {
     groups,
     profiles,
+    recentContacts,
     loading,
     ready,
     multiUserReady,
     displayName,
+    addMember,
+    updateGroup,
     addExpense,
+    updateExpense,
     deleteExpense,
     addSettlement,
+    deleteSettlement,
     deleteGroup,
-    invite,
     leaveGroup,
   } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
 
@@ -77,9 +83,12 @@ export function PrestamoGrupo() {
   const closeExpenseModal = useUiStore((s) => s.closeExpenseModal)
 
   const [expenseFormOpen, setExpenseFormOpen] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<SplitExpense | null>(null)
   const [settleEdge, setSettleEdge] = useState<{ from: SplitMember; to: SplitMember; amount: number } | null>(null)
-  const [invitingMember, setInvitingMember] = useState<SplitMember | null>(null)
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
   const [deletingExpense, setDeletingExpense] = useState<SplitExpense | null>(null)
+  const [deletingSettlement, setDeletingSettlement] = useState<SplitSettlement | null>(null)
   const [deletingGroup, setDeletingGroup] = useState(false)
   const [leavingGroup, setLeavingGroup] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -107,15 +116,20 @@ export function PrestamoGrupo() {
   const me = g?.members.find((m) => memberIsMe(m, user?.id))
   const myNet = me ? (g?.nets.get(me.id) ?? 0) : 0
 
-  const pendingInviteByMember = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const inv of g?.invites ?? []) {
-      if (inv.status === 'pending' && inv.invited_member_id) {
-        map.set(inv.invited_member_id, inv.email)
-      }
-    }
-    return map
-  }, [g])
+  // Recent contacts not already in this group (for the add-member modal).
+  const addableContacts = useMemo(() => {
+    if (!g) return []
+    const inGroup = new Set(
+      g.members.map((m) => m.member_user_id ?? `local:${m.name.trim().toLowerCase()}`),
+    )
+    return recentContacts.filter(
+      (c) => !inGroup.has(c.memberUserId ?? `local:${c.name.trim().toLowerCase()}`),
+    )
+  }, [g, recentContacts])
+
+  const inviteLink = g?.group.invite_code
+    ? `${window.location.origin}/join/${g.group.invite_code}`
+    : undefined
 
   /** Members for the expense form, with linked profile names resolved. */
   const formMembers = useMemo(
@@ -176,6 +190,17 @@ export function PrestamoGrupo() {
     setDeletingExpense(null)
   }
 
+  async function handleDeleteSettlement() {
+    if (!deletingSettlement) return
+    try {
+      await deleteSettlement(deletingSettlement.id)
+      toast.success('Liquidación eliminada', 'Los balances del grupo fueron restaurados')
+    } catch {
+      toast.error('Error', 'No se pudo eliminar la liquidación')
+    }
+    setDeletingSettlement(null)
+  }
+
   async function handleDeleteGroup() {
     if (!groupId) return
     try {
@@ -217,6 +242,14 @@ export function PrestamoGrupo() {
             {g.isConnected && ' · conectado'}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setRenameOpen(true)}
+          aria-label="Renombrar grupo"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+        >
+          <IconPencil size={16} />
+        </button>
         {canLeave && (
           <button
             type="button"
@@ -279,7 +312,6 @@ export function PrestamoGrupo() {
               const isMe = memberIsMe(m, user?.id)
               const linked = m.member_user_id != null
               const profile = linked ? profiles.get(m.member_user_id!) : undefined
-              const pendingEmail = pendingInviteByMember.get(m.id)
               const name = displayName(m)
               return (
                 <li key={m.id} className="flex items-center gap-3 py-2.5">
@@ -304,26 +336,10 @@ export function PrestamoGrupo() {
                       {name}
                       {isMe && <span className="ml-1 text-[10px] font-bold text-text-tertiary">(tú)</span>}
                     </p>
-                    {multiUserReady && !isMe && (
-                      linked ? (
-                        <p className="text-[10px] font-bold text-asset-deep">Conectado</p>
-                      ) : pendingEmail ? (
-                        <p className="truncate text-[10px] font-semibold text-text-tertiary">
-                          Invitación enviada · {pendingEmail}
-                        </p>
-                      ) : null
+                    {multiUserReady && !isMe && linked && (
+                      <p className="text-[10px] font-bold text-asset-deep">Conectado</p>
                     )}
                   </div>
-                  {multiUserReady && !isMe && !linked && !pendingEmail && (
-                    <button
-                      type="button"
-                      onClick={() => setInvitingMember(m)}
-                      aria-label={`Invitar a ${name}`}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
-                    >
-                      <IconMailForward size={15} />
-                    </button>
-                  )}
                   <span
                     className={clsx(
                       'font-mono text-[13px] font-bold tabular-nums',
@@ -336,6 +352,13 @@ export function PrestamoGrupo() {
               )
             })}
           </ul>
+          <button
+            type="button"
+            onClick={() => setAddMemberOpen(true)}
+            className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-[12.5px] font-semibold text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <IconUserPlus size={14} /> Agregar persona
+          </button>
         </Card>
       </div>
 
@@ -428,6 +451,14 @@ export function PrestamoGrupo() {
                     </span>
                     <button
                       type="button"
+                      onClick={() => { setEditingExpense(e); setExpenseFormOpen(true) }}
+                      aria-label="Editar gasto"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+                    >
+                      <IconPencil size={14} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setDeletingExpense(e)}
                       aria-label="Eliminar gasto"
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
@@ -456,6 +487,14 @@ export function PrestamoGrupo() {
                     <span className="font-mono text-[13px] font-bold tabular-nums text-asset-deep">
                       {formatMXN(Number(s.amount))}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingSettlement(s)}
+                      aria-label="Eliminar liquidación"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
+                    >
+                      <IconTrash size={14} />
+                    </button>
                   </li>
                 )
               })}
@@ -547,12 +586,22 @@ export function PrestamoGrupo() {
       {/* ── Modals ── */}
       <ExpenseFormModal
         open={expenseFormOpen}
-        onClose={() => setExpenseFormOpen(false)}
+        onClose={() => { setExpenseFormOpen(false); setEditingExpense(null) }}
         members={formMembers}
+        editing={
+          editingExpense
+            ? { expense: editingExpense, shares: g.sharesByExpense.get(editingExpense.id) ?? [] }
+            : null
+        }
         onSubmit={async (exp) => {
           if (!groupId) return
-          await addExpense(groupId, exp)
-          toast.success('Gasto registrado', `${exp.description} · ${formatMXN(exp.amount)}`)
+          if (editingExpense) {
+            await updateExpense(editingExpense.id, groupId, exp)
+            toast.success('Gasto actualizado', `${exp.description} · ${formatMXN(exp.amount)}`)
+          } else {
+            await addExpense(groupId, exp)
+            toast.success('Gasto registrado', `${exp.description} · ${formatMXN(exp.amount)}`)
+          }
         }}
       />
 
@@ -567,18 +616,32 @@ export function PrestamoGrupo() {
         />
       )}
 
-      {invitingMember && (
-        <InviteMemberModal
-          open
-          member={invitingMember}
-          onClose={() => setInvitingMember(null)}
-          onInvite={async (email) => {
-            if (!groupId) return
-            await invite(groupId, email, invitingMember.id)
-            toast.success('Invitación enviada', `Se envió un correo a ${email}`)
-          }}
-        />
-      )}
+      <AddMemberModal
+        open={addMemberOpen}
+        onClose={() => setAddMemberOpen(false)}
+        groupName={g.group.name}
+        inviteLink={inviteLink}
+        recentContacts={addableContacts}
+        onAdd={async (name, memberUserId) => {
+          if (!groupId) return
+          await addMember(groupId, name, memberUserId)
+          toast.success(
+            'Persona agregada',
+            memberUserId ? `${name} ya puede ver el grupo` : `${name} quedó como miembro local`,
+          )
+        }}
+      />
+
+      <RenameGroupModal
+        open={renameOpen}
+        currentName={g.group.name}
+        onClose={() => setRenameOpen(false)}
+        onRename={async (newName) => {
+          if (!groupId) return
+          await updateGroup(groupId, { name: newName })
+          toast.success('Grupo renombrado', newName)
+        }}
+      />
 
       <ConfirmModal
         open={!!deletingExpense}
@@ -588,6 +651,16 @@ export function PrestamoGrupo() {
         destructive
         onConfirm={() => void handleDeleteExpense()}
         onClose={() => setDeletingExpense(null)}
+      />
+
+      <ConfirmModal
+        open={!!deletingSettlement}
+        title="Eliminar liquidación"
+        message="Se restaurarán los balances del grupo. Abonos a préstamos y movimientos de cuenta creados junto con esta liquidación NO se revierten automáticamente."
+        confirmLabel="Eliminar"
+        destructive
+        onConfirm={() => void handleDeleteSettlement()}
+        onClose={() => setDeletingSettlement(null)}
       />
 
       <ConfirmModal
@@ -612,67 +685,61 @@ export function PrestamoGrupo() {
   )
 }
 
-/* ── InviteMemberModal — small inline modal, not a screen ── */
+/* ── RenameGroupModal — small inline modal, not a screen ── */
 
-function InviteMemberModal({
+function RenameGroupModal({
   open,
-  member,
+  currentName,
   onClose,
-  onInvite,
+  onRename,
 }: {
   open: boolean
-  member: SplitMember
+  currentName: string
   onClose: () => void
-  onInvite: (email: string) => Promise<void>
+  onRename: (name: string) => Promise<void>
 }) {
-  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
 
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setEmail('')
+      setName(currentName)
       setFormError('')
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const cleaned = email.trim().toLowerCase()
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleaned)) {
-      setFormError('Escribe un correo válido')
+    if (!name.trim()) {
+      setFormError('Escribe un nombre')
       return
     }
     setSubmitting(true)
     try {
-      await onInvite(cleaned)
+      await onRename(name.trim())
       onClose()
     } catch {
-      setFormError('No se pudo enviar la invitación')
+      setFormError('No se pudo renombrar el grupo')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Invitar a ${member.name}`}>
+    <Modal open={open} onClose={onClose} title="Renombrar grupo">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <p className="text-[13px] leading-snug text-text-secondary">
-          Recibirá un correo para unirse al grupo con su propia cuenta de Fortnight.
-          Sus balances y gastos se mantienen — solo se conecta a esta persona.
-        </p>
         <Input
-          label="Correo"
-          type="email"
-          placeholder="nombre@correo.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          label="Nombre"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           autoFocus
         />
         {formError && <p className="text-xs text-debt">• {formError}</p>}
         <Button type="submit" loading={submitting} className="mt-1">
-          Enviar invitación
+          Guardar
         </Button>
       </form>
     </Modal>

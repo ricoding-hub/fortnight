@@ -138,6 +138,8 @@ export interface SplitGroup {
   user_id: string
   name: string
   emoji: string | null
+  /** Shareable join code (/join/{code}); any member can share it. */
+  invite_code: string
   created_at: string
   archived_at: string | null
 }

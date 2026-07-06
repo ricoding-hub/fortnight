@@ -7,6 +7,7 @@ import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
 import { InviteRedirect } from '@/views/auth/InviteRedirect'
+import { JoinGroup } from '@/views/auth/JoinGroup'
 import { Resumen } from '@/views/Resumen'
 import { CuentasLayout } from '@/views/Cuentas'
 import { MisCuentas } from '@/views/Cuentas/MisCuentas'
@@ -74,6 +75,7 @@ export default function App() {
           />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/invite/:token" element={<InviteRedirect />} />
+          <Route path="/join/:code" element={<JoinGroup />} />
 
           <Route
             element={
