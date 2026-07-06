@@ -37,24 +37,9 @@ import { AddMemberModal } from '@/components/split/AddMemberModal'
 import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
 import { SettleAllModal } from '@/components/split/SettleAllModal'
 import { activityLabel } from '@/lib/splitActivity'
+import { nameColorClass } from '@/lib/avatarColors'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
 import type { Loan, SplitExpense, SplitMember, SplitSettlement } from '@/types'
-
-const AVATAR_COLORS = [
-  'bg-primary/15 text-primary-deep',
-  'bg-asset/15 text-asset-deep',
-  'bg-[#F59E0B]/15 text-[#B45309]',
-  'bg-[#EC4899]/15 text-[#BE185D]',
-  'bg-[#06B6D4]/15 text-[#0E7490]',
-] as const
-
-function nameColorClass(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) % AVATAR_COLORS.length
-  }
-  return AVATAR_COLORS[Math.abs(hash)]
-}
 
 export function PrestamoGrupo() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -282,7 +267,7 @@ export function PrestamoGrupo() {
       <div className="px-4">
         <div className="flex items-stretch gap-2 rounded-xl bg-primary-soft/25 px-3.5 py-3">
           <div className="flex-1">
-            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">
+            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep">
               Total gastado
             </p>
             <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">
@@ -291,7 +276,7 @@ export function PrestamoGrupo() {
           </div>
           <div className="w-px bg-primary/15" />
           <div className="flex-1 pl-3">
-            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">
+            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep">
               Tu balance
             </p>
             <p
@@ -304,7 +289,7 @@ export function PrestamoGrupo() {
             </p>
           </div>
         </div>
-        {g.members.length === 2 && Math.abs(myNet) > 0.005 && (
+        {g.activeMembers.length === 2 && Math.abs(myNet) > 0.005 && (
           <button
             type="button"
             onClick={() => setSettleAllOpen(true)}

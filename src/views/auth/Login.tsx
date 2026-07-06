@@ -72,9 +72,11 @@ export function Login() {
       <div className="relative w-full max-w-sm animate-[scale-in_500ms_cubic-bezier(0.34,1.56,0.64,1)]">
         {/* Brand header */}
         <header className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-glow-primary">
-            <span className="text-2xl font-extrabold text-white">F</span>
-          </div>
+          <img
+            src="/icons/icon-192.png"
+            alt="Fortnight"
+            className="mx-auto mb-4 h-16 w-16 rounded-2xl shadow-glow-primary"
+          />
           <h1 className="text-3xl font-bold text-text">Fortnight</h1>
           <p className="mt-2 text-sm text-text-secondary">
             Conoce tu quincena. Controla tu futuro.

@@ -121,9 +121,22 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.10.0"
+            version="1.0.0"
             date="6 jul 2026"
             current
+            notes={[
+              'Versión estable — auditoría completa de sistema con todas las causas raíz corregidas',
+              'XP arreglado: premios atómicos en servidor, sin reinicios ni parpadeos a nivel 1',
+              'La fecha de pago ya se guarda siempre (incluso si navegas de inmediato)',
+              'Foto de perfil funcional: el almacenamiento faltaba desde el inicio, ya existe',
+              'Logo en el login y favicon nítido en pestaña y PWA instalada',
+              'Diseño más limpio: sin barras de acento, colores unificados al sistema de tokens',
+              'Estabilidad: sin recargas dobles, sin pantallas de error transitorias, "Saldar todo" robusto',
+            ]}
+          />
+          <VersionRow
+            version="0.10.0"
+            date="6 jul 2026"
             notes={[
               'Cada persona ahora es un grupo: comparte enlace, divide gastos y ve su historial desde su card',
               '"Saldar todo": liquida todos los préstamos y gastos con una persona en un solo movimiento',

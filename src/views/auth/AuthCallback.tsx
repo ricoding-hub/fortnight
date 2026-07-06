@@ -31,7 +31,7 @@ export function AuthCallback() {
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-bg-secondary">
-      <p className="text-sm text-[#6b6375]">Iniciando sesión…</p>
+      <p className="text-sm text-text-secondary">Iniciando sesión…</p>
     </main>
   )
 }

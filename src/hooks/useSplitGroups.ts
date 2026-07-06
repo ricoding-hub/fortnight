@@ -121,6 +121,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
   const [tablesReady, setTablesReady] = useState(false)
   const [multiUserReady, setMultiUserReady] = useState(false)
   const groupIdsRef = useRef<Set<string>>(new Set())
+  const tablesReadyRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
     if (!user) return
@@ -131,9 +132,14 @@ export function useSplitGroups(legacy: LegacyInputs) {
       supabase.from('split_expense_shares').select('*'),
       supabase.from('split_settlements').select('*').order('created_at', { ascending: false }),
     ])
-    // Treat errors as "migration not applied yet" — degrade gracefully.
     if (g.error || m.error || e.error || s.error || st.error) {
-      setError(g.error ?? m.error ?? e.error ?? s.error ?? st.error)
+      // Only surface errors on the INITIAL load ("migration not applied yet").
+      // A transient network failure during a realtime-driven refetch used to
+      // nuke an already-loaded screen into a full error state — keep the
+      // previous data instead.
+      if (!tablesReadyRef.current) {
+        setError(g.error ?? m.error ?? e.error ?? s.error ?? st.error)
+      }
       setLoading(false)
       return
     }
@@ -144,6 +150,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     setShares((s.data ?? []) as SplitExpenseShare[])
     setSettlements((st.data ?? []) as SplitSettlement[])
     groupIdsRef.current = new Set(((g.data ?? []) as SplitGroup[]).map((x) => x.id))
+    tablesReadyRef.current = true
     setTablesReady(true)
 
     // Multi-user tables (022) fetched separately so a pre-022 DB still works.
@@ -161,49 +168,54 @@ export function useSplitGroups(legacy: LegacyInputs) {
     setLoading(false)
   }, [user])
 
+  // Initial fetch — its own effect so the subscription below never re-fires it.
   useEffect(() => {
     if (!user) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchAll()
+  }, [user, fetchAll])
 
+  // ONE stable realtime subscription. Handlers attach unconditionally — the
+  // old tablesReady/multiUserReady deps flipped during the first fetch and
+  // tore down / recreated the channel ~3 times per mount (with extra
+  // fetchAll runs each time). A channel referencing a not-yet-migrated
+  // table just never emits; the app still works without realtime.
+  useEffect(() => {
+    if (!user) return
     const ch = supabase.channel(`split:${channelKey}`)
-    if (tablesReady) {
-      // My own writes (also covers pre-022 DBs without split_activity).
-      for (const table of [
-        'split_groups',
-        'split_members',
-        'split_expenses',
-        'split_expense_shares',
-        'split_settlements',
-      ]) {
-        ch.on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table, filter: `user_id=eq.${user.id}` },
-          () => void fetchAll(),
-        )
-      }
-    }
-    if (multiUserReady) {
-      // Every mutation by ANY member writes an activity row via trigger;
-      // RLS (WALRUS) scopes events to groups I belong to.
+    // My own writes (also covers pre-022 DBs without split_activity).
+    for (const table of [
+      'split_groups',
+      'split_members',
+      'split_expenses',
+      'split_expense_shares',
+      'split_settlements',
+    ]) {
       ch.on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'split_activity' },
+        { event: '*', schema: 'public', table, filter: `user_id=eq.${user.id}` },
         () => void fetchAll(),
       )
-      // Deletes only carry the PK — refetch if it was one of my groups.
-      ch.on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'split_groups' },
-        (payload) => {
-          const oldId = (payload.old as { id?: string } | null)?.id
-          if (!oldId || groupIdsRef.current.has(oldId)) void fetchAll()
-        },
-      )
     }
+    // Every mutation by ANY member writes an activity row via trigger;
+    // RLS (WALRUS) scopes events to groups I belong to.
+    ch.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'split_activity' },
+      () => void fetchAll(),
+    )
+    // Deletes only carry the PK — refetch if it was one of my groups.
+    ch.on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'split_groups' },
+      (payload) => {
+        const oldId = (payload.old as { id?: string } | null)?.id
+        if (!oldId || groupIdsRef.current.has(oldId)) void fetchAll()
+      },
+    )
     ch.subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [user, channelKey, fetchAll, tablesReady, multiUserReady])
+  }, [user, channelKey, fetchAll])
 
   /* ─────────────── derived: per-group computation ─────────────── */
 
@@ -550,7 +562,15 @@ export function useSplitGroups(legacy: LegacyInputs) {
    */
   async function addSettlement(groupId: string, s: NewSettlement) {
     if (!user) throw new Error('Not authenticated')
-    const gMembers = members.filter((m) => m.group_id === groupId)
+    let gMembers = members.filter((m) => m.group_id === groupId)
+    if (!gMembers.some((m) => m.id === s.fromMemberId) || !gMembers.some((m) => m.id === s.toMemberId)) {
+      // State can be stale right after the group was created — fetch fresh.
+      const { data: fresh } = await supabase
+        .from('split_members')
+        .select('*')
+        .eq('group_id', groupId)
+      gMembers = (fresh ?? []) as SplitMember[]
+    }
     const from = gMembers.find((m) => m.id === s.fromMemberId)
     const to = gMembers.find((m) => m.id === s.toMemberId)
     if (!from || !to) throw new Error('Miembro no encontrado')
@@ -681,19 +701,61 @@ export function useSplitGroups(legacy: LegacyInputs) {
    * computes the combined net (loans + splits) and runs addSettlement,
    * whose waterfall pays open loans oldest-first and records the leftover
    * as a settlement. Throws if there is nothing to settle.
+   *
+   * Members are fetched FRESH: right after ensureDirectGroup creates the
+   * group, the `computed` closure is still stale (React hasn't re-rendered)
+   * and a lookup there used to throw "Grupo no encontrado".
    */
   async function settleAllWithContact(
     groupId: string,
     opts?: { accountId?: string | null; note?: string | null },
   ) {
     if (!user) throw new Error('Not authenticated')
-    const g = computed.find((x) => x.group.id === groupId)
-    if (!g) throw new Error('Grupo no encontrado')
-    const me = g.members.find((m) => memberIsMe(m, user.id))
-    const contact = g.members.find((m) => !memberIsMe(m, user.id))
+    const { data: freshMembers, error: mErr } = await supabase
+      .from('split_members')
+      .select('*')
+      .eq('group_id', groupId)
+    if (mErr) throw mErr
+    const gMembers = ((freshMembers ?? []) as SplitMember[]).filter((m) => m.left_at == null)
+    const me = gMembers.find((m) => memberIsMe(m, user.id))
+    const contact = gMembers.find((m) => !memberIsMe(m, user.id))
     if (!me || !contact) throw new Error('El grupo no tiene un contacto directo')
 
-    const myNet = g.nets.get(me.id) ?? 0
+    // Combined net: legacy loans (stamped or name-matched) + split activity
+    // from state. A just-created group has no split rows, so the net is the
+    // loans-only balance — exactly what "Saldar todo" must cover.
+    const contactLoans = legacy.loans.filter(
+      (l) =>
+        !l.paid_at &&
+        (l.group_id === groupId ||
+          (l.group_id == null && normName(l.name) === normName(contact.name))),
+    )
+    const { myNetCents } = loanNetForContact(contactLoans, legacy.paymentsByLoan)
+
+    const gExpenses = expenses.filter((e) => e.group_id === groupId)
+    const gSettlements = settlements.filter((s) => s.group_id === groupId)
+    const netsCents = memberNets(
+      gMembers.map((m) => m.id),
+      gExpenses.map((e) => ({
+        paidByMemberId: e.paid_by_member_id,
+        totalCents: toCents(Number(e.amount)),
+        shares: new Map(
+          shares
+            .filter((sh) => sh.expense_id === e.id)
+            .map((sh) => [sh.member_id, toCents(Number(sh.amount))]),
+        ),
+      })),
+      gSettlements.map((s) => ({
+        fromMemberId: s.from_member_id,
+        toMemberId: s.to_member_id,
+        amountCents: toCents(Number(s.amount)),
+      })),
+      new Map([
+        [me.id, myNetCents],
+        [contact.id, -myNetCents],
+      ]),
+    )
+    const myNet = fromCents(netsCents.get(me.id) ?? 0)
     if (Math.abs(myNet) < 0.005) throw new Error('No hay saldo pendiente con esta persona')
 
     await addSettlement(groupId, {

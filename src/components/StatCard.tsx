@@ -15,29 +15,25 @@ interface StatCardProps {
   compact?: boolean
 }
 
-const toneStyles: Record<string, { value: string; icon: string; topBar: string; bg: string }> = {
+const toneStyles: Record<string, { value: string; icon: string; bg: string }> = {
   asset: {
     value: 'text-asset-deep',
     icon: 'bg-asset-soft text-asset-deep',
-    topBar: 'bg-asset',
     bg: 'bg-asset-soft/20',
   },
   debt: {
     value: 'text-debt-deep',
     icon: 'bg-debt-soft text-debt-deep',
-    topBar: 'bg-debt',
     bg: 'bg-debt-soft/20',
   },
   primary: {
     value: 'text-primary-deep',
     icon: 'bg-primary-soft text-primary-deep',
-    topBar: 'bg-primary',
     bg: 'bg-primary-soft/15',
   },
   accent: {
     value: 'text-lavender-deep',
     icon: 'bg-lavender-soft text-lavender-deep',
-    topBar: 'bg-lavender',
     bg: 'bg-lavender-soft/15',
   },
 }
@@ -45,7 +41,6 @@ const toneStyles: Record<string, { value: string; icon: string; topBar: string; 
 const neutralStyle = {
   value: 'text-text',
   icon: 'bg-bg-secondary text-text-secondary',
-  topBar: 'bg-border-strong',
   bg: '',
 }
 
@@ -59,7 +54,6 @@ export function StatCard({ label, value, tone, icon: IconComponent, trend, compa
       glow={tone === 'asset' ? 'asset' : tone === 'debt' ? 'debt' : tone === 'primary' ? 'primary' : undefined}
       className={clsx('relative overflow-hidden', compact ? 'p-2.5' : 'p-3.5', styles.bg)}
     >
-      <div className={clsx('absolute inset-x-0 top-0 h-[3px] rounded-t-xl', styles.topBar)} />
       <div className={clsx('flex items-start', compact ? 'gap-2' : 'gap-3')}>
         {IconComponent && (
           <div
@@ -84,7 +78,7 @@ export function StatCard({ label, value, tone, icon: IconComponent, trend, compa
             {value}
           </p>
           {trend && (
-            <p className="mt-0.5 text-[10px] text-text-tertiary">{trend}</p>
+            <p className="mt-0.5 text-[10px] text-text-secondary">{trend}</p>
           )}
         </div>
       </div>

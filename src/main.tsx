@@ -15,7 +15,15 @@ if ('serviceWorker' in navigator) {
     })
   })
 
+  // Reload only on genuine SW *updates*. With clientsClaim, controllerchange
+  // also fires on the very first install (previous controller = null), which
+  // used to flash-reload a user's first visit; and without the flag,
+  // back-to-back updates could reload more than once.
+  const hadController = !!navigator.serviceWorker.controller
+  let refreshing = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || refreshing) return
+    refreshing = true
     window.location.reload()
   })
 }

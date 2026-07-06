@@ -166,8 +166,8 @@ export function Presupuesto() {
             className={clsx(
               'rounded-full border px-2.5 py-1 font-mono text-[10.5px] font-extrabold',
               balanced
-                ? 'border-asset/40 bg-asset/20 text-[#5DD296]'
-                : 'border-debt/40 bg-debt/20 text-[#FF8488]',
+                ? 'border-asset/40 bg-asset/20 text-asset'
+                : 'border-debt/40 bg-debt/20 text-debt',
             )}
           >
             {totalPct}% plan

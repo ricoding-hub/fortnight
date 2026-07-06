@@ -71,7 +71,7 @@ export function Resumen() {
   const { splitCobrar, splitPagar } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
-  const { data: gami, nextLevelXP, levelProgress } = useGamification()
+  const { data: gami, loading: gamiLoading, nextLevelXP, levelProgress } = useGamification()
   const { unreadCount } = useNotifications()
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const { data: config } = useConfig()
@@ -299,12 +299,14 @@ export function Resumen() {
               {avatarInitial}
             </span>
           )}
-          <span
-            className="absolute -bottom-1 -right-1 rounded-md bg-lavender px-1.5 py-0.5 font-mono text-[9px] font-extrabold text-white"
-            style={{ boxShadow: '0 0 0 2px var(--color-bg)' }}
-          >
-            LV{gami.level}
-          </span>
+          {!gamiLoading && (
+            <span
+              className="absolute -bottom-1 -right-1 rounded-md bg-lavender px-1.5 py-0.5 font-mono text-[9px] font-extrabold text-white"
+              style={{ boxShadow: '0 0 0 2px var(--color-bg)' }}
+            >
+              LV{gami.level}
+            </span>
+          )}
         </button>
 
         <button
@@ -315,20 +317,24 @@ export function Resumen() {
           <p className="truncate text-sm font-extrabold text-text">
             ¡Qué tal, {displayName}!
           </p>
-          <div className="mt-1 flex items-center gap-1.5">
-            <div className="h-[5px] max-w-[130px] flex-1 overflow-hidden rounded-full bg-primary-soft">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${Math.round(levelProgress * 100)}%`,
-                  background: 'linear-gradient(90deg, #2A4BFF, #9B7BFF)',
-                }}
-              />
+          {gamiLoading ? (
+            <div className="mt-1 h-[5px] max-w-[130px] rounded-full shimmer" />
+          ) : (
+            <div className="mt-1 flex items-center gap-1.5">
+              <div className="h-[5px] max-w-[130px] flex-1 overflow-hidden rounded-full bg-primary-soft">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.round(levelProgress * 100)}%`,
+                    background: 'linear-gradient(90deg, #2A4BFF, #9B7BFF)',
+                  }}
+                />
+              </div>
+              <span className="font-mono text-[10px] font-semibold text-text-tertiary">
+                {gami.xp}/{nextLevelXP} XP
+              </span>
             </div>
-            <span className="font-mono text-[10px] font-semibold text-text-tertiary">
-              {gami.xp}/{nextLevelXP} XP
-            </span>
-          </div>
+          )}
         </button>
 
         <button
@@ -393,8 +399,8 @@ export function Resumen() {
               className={clsx(
                 'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[10.5px] font-extrabold',
                 trend7d >= 0
-                  ? 'border-asset/40 bg-asset/20 text-[#5DD296]'
-                  : 'border-debt/40 bg-debt/20 text-[#FF8488]',
+                  ? 'border-asset/40 bg-asset/20 text-asset'
+                  : 'border-debt/40 bg-debt/20 text-debt',
               )}
             >
               {trend7d >= 0 ? (

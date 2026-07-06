@@ -142,7 +142,7 @@ function useAchievements(xp: number, streakDays: number, txCount: number, score:
 export function Profile() {
   const { user, signOut } = useAuth()
   const { data: config, update } = useConfig()
-  const { data: gami } = useGamification()
+  const { data: gami, loading: gamiLoading } = useGamification()
   const { data: accounts } = useAccounts()
   const { data: transactions } = useTransactions()
   const { data: loans } = useLoans()
@@ -175,7 +175,7 @@ export function Profile() {
 
   /* ───────── Form auto-save (unchanged logic) ───────── */
 
-  const { register, reset, getValues, setValue, watch } = useForm<ProfileForm>({
+  const { register, reset, getValues, setValue, watch, formState } = useForm<ProfileForm>({
     defaultValues: DEFAULTS,
   })
 
@@ -186,34 +186,57 @@ export function Profile() {
   useEffect(() => {
     if (!config) return
     if (hydratedRef.current === config.updated_at) return
+    // Never clobber edits in progress: a realtime echo of an older snapshot
+    // used to reset() over fresh (still-dirty or pending-save) form values.
+    if (formState.isDirty || saveTimerRef.current != null) return
     hydratedRef.current = config.updated_at
     const form = toForm(config)
     reset(form)
     lastSavedRef.current = JSON.stringify(form)
-  }, [config, reset])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, reset, formState.isDirty])
 
   const saveTimerRef = useRef<number | null>(null)
+
+  const persistNow = useCallback(() => {
+    if (hydratedRef.current === null) return
+    const values = getValues()
+    const snapshot = JSON.stringify(values)
+    if (snapshot === lastSavedRef.current) return
+    lastSavedRef.current = snapshot
+    // Empty strings break typed columns (''::date → 22007 and the WHOLE
+    // upsert fails silently) — coerce to null before persisting.
+    void update({
+      ...values,
+      pay_reference: values.pay_reference || null,
+      pay_amount: Number(values.pay_amount) || 0,
+    }).catch(() => {
+      lastSavedRef.current = ''
+      const now = Date.now()
+      if (now - lastErrorAtRef.current > 5000) {
+        lastErrorAtRef.current = now
+        toast.error('No se pudo guardar', 'Reintenta en unos segundos')
+      }
+    })
+  }, [getValues, update, toast])
+
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => {
-      if (hydratedRef.current === null) return
-      const values = getValues()
-      const snapshot = JSON.stringify(values)
-      if (snapshot === lastSavedRef.current) return
-      lastSavedRef.current = snapshot
-      void update(values).catch(() => {
-        lastSavedRef.current = ''
-        const now = Date.now()
-        if (now - lastErrorAtRef.current > 5000) {
-          lastErrorAtRef.current = now
-          toast.error('No se pudo guardar', 'Reintenta en unos segundos')
-        }
-      })
+      saveTimerRef.current = null
+      persistNow()
     }, 1000)
-  }, [getValues, update, toast])
+  }, [persistNow])
 
+  // Flush (not drop) a pending save on unmount — picking a date and
+  // navigating back within 1s used to silently lose the edit.
   useEffect(() => () => {
-    if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current)
+    if (saveTimerRef.current != null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      persistNow()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -262,9 +285,8 @@ export function Profile() {
     if (!file || !user) return
     setUploadingAvatar(true)
     try {
-      // Ensure bucket exists (idempotent)
-      await supabase.storage.createBucket('avatars', { public: true }).catch(() => {/* already exists */})
-
+      // The 'avatars' bucket is provisioned by migration 025 — creating it
+      // from the browser always failed (admin-only op) and hid real errors.
       const blob = await resizeImage(file, 400)
       const ext = 'webp'
       const path = `${user.id}/${Date.now()}.${ext}`
@@ -281,9 +303,15 @@ export function Profile() {
       })
       if (metaErr) throw metaErr
 
+      // Keep the public profile in sync so group co-members see it too.
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+
       toast.success('Foto actualizada', 'Tu foto de perfil se guardó correctamente.')
-    } catch {
-      toast.error('Error al subir foto', 'Intenta con una imagen más pequeña.')
+    } catch (e) {
+      // Surface the REAL error — the old generic copy blamed image size
+      // while the actual failure was a missing bucket/policy.
+      const message = e instanceof Error ? e.message : 'Inténtalo de nuevo.'
+      toast.error('Error al subir foto', message)
     } finally {
       setUploadingAvatar(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -376,31 +404,37 @@ export function Profile() {
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-xl font-extrabold">{displayName}</p>
               <p className="font-mono text-xs text-white/80">{handle}</p>
-              <div className="mt-1.5 flex gap-1.5">
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
-                  NIVEL {lv}
-                </span>
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
-                  {gami.xp} XP
-                </span>
-                {gami.streak_days > 0 && (
-                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
-                    🔥 {gami.streak_days}d
-                  </span>
-                )}
-              </div>
-              {/* XP progress bar */}
-              <div className="mt-2 flex items-center gap-2">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
-                  <div
-                    className="h-full rounded-full bg-white transition-all duration-700"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-                <span className="font-mono text-[9px] font-bold text-white/70 shrink-0">
-                  {gami.xp}/{nextXP}
-                </span>
-              </div>
+              {gamiLoading ? (
+                <div className="mt-1.5 h-5 w-40 rounded-full bg-white/10" />
+              ) : (
+                <>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                      NIVEL {lv}
+                    </span>
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                      {gami.xp} XP
+                    </span>
+                    {gami.streak_days > 0 && (
+                      <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide">
+                        🔥 {gami.streak_days}d
+                      </span>
+                    )}
+                  </div>
+                  {/* XP progress bar */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
+                      <div
+                        className="h-full rounded-full bg-white transition-all duration-700"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[9px] font-bold text-white/70 shrink-0">
+                      {gami.xp}/{nextXP}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

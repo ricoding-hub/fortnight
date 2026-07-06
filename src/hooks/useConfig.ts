@@ -58,15 +58,23 @@ export function useConfig() {
   /**
    * Updates the user_config row. Uses upsert so it still works if the
    * signup-seed trigger never ran (e.g. a pre-existing account).
+   * Optimistic: local state reflects the write immediately, so a realtime
+   * echo of an OLDER snapshot can no longer visually revert fresh edits.
    */
   async function update(patch: ConfigPatch) {
     if (!user) throw new Error('Not authenticated')
+    const updatedAt = new Date().toISOString()
     const { error: err } = await supabase.from('user_config').upsert({
       user_id: user.id,
       ...patch,
-      updated_at: new Date().toISOString(),
+      updated_at: updatedAt,
     })
     if (err) throw err
+    setData((prev) =>
+      prev
+        ? { ...prev, ...patch, updated_at: updatedAt }
+        : ({ user_id: user.id, ...patch, updated_at: updatedAt } as UserConfig),
+    )
   }
 
   return {

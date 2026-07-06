@@ -29,7 +29,7 @@ import { AppTour } from '@/components/AppTour'
 function Splash({ label }: { label: string }) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-bg-secondary">
-      <p className="text-sm text-[#6b6375]">{label}</p>
+      <p className="text-sm text-text-secondary">{label}</p>
     </main>
   )
 }

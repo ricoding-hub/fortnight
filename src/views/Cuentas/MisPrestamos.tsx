@@ -32,6 +32,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { StatCard } from '@/components/StatCard'
+import { nameColorClass } from '@/lib/avatarColors'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
 import type { Loan, LoanDirection, LoanPayment, SplitExpense, SplitExpenseShare, SplitSettlement } from '@/types'
 
@@ -41,22 +42,6 @@ function fmtCompact(n: number): string {
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
   if (Math.abs(n) >= 10_000) return `$${(n / 1_000).toFixed(1)}k`
   return formatMXN(n)
-}
-
-const AVATAR_COLORS = [
-  'bg-primary/15 text-primary-deep',
-  'bg-asset/15 text-asset-deep',
-  'bg-[#F59E0B]/15 text-[#B45309]',
-  'bg-[#EC4899]/15 text-[#BE185D]',
-  'bg-[#06B6D4]/15 text-[#0E7490]',
-] as const
-
-function nameColorClass(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) % AVATAR_COLORS.length
-  }
-  return AVATAR_COLORS[Math.abs(hash)]
 }
 
 function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
@@ -675,7 +660,10 @@ export function MisPrestamos() {
 
   return (
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
-      {/* Net balance hero — loans + splits, always coherent */}
+      {/* Net balance hero — loans + splits, always coherent. Hidden when
+          there is nothing yet so the empty state stands alone. */}
+      {hasAny && (
+      <>
       <div className="px-4 pt-2">
         <Card className="p-4">
           <p className="text-[11px] font-medium text-text-secondary">Balance de préstamos</p>
@@ -714,6 +702,8 @@ export function MisPrestamos() {
         <StatCard compact label="Por pagar" value={fmtCompact(totalPagar)} tone="debt" icon={IconArrowUp} />
         <StatCard compact label="Recuperado 30d" value={fmtCompact(recuperado30d)} tone="asset" icon={IconCheck} />
       </div>
+      </>
+      )}
 
       {!hasAny ? (
         <div className="px-4">

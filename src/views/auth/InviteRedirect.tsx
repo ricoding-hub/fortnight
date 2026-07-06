@@ -66,7 +66,7 @@ export function InviteRedirect() {
           </button>
         </>
       ) : (
-        <p className="text-sm text-[#6b6375]">Aceptando invitación…</p>
+        <p className="text-sm text-text-secondary">Aceptando invitación…</p>
       )}
     </main>
   )

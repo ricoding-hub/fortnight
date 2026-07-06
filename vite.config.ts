@@ -12,7 +12,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'icons/*.svg'],
+      includeAssets: ['favicon.png', 'icons/*.png'],
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
@@ -47,10 +47,10 @@ export default defineConfig({
         background_color: '#F7F4ED',
         start_url: '/',
         icons: [
-          { src: '/favicon.png', sizes: '192x192', type: 'image/png' },
-          { src: '/favicon.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
           {
-            src: '/favicon.png',
+            src: '/icons/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

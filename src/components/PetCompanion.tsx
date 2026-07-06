@@ -113,11 +113,7 @@ export function PetCompanion() {
         >
           {tip ? (
             <>
-              <div
-                className="absolute bottom-0 left-0 top-0 w-1"
-                style={{ background: tip.color }}
-              />
-              <div className="pl-1.5">
+              <div>
                 <p
                   className="mb-0.5 text-[9.5px] font-extrabold uppercase tracking-[0.08em]"
                   style={{ color: tip.color }}

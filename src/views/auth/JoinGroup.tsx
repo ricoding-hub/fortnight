@@ -113,7 +113,7 @@ export function JoinGroup() {
           </button>
         </div>
       ) : !preview ? (
-        <p className="text-sm text-[#6b6375]">Cargando invitación…</p>
+        <p className="text-sm text-text-secondary">Cargando invitación…</p>
       ) : (
         <div className="flex w-full max-w-[420px] flex-col gap-4">
           {/* Group header */}

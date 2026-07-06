@@ -40,20 +40,15 @@ export function useGamification() {
     if (!user) return
     if (!seededRef.current) {
       seededRef.current = true
-      const { data: row } = await supabase
+      // Idempotent: never overwrites an existing row (a blind insert used to
+      // race the XP trigger's own insert and could pin xp at 0).
+      const { error: seedErr } = await supabase
         .from('user_gamification')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!row) {
-        await supabase.from('user_gamification').insert({
-          user_id: user.id,
-          xp: 0,
-          level: 1,
-          streak_days: 0,
-          last_activity_date: null,
-        })
-      }
+        .upsert(
+          { user_id: user.id, xp: 0, level: 1, streak_days: 0, last_activity_date: null },
+          { onConflict: 'user_id', ignoreDuplicates: true },
+        )
+      if (seedErr) console.error('gamification seed failed', seedErr)
     }
     const { data: fresh } = await supabase
       .from('user_gamification')
@@ -91,38 +86,26 @@ export function useGamification() {
     return () => { void supabase.removeChannel(channel) }
   }, [user, channelKey, seed])
 
-  // Keep a ref so addXP always reads the latest gamification state without
-  // including `data` in the dependency array (avoids stale closure bug).
-  const dataRef = useRef(data)
-  useEffect(() => { dataRef.current = data }, [data])
-
   const addXP = useCallback(async (amount: number) => {
     if (!user) return
-    const current = dataRef.current
-    const newXP = current.xp + amount
-    const newLevel = xpToLevel(newXP)
-    const now = new Date().toISOString()
+    // Optimistic bump for snappy UI; the source of truth is the atomic RPC.
+    setData((prev) => ({
+      ...prev,
+      xp: prev.xp + amount,
+      level: xpToLevel(prev.xp + amount),
+    }))
 
-    // Only update XP + level — streak/last_activity_date are owned by the
-    // server trigger (award_xp_on_transaction). Writing them here from a
-    // potentially-stale client snapshot would overwrite the correct value.
-    const patch: Partial<UserGamification> = {
-      xp: newXP,
-      level: newLevel,
-      updated_at: now,
+    // Atomic server-side increment (migration 025). The old absolute UPDATE
+    // computed from a stale local snapshot could clobber XP the transaction
+    // trigger had just awarded — the "XP keeps resetting" bug.
+    const { data: fresh, error } = await supabase.rpc('add_xp', { p_amount: amount })
+    if (!error && fresh) {
+      setData(fresh as UserGamification)
+    } else if (error) {
+      // Pre-025 fallback or transient failure: refetch to reconcile.
+      void seed()
     }
-
-    setData((prev) => ({ ...prev, ...patch }))
-
-    try {
-      await supabase
-        .from('user_gamification')
-        .update(patch)
-        .eq('user_id', user.id)
-    } catch {
-      // Revert on failure — next realtime event will correct state
-    }
-  }, [user])
+  }, [user, seed])
 
   const lv = data.level
   const nextXP = nextLevelXP(lv)
