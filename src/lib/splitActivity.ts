@@ -66,6 +66,45 @@ export function activityLabel(
         struck: true,
       }
     }
+    case 'loan_added': {
+      const direction = a.meta?.direction
+      const verb = direction === 'i_owe' ? 'registró una deuda con' : 'registró un préstamo a'
+      return {
+        text: `${a.actor_name} ${verb} ${subject}`,
+        impact: a.amount != null ? fmt(Number(a.amount)) : null,
+        struck: false,
+      }
+    }
+    case 'loan_payment': {
+      const removed = a.meta?.removed === true
+      return {
+        text: removed
+          ? `${a.actor_name} eliminó un abono del préstamo de ${subject}`
+          : `${a.actor_name} abonó al préstamo de ${subject}`,
+        impact: a.amount != null ? fmt(Number(a.amount)) : null,
+        struck: removed,
+      }
+    }
+    case 'loan_settled':
+      return {
+        text: `${a.actor_name} saldó el préstamo de ${subject}`,
+        impact: a.amount != null ? fmt(Number(a.amount)) : null,
+        struck: false,
+      }
+    case 'loan_reopened':
+      return { text: `${a.actor_name} reabrió el préstamo de ${subject}`, impact: null, struck: false }
+    case 'loan_edited':
+      return {
+        text: `${a.actor_name} editó el préstamo de ${subject}`,
+        impact: a.amount != null ? fmt(Number(a.amount)) : null,
+        struck: false,
+      }
+    case 'loan_deleted':
+      return {
+        text: `${a.actor_name} eliminó el préstamo de ${subject}`,
+        impact: a.amount != null ? fmt(Number(a.amount)) : null,
+        struck: true,
+      }
     default:
       return { text: `${a.actor_name} · ${subject}`, impact: null, struck: false }
   }

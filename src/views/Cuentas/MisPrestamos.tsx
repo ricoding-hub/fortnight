@@ -12,13 +12,17 @@ import {
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
+import { supabase } from '@/lib/supabase'
 import { useLoans, loanRemaining, type NewLoan } from '@/hooks/useLoans'
-import { useSplitGroups } from '@/hooks/useSplitGroups'
-import { useAccounts } from '@/hooks/useAccounts'
+import { useSplitGroups, memberIsMe } from '@/hooks/useSplitGroups'
+import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { GroupFormModal } from '@/components/split/GroupFormModal'
-import { AccountLinkField } from '@/components/split/AccountLinkField'
+import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
+import { SettleAllModal, type SettleAllBreakdownLine } from '@/components/split/SettleAllModal'
+import { LoanFlowChart } from '@/components/LoanFlowChart'
+import { buildLoanFlow } from '@/lib/loanFlow'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -29,7 +33,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { StatCard } from '@/components/StatCard'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
-import type { Loan, LoanDirection, LoanPayment } from '@/types'
+import type { Loan, LoanDirection, LoanPayment, SplitExpense, SplitExpenseShare, SplitSettlement } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +241,8 @@ function ContactGroupCard({
   onEdit,
   onDelete,
   onUnmarkPaid,
+  onOpenGroup,
+  onSettleAll,
 }: {
   group: ContactGroup
   paymentsByLoan: Record<string, LoanPayment[]>
@@ -246,53 +252,69 @@ function ContactGroupCard({
   onEdit: (loan: Loan) => void
   onDelete: (loan: Loan) => void
   onUnmarkPaid: (loanId: string) => void
+  /** Opens (creating on demand) the contact's direct group detail. */
+  onOpenGroup?: () => void
+  /** One-tap settlement of the full combined net with this person. */
+  onSettleAll?: () => void
 }) {
   const [expanded, setExpanded] = useState(true)
   const avatarColor = nameColorClass(group.name)
 
   return (
     <Card className="overflow-hidden px-4 py-2">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-3 py-2"
-      >
-        <div
-          className={clsx(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold',
-            avatarColor,
-          )}
+      <div className="flex w-full items-center gap-3 py-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          {(group.name[0] ?? '?').toUpperCase()}
-        </div>
-        <div className="min-w-0 flex-1 text-left">
-          <p className="text-sm font-semibold text-text">{group.name}</p>
-          {!isPaidSection && (
-            <p
-              className={clsx(
-                'text-[11px] font-medium',
-                group.net > 0
-                  ? 'text-primary-deep'
+          <div
+            className={clsx(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold',
+              avatarColor,
+            )}
+          >
+            {(group.name[0] ?? '?').toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-text">{group.name}</p>
+            {!isPaidSection && (
+              <p
+                className={clsx(
+                  'text-[11px] font-medium',
+                  group.net > 0
+                    ? 'text-primary-deep'
+                    : group.net < 0
+                      ? 'text-debt-deep'
+                      : 'text-text-tertiary',
+                )}
+              >
+                {group.net > 0
+                  ? `Te deben ${fmtCompact(group.net)}`
                   : group.net < 0
-                    ? 'text-debt-deep'
-                    : 'text-text-tertiary',
-              )}
-            >
-              {group.net > 0
-                ? `Te deben ${fmtCompact(group.net)}`
-                : group.net < 0
-                  ? `Debes ${fmtCompact(Math.abs(group.net))}`
-                  : 'Sin saldo pendiente'}
-              {group.loans.length > 1 && ` · ${group.loans.length} préstamos`}
-            </p>
+                    ? `Debes ${fmtCompact(Math.abs(group.net))}`
+                    : 'Sin saldo pendiente'}
+                {group.loans.length > 1 && ` · ${group.loans.length} préstamos`}
+              </p>
+            )}
+          </div>
+          {expanded ? (
+            <IconChevronDown size={16} className="shrink-0 text-text-tertiary" />
+          ) : (
+            <IconChevronRight size={16} className="shrink-0 text-text-tertiary" />
           )}
-        </div>
-        {expanded ? (
-          <IconChevronDown size={16} className="shrink-0 text-text-tertiary" />
-        ) : (
-          <IconChevronRight size={16} className="shrink-0 text-text-tertiary" />
+        </button>
+        {onOpenGroup && (
+          <button
+            type="button"
+            onClick={onOpenGroup}
+            aria-label={`Ver grupo de ${group.name}`}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
+          >
+            <IconUsers size={16} />
+          </button>
         )}
-      </button>
+      </div>
 
       {expanded && (
         <ul className="divide-y divide-border">
@@ -312,6 +334,16 @@ function ContactGroupCard({
           ))}
         </ul>
       )}
+
+      {!isPaidSection && onSettleAll && group.net !== 0 && (
+        <button
+          type="button"
+          onClick={onSettleAll}
+          className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-asset/10 py-2 text-[12px] font-bold text-asset-deep transition-colors hover:bg-asset/20"
+        >
+          <IconCheck size={13} stroke={2.5} /> Saldar todo ({fmtCompact(Math.abs(group.net))})
+        </button>
+      )}
     </Card>
   )
 }
@@ -326,7 +358,6 @@ export function MisPrestamos() {
     paymentsByLoan,
     porCobrar,
     porPagar,
-    saldados,
     loading,
     error,
     create,
@@ -343,7 +374,10 @@ export function MisPrestamos() {
     splitPagar,
     ready: splitReady,
     createGroup,
+    ensureDirectGroup,
+    settleAllWithContact,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
+  const { user } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
   const storeLoanOpen = useUiStore((s) => s.loanModalOpen)
@@ -351,6 +385,11 @@ export function MisPrestamos() {
 
   const [loanFormOpen, setLoanFormOpen] = useState(false)
   const [groupFormOpen, setGroupFormOpen] = useState(false)
+  const [settleAllContact, setSettleAllContact] = useState<{
+    name: string
+    net: number
+    breakdown: SettleAllBreakdownLine[]
+  } | null>(null)
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
   const [formDefaultDir, setFormDefaultDir] = useState<LoanDirection>('owed_to_me')
   const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
@@ -465,6 +504,149 @@ export function MisPrestamos() {
     [splitGroups],
   )
 
+  // Direct 2-person group per contact (non-connected), for combined nets,
+  // "Ver grupo" navigation and "Saldar todo".
+  const directGroupByContact = useMemo(() => {
+    const map = new Map<string, (typeof splitGroups)[number]>()
+    for (const g of splitGroups) {
+      if (g.isConnected || g.members.length !== 2) continue
+      const contact = g.members.find((m) => !memberIsMe(m, user?.id))
+      if (contact) map.set(contact.name.trim().toLowerCase(), g)
+    }
+    return map
+  }, [splitGroups, user?.id])
+
+  /** Combined net (loans + splits) for a contact; falls back to loans-only. */
+  const contactNet = useMemo(() => {
+    return (group: ContactGroup): number => {
+      const direct = directGroupByContact.get(group.name.trim().toLowerCase())
+      if (direct) {
+        const me = direct.members.find((m) => memberIsMe(m, user?.id))
+        if (me) return direct.nets.get(me.id) ?? group.net
+      }
+      return group.net
+    }
+  }, [directGroupByContact, user?.id])
+
+  /* ── KPI derivations ── */
+  const totalCobrar = porCobrar + splitCobrar
+  const totalPagar = porPagar + splitPagar
+  const netoTotal = totalCobrar - totalPagar
+
+  const { peopleOwingMe, peopleIOwe } = useMemo(() => {
+    let owing = 0
+    let iOwe = 0
+    const countedContacts = new Set<string>()
+    for (const g of activeGroups) {
+      const net = contactNet(g)
+      countedContacts.add(g.name.trim().toLowerCase())
+      if (net > 0.005) owing++
+      else if (net < -0.005) iOwe++
+    }
+    for (const g of sharedGroups) {
+      // Skip direct groups already counted through their contact card.
+      if (g.members.length === 2 && !g.isConnected) {
+        const contact = g.members.find((m) => !memberIsMe(m, user?.id))
+        if (contact && countedContacts.has(contact.name.trim().toLowerCase())) continue
+      }
+      if (g.mySplitNet > 0.005) owing++
+      else if (g.mySplitNet < -0.005) iOwe++
+    }
+    return { peopleOwingMe: owing, peopleIOwe: iOwe }
+  }, [activeGroups, sharedGroups, contactNet, user?.id])
+
+  // Recovered in the last 30 days: abonos on owed_to_me loans + settlements received.
+  const recuperado30d = useMemo(() => {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 30)
+    const cutoffISO = cutoff.toISOString()
+    let sum = 0
+    for (const l of allLoans) {
+      if (l.direction !== 'owed_to_me') continue
+      for (const p of paymentsByLoan[l.id] ?? []) {
+        if (p.created_at >= cutoffISO) sum += Number(p.amount)
+      }
+    }
+    for (const g of splitGroups) {
+      const me = g.members.find((m) => memberIsMe(m, user?.id))
+      if (!me) continue
+      for (const s of g.settlements) {
+        if (s.to_member_id === me.id && s.created_at >= cutoffISO) sum += Number(s.amount)
+      }
+    }
+    return sum
+  }, [allLoans, paymentsByLoan, splitGroups, user?.id])
+
+  // Monthly lending flow for the chart at the bottom.
+  const loanFlow = useMemo(() => {
+    const myMemberIds = new Set<string>()
+    const expenses: SplitExpense[] = []
+    const settlements: SplitSettlement[] = []
+    const sharesByExpense = new Map<string, SplitExpenseShare[]>()
+    for (const g of splitGroups) {
+      const me = g.members.find((m) => memberIsMe(m, user?.id))
+      if (me) myMemberIds.add(me.id)
+      expenses.push(...g.expenses)
+      settlements.push(...g.settlements)
+      for (const e of g.expenses) {
+        sharesByExpense.set(e.id, g.sharesByExpense.get(e.id) ?? [])
+      }
+    }
+    return buildLoanFlow({
+      loans: allLoans,
+      paymentsByLoan,
+      expenses,
+      sharesByExpense,
+      settlements,
+      myMemberIds,
+      now: new Date(),
+      months: 6,
+    })
+  }, [splitGroups, allLoans, paymentsByLoan, user?.id])
+
+  const hasFlowData = useMemo(
+    () => loanFlow.some((p) => p.prestado !== 0 || p.recuperado !== 0 || p.pendiente !== 0),
+    [loanFlow],
+  )
+
+  /** Open the contact's direct group (creating + stamping on demand). */
+  async function handleOpenContactGroup(contactName: string) {
+    try {
+      const id = await ensureDirectGroup(contactName)
+      void navigate(`/cuentas/prestamos/${id}`)
+    } catch {
+      toast.error('Error', 'No se pudo abrir el grupo de esta persona')
+    }
+  }
+
+  /** Prepare the settle-all modal with a transparent breakdown. */
+  function openSettleAll(group: ContactGroup) {
+    const net = contactNet(group)
+    if (Math.abs(net) < 0.005) return
+    const breakdown: SettleAllBreakdownLine[] = group.loans
+      .filter((l) => !l.paid_at)
+      .map((l) => ({
+        label: `Préstamo · ${l.direction === 'owed_to_me' ? 'te debe' : 'debes'}`,
+        amount: loanRemaining(l, paymentsByLoan[l.id] ?? []),
+      }))
+      .filter((line) => line.amount > 0)
+    const direct = directGroupByContact.get(group.name.trim().toLowerCase())
+    if (direct && Math.abs(direct.mySplitNet) > 0.005) {
+      breakdown.push({ label: 'Gastos compartidos (neto)', amount: Math.abs(direct.mySplitNet) })
+    }
+    setSettleAllContact({ name: group.name, net, breakdown })
+  }
+
+  async function handleSettleAll(opts: { accountId?: string | null; note?: string | null }) {
+    if (!settleAllContact) return
+    const groupId = await ensureDirectGroup(settleAllContact.name)
+    await settleAllWithContact(groupId, opts)
+    toast.success(
+      'Todo saldado',
+      `Cuentas en cero con ${settleAllContact.name} · ${formatMXN(Math.abs(settleAllContact.net))}`,
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-2 px-4 py-3 animate-[fade-in_300ms_ease-out]">
@@ -493,11 +675,44 @@ export function MisPrestamos() {
 
   return (
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
-      {/* KPI cards — loans + split nets, no double count */}
-      <div className="grid grid-cols-3 gap-2 px-4 pt-2">
-        <StatCard compact label="Cobrar" value={fmtCompact(porCobrar + splitCobrar)} tone="primary" icon={IconArrowDown} />
-        <StatCard compact label="Pagar" value={fmtCompact(porPagar + splitPagar)} tone="debt" icon={IconArrowUp} />
-        <StatCard compact label="Saldados" value={fmtCompact(saldados)} tone="asset" icon={IconCheck} />
+      {/* Net balance hero — loans + splits, always coherent */}
+      <div className="px-4 pt-2">
+        <Card className="p-4">
+          <p className="text-[11px] font-medium text-text-secondary">Balance de préstamos</p>
+          <p
+            className={clsx(
+              'mt-0.5 text-[26px] font-bold leading-tight tabular-nums',
+              netoTotal > 0 ? 'text-asset-deep' : netoTotal < 0 ? 'text-debt-deep' : 'text-text',
+            )}
+          >
+            {netoTotal > 0 ? '+' : ''}{formatMXN(netoTotal)}
+          </p>
+          {(totalCobrar > 0 || totalPagar > 0) && (
+            <div className="mt-2.5 flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
+              <div
+                className="rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${(totalCobrar / (totalCobrar + totalPagar)) * 100}%` }}
+              />
+              <div
+                className="rounded-full bg-debt transition-all duration-500"
+                style={{ width: `${(totalPagar / (totalCobrar + totalPagar)) * 100}%` }}
+              />
+            </div>
+          )}
+          <p className="mt-1.5 text-[11px] text-text-tertiary">
+            {peopleOwingMe > 0 && `Te deben ${peopleOwingMe} persona${peopleOwingMe === 1 ? '' : 's'}`}
+            {peopleOwingMe > 0 && peopleIOwe > 0 && ' · '}
+            {peopleIOwe > 0 && `Debes a ${peopleIOwe} persona${peopleIOwe === 1 ? '' : 's'}`}
+            {peopleOwingMe === 0 && peopleIOwe === 0 && 'Sin saldos pendientes'}
+          </p>
+        </Card>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-3 gap-2 px-4">
+        <StatCard compact label="Por cobrar" value={fmtCompact(totalCobrar)} tone="primary" icon={IconArrowDown} />
+        <StatCard compact label="Por pagar" value={fmtCompact(totalPagar)} tone="debt" icon={IconArrowUp} />
+        <StatCard compact label="Recuperado 30d" value={fmtCompact(recuperado30d)} tone="asset" icon={IconCheck} />
       </div>
 
       {!hasAny ? (
@@ -603,18 +818,23 @@ export function MisPrestamos() {
                   </button>
                 </div>
               </div>
-              {activeGroups.map((g) => (
-                <ContactGroupCard
-                  key={g.name.toLowerCase()}
-                  group={g}
-                  paymentsByLoan={paymentsByLoan}
-                  onAbono={(loan) => setAbonoLoan(loan)}
-                  onMarkPaid={(loan) => setMarkPaidLoan(loan)}
-                  onEdit={openEdit}
-                  onDelete={(loan) => setDeletingLoan(loan)}
-                  onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
-                />
-              ))}
+              {activeGroups.map((g) => {
+                const combined = { ...g, net: contactNet(g) }
+                return (
+                  <ContactGroupCard
+                    key={g.name.toLowerCase()}
+                    group={combined}
+                    paymentsByLoan={paymentsByLoan}
+                    onAbono={(loan) => setAbonoLoan(loan)}
+                    onMarkPaid={(loan) => setMarkPaidLoan(loan)}
+                    onEdit={openEdit}
+                    onDelete={(loan) => setDeletingLoan(loan)}
+                    onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
+                    onOpenGroup={splitReady ? () => void handleOpenContactGroup(g.name) : undefined}
+                    onSettleAll={splitReady ? () => openSettleAll(combined) : undefined}
+                  />
+                )
+              })}
             </div>
           )}
 
@@ -656,6 +876,22 @@ export function MisPrestamos() {
         </>
       )}
 
+      {/* Lending flow analytics — understand and heal your finances */}
+      {hasFlowData && (
+        <div className="flex flex-col gap-2 px-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+            Flujo de préstamos
+          </p>
+          <Card className="p-3.5">
+            <p className="mb-2 text-[11px] leading-snug text-text-secondary">
+              Cuánto prestas vs cuánto recuperas cada mes. La línea roja es lo que
+              te deben al cierre — si no baja, es momento de cobrar.
+            </p>
+            <LoanFlowChart data={loanFlow} />
+          </Card>
+        </div>
+      )}
+
       {/* ── Modals ── */}
       <LoanFormModal
         open={loanFormOpen}
@@ -677,7 +913,33 @@ export function MisPrestamos() {
           toast.success('Préstamo registrado', `Guardaste un préstamo con ${data.name}`)
         }}
         onEdit={async (id, patch) => {
+          const prev = allLoans.find((l) => l.id === id)
           await update(id, patch)
+          // Keep the direct group coherent when the contact is renamed:
+          // if the group carries the old contact name, rename it too so
+          // history and navigation stay attached (best effort).
+          if (prev && patch.name && patch.name.trim().toLowerCase() !== prev.name.trim().toLowerCase()) {
+            const direct = directGroupByContact.get(prev.name.trim().toLowerCase())
+            if (direct) {
+              try {
+                const contactMember = direct.members.find((m) => !memberIsMe(m, user?.id))
+                if (contactMember) {
+                  await supabase
+                    .from('split_members')
+                    .update({ name: patch.name.trim() })
+                    .eq('id', contactMember.id)
+                }
+                if (direct.group.name.trim().toLowerCase() === prev.name.trim().toLowerCase()) {
+                  await supabase
+                    .from('split_groups')
+                    .update({ name: patch.name.trim() })
+                    .eq('id', direct.group.id)
+                }
+              } catch {
+                // Non-blocking: the loan itself is already stamped by id.
+              }
+            }
+          }
           toast.success('Cambios guardados', 'El préstamo fue actualizado')
         }}
       />
@@ -719,6 +981,17 @@ export function MisPrestamos() {
         onConfirm={() => void handleDelete()}
         onClose={() => setDeletingLoan(null)}
       />
+
+      {settleAllContact && (
+        <SettleAllModal
+          open
+          contactName={settleAllContact.name}
+          net={settleAllContact.net}
+          breakdown={settleAllContact.breakdown}
+          onClose={() => setSettleAllContact(null)}
+          onConfirm={handleSettleAll}
+        />
+      )}
 
       <GroupFormModal
         open={groupFormOpen}
@@ -881,219 +1154,6 @@ function LoanFormModal({
 
         <Button type="submit" loading={submitting} className="mt-1">
           {isEdit ? 'Guardar cambios' : 'Registrar préstamo'}
-        </Button>
-      </form>
-    </Modal>
-  )
-}
-
-// ── AbonoModal ────────────────────────────────────────────────────────────────
-
-function AbonoModal({
-  open,
-  loan,
-  payments,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean
-  loan: Loan
-  payments: LoanPayment[]
-  onClose: () => void
-  onSubmit: (
-    amount: number,
-    opts?: { accountId?: string | null; note?: string | null },
-  ) => Promise<void>
-}) {
-  const { data: accounts } = useAccounts()
-  const remaining = loanRemaining(loan, payments)
-
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
-  const [linkAccount, setLinkAccount] = useState(false)
-  const [accountId, setAccountId] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setAmount('')
-      setNote('')
-      setLinkAccount(false)
-      setAccountId('')
-      setFormError('')
-    }
-  }, [open])
-
-  const amountNum = Number(amount)
-  const afterAbono = Math.max(0, remaining - (amountNum > 0 ? amountNum : 0))
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!amount || Number.isNaN(amountNum) || amountNum <= 0) {
-      setFormError('Escribe un monto válido')
-      return
-    }
-    if (amountNum > remaining) {
-      setFormError(`El monto no puede superar el saldo pendiente (${formatMXN(remaining)})`)
-      return
-    }
-    setSubmitting(true)
-    try {
-      await onSubmit(amountNum, {
-        accountId: linkAccount ? (accountId || null) : null,
-        note: note.trim() || null,
-      })
-    } catch {
-      setFormError('No se pudo registrar el abono')
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Abono · ${loan.name}`}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div className="rounded-xl bg-bg-secondary px-3.5 py-2.5">
-          <p className="text-[11px] text-text-tertiary">Saldo pendiente</p>
-          <p className="text-base font-bold text-text">{formatMXN(remaining)}</p>
-        </div>
-
-        <Input
-          label="Monto del abono"
-          type="number"
-          inputMode="decimal"
-          placeholder="0"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          autoFocus
-          min="0.01"
-          step="any"
-        />
-
-        {amountNum > 0 && amountNum <= remaining && (
-          <div className="rounded-xl bg-primary/5 px-3.5 py-2">
-            <p className="text-[12px] text-primary-deep">
-              Quedará pendiente: <strong>{formatMXN(afterAbono)}</strong>
-            </p>
-          </div>
-        )}
-
-        <Input
-          label="Nota (opcional)"
-          placeholder="Transferencia del 1 ene…"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-
-        <AccountLinkField
-          accounts={accounts}
-          linked={linkAccount}
-          accountId={accountId}
-          onToggle={(next, defaultId) => { setLinkAccount(next); setAccountId(defaultId) }}
-          onAccountChange={setAccountId}
-        />
-
-        {formError && <p className="text-xs text-debt">• {formError}</p>}
-
-        <Button type="submit" loading={submitting} className="mt-1">
-          Registrar abono
-        </Button>
-      </form>
-    </Modal>
-  )
-}
-
-// ── MarkPaidModal ─────────────────────────────────────────────────────────────
-
-function MarkPaidModal({
-  open,
-  loan,
-  payments,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean
-  loan: Loan
-  payments: LoanPayment[]
-  onClose: () => void
-  onSubmit: (opts?: { accountId?: string | null; amount?: number }) => Promise<void>
-}) {
-  const { data: accounts } = useAccounts()
-  const remaining = loanRemaining(loan, payments)
-
-  const [amount, setAmount] = useState('')
-  const [linkAccount, setLinkAccount] = useState(false)
-  const [accountId, setAccountId] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setAmount(String(remaining))
-      setLinkAccount(false)
-      setAccountId('')
-      setFormError('')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const num = Number(amount)
-    if (linkAccount && (!amount || Number.isNaN(num) || num <= 0)) {
-      setFormError('Escribe un monto válido')
-      return
-    }
-    setSubmitting(true)
-    try {
-      await onSubmit({
-        accountId: linkAccount ? (accountId || null) : null,
-        amount: linkAccount ? num : undefined,
-      })
-    } catch {
-      setFormError('No se pudo saldar el préstamo')
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Saldar · ${loan.name}`}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div className="rounded-xl bg-bg-secondary px-3.5 py-2.5">
-          <p className="text-[11px] text-text-tertiary">Saldo pendiente</p>
-          <p className="text-base font-bold text-text">{formatMXN(remaining)}</p>
-        </div>
-
-        <AccountLinkField
-          accounts={accounts}
-          linked={linkAccount}
-          accountId={accountId}
-          onToggle={(next, defaultId) => { setLinkAccount(next); setAccountId(defaultId) }}
-          onAccountChange={setAccountId}
-        />
-
-        {linkAccount && (
-          <Input
-            label="Monto a registrar"
-            type="number"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            min="0.01"
-            step="any"
-          />
-        )}
-
-        <div className="rounded-xl bg-asset/10 px-3.5 py-2.5">
-          <p className="text-[12px] font-medium text-asset-deep">
-            El préstamo quedará marcado como saldado
-          </p>
-        </div>
-
-        {formError && <p className="text-xs text-debt">• {formError}</p>}
-
-        <Button type="submit" loading={submitting} className="mt-1">
-          Confirmar
         </Button>
       </form>
     </Modal>

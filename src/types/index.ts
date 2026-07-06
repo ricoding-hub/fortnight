@@ -179,6 +179,12 @@ export type SplitActivityVerb =
   | 'expense_deleted'
   | 'settlement_added'
   | 'invite_sent'
+  | 'loan_added'
+  | 'loan_edited'
+  | 'loan_payment'
+  | 'loan_settled'
+  | 'loan_reopened'
+  | 'loan_deleted'
 
 /** Audit history row, written exclusively by DB triggers. */
 export interface SplitActivity {
@@ -229,6 +235,8 @@ export interface SplitExpenseShare {
   amount: number
   /** Raw pct / parts input; null for equal & exact splits. */
   weight: number | null
+  /** Denormalized from the expense (022) for membership RLS. */
+  group_id: string
   created_at: string
 }
 

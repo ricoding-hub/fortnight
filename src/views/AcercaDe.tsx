@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="0.9.1"
+            version="0.10.0"
             date="6 jul 2026"
             current
+            notes={[
+              'Cada persona ahora es un grupo: comparte enlace, divide gastos y ve su historial desde su card',
+              '"Saldar todo": liquida todos los préstamos y gastos con una persona en un solo movimiento',
+              'Trazabilidad total: cada préstamo, abono, edición y saldado queda en el historial del grupo',
+              'KPIs renovados: balance neto con proporción, por cobrar/pagar y recuperado en 30 días',
+              'Gráfica "Flujo de préstamos": cuánto prestas vs recuperas cada mes y lo que te deben al cierre',
+            ]}
+          />
+          <VersionRow
+            version="0.9.1"
+            date="6 jul 2026"
             notes={[
               'Invitación por enlace: comparte el link del grupo y quien lo abre elige quién es o se agrega como nueva persona',
               'Contactos recientes: agrega a tu grupo gente de grupos anteriores con un toque',

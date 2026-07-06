@@ -71,4 +71,36 @@ describe('activityLabel', () => {
     const line = activityLabel(act({}), 'm1', 1570)
     expect(line.impact).toBe('Debes $1,570.00')
   })
+
+  it('renders loan verbs with direction and amounts', () => {
+    const added = activityLabel(
+      act({ verb: 'loan_added', subject: 'Karla', amount: 500, meta: { direction: 'owed_to_me' } }),
+      null,
+    )
+    expect(added.text).toBe('Ale registró un préstamo a Karla')
+    expect(added.impact).toBe('$500.00')
+
+    const owed = activityLabel(
+      act({ verb: 'loan_added', subject: 'Karla', amount: 500, meta: { direction: 'i_owe' } }),
+      null,
+    )
+    expect(owed.text).toBe('Ale registró una deuda con Karla')
+
+    const abono = activityLabel(act({ verb: 'loan_payment', subject: 'Karla', amount: 100 }), null)
+    expect(abono.text).toBe('Ale abonó al préstamo de Karla')
+    expect(abono.struck).toBe(false)
+
+    const removed = activityLabel(
+      act({ verb: 'loan_payment', subject: 'Karla', amount: 100, meta: { removed: true } }),
+      null,
+    )
+    expect(removed.text).toBe('Ale eliminó un abono del préstamo de Karla')
+    expect(removed.struck).toBe(true)
+
+    const settled = activityLabel(act({ verb: 'loan_settled', subject: 'Karla', amount: 400 }), null)
+    expect(settled.text).toBe('Ale saldó el préstamo de Karla')
+
+    const deleted = activityLabel(act({ verb: 'loan_deleted', subject: 'Karla', amount: 400 }), null)
+    expect(deleted.struck).toBe(true)
+  })
 })

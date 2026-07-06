@@ -646,6 +646,66 @@ export function useSplitGroups(legacy: LegacyInputs) {
     await fetchAll()
   }
 
+  /**
+   * Find (or create) the direct 2-person group for a 1:1 contact, and stamp
+   * any of their orphan loans with the group id so traceability triggers
+   * and group math cover them. Returns the group id.
+   */
+  async function ensureDirectGroup(contactName: string): Promise<string> {
+    if (!user) throw new Error('Not authenticated')
+    const key = normName(contactName)
+
+    let groupId = computed.find(
+      (g) =>
+        !g.isConnected &&
+        g.members.length === 2 &&
+        g.members.some((m) => !m.is_me && normName(m.name) === key),
+    )?.group.id
+
+    if (!groupId) {
+      const { id } = await createGroup(contactName.trim(), [{ name: contactName.trim() }])
+      groupId = id
+    }
+
+    // Stamp orphan loans of this contact (by id — no more name-match reliance).
+    const orphans = legacy.loans.filter((l) => l.group_id == null && normName(l.name) === key)
+    for (const l of orphans) {
+      await supabase.from('loans').update({ group_id: groupId }).eq('id', l.id)
+    }
+    if (orphans.length > 0) await fetchAll()
+    return groupId
+  }
+
+  /**
+   * Settle EVERYTHING with the direct contact of a group in one action:
+   * computes the combined net (loans + splits) and runs addSettlement,
+   * whose waterfall pays open loans oldest-first and records the leftover
+   * as a settlement. Throws if there is nothing to settle.
+   */
+  async function settleAllWithContact(
+    groupId: string,
+    opts?: { accountId?: string | null; note?: string | null },
+  ) {
+    if (!user) throw new Error('Not authenticated')
+    const g = computed.find((x) => x.group.id === groupId)
+    if (!g) throw new Error('Grupo no encontrado')
+    const me = g.members.find((m) => memberIsMe(m, user.id))
+    const contact = g.members.find((m) => !memberIsMe(m, user.id))
+    if (!me || !contact) throw new Error('El grupo no tiene un contacto directo')
+
+    const myNet = g.nets.get(me.id) ?? 0
+    if (Math.abs(myNet) < 0.005) throw new Error('No hay saldo pendiente con esta persona')
+
+    await addSettlement(groupId, {
+      // net > 0 ⇒ they owe me ⇒ contact pays me; net < 0 ⇒ I pay them.
+      fromMemberId: myNet > 0 ? contact.id : me.id,
+      toMemberId: myNet > 0 ? me.id : contact.id,
+      amount: Math.abs(myNet),
+      accountId: opts?.accountId ?? null,
+      note: opts?.note ?? 'Saldar todo',
+    })
+  }
+
   /** Soft-leave: caller must verify my net is 0 before offering this. */
   async function leaveGroup(groupId: string) {
     if (!user) throw new Error('Not authenticated')
@@ -682,6 +742,8 @@ export function useSplitGroups(legacy: LegacyInputs) {
     deleteSettlement,
     deleteGroup,
     leaveGroup,
+    ensureDirectGroup,
+    settleAllWithContact,
     refetch: fetchAll,
   }
 }

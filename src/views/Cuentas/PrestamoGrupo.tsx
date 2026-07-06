@@ -34,9 +34,11 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { ExpenseFormModal } from '@/components/split/ExpenseFormModal'
 import { SettleModal } from '@/components/split/SettleModal'
 import { AddMemberModal } from '@/components/split/AddMemberModal'
+import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
+import { SettleAllModal } from '@/components/split/SettleAllModal'
 import { activityLabel } from '@/lib/splitActivity'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
-import type { SplitExpense, SplitMember, SplitSettlement } from '@/types'
+import type { Loan, SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
 const AVATAR_COLORS = [
   'bg-primary/15 text-primary-deep',
@@ -77,6 +79,7 @@ export function PrestamoGrupo() {
     deleteSettlement,
     deleteGroup,
     leaveGroup,
+    settleAllWithContact,
   } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
 
   const storeExpenseOpen = useUiStore((s) => s.expenseModalOpen)
@@ -89,6 +92,9 @@ export function PrestamoGrupo() {
   const [renameOpen, setRenameOpen] = useState(false)
   const [deletingExpense, setDeletingExpense] = useState<SplitExpense | null>(null)
   const [deletingSettlement, setDeletingSettlement] = useState<SplitSettlement | null>(null)
+  const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
+  const [markPaidLoan, setMarkPaidLoan] = useState<Loan | null>(null)
+  const [settleAllOpen, setSettleAllOpen] = useState(false)
   const [deletingGroup, setDeletingGroup] = useState(false)
   const [leavingGroup, setLeavingGroup] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -298,6 +304,15 @@ export function PrestamoGrupo() {
             </p>
           </div>
         </div>
+        {g.members.length === 2 && Math.abs(myNet) > 0.005 && (
+          <button
+            type="button"
+            onClick={() => setSettleAllOpen(true)}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-asset/10 py-2.5 text-[12.5px] font-bold text-asset-deep transition-colors hover:bg-asset/20"
+          >
+            <IconCheck size={14} stroke={2.5} /> Saldar todo ({formatMXN(Math.abs(myNet))})
+          </button>
+        )}
       </div>
 
       {/* Member balances */}
@@ -501,21 +516,39 @@ export function PrestamoGrupo() {
               {g.legacyLoans.filter((l) => !l.paid_at).map((l) => {
                 const remaining = loanRemaining(l, loans.paymentsByLoan[l.id] ?? [])
                 return (
-                  <li key={l.id} className="flex items-center gap-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
-                      <IconUsers size={15} stroke={2} />
+                  <li key={l.id} className="py-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
+                        <IconUsers size={15} stroke={2} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-text">
+                          Préstamo · {l.name}
+                        </p>
+                        <p className="text-[11px] text-text-tertiary">
+                          {l.direction === 'owed_to_me' ? 'Te debe' : 'Le debes'} · {formatDateGroupMX(l.created_at)}
+                        </p>
+                      </div>
+                      <Badge variant={l.direction === 'owed_to_me' ? 'info' : 'danger'}>
+                        {formatMXN(remaining)}
+                      </Badge>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-text">
-                        Préstamo · {l.name}
-                      </p>
-                      <p className="text-[11px] text-text-tertiary">
-                        {l.direction === 'owed_to_me' ? 'Te debe' : 'Le debes'} · {formatDateGroupMX(l.created_at)}
-                      </p>
+                    <div className="mt-1.5 flex items-center gap-1.5 pl-11">
+                      <button
+                        type="button"
+                        onClick={() => setAbonoLoan(l)}
+                        className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-deep transition-colors hover:bg-primary/20"
+                      >
+                        + Abono
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMarkPaidLoan(l)}
+                        className="flex items-center gap-1 rounded-lg bg-asset/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-asset-deep transition-colors hover:bg-asset/20"
+                      >
+                        <IconCheck size={12} /> Saldado
+                      </button>
                     </div>
-                    <Badge variant={l.direction === 'owed_to_me' ? 'info' : 'danger'}>
-                      {formatMXN(remaining)}
-                    </Badge>
                   </li>
                 )
               })}
@@ -642,6 +675,60 @@ export function PrestamoGrupo() {
           toast.success('Grupo renombrado', newName)
         }}
       />
+
+      {abonoLoan && (
+        <AbonoModal
+          open
+          loan={abonoLoan}
+          payments={loans.paymentsByLoan[abonoLoan.id] ?? []}
+          onClose={() => setAbonoLoan(null)}
+          onSubmit={async (amount, opts) => {
+            await loans.addPayment(abonoLoan.id, amount, opts)
+            toast.success('Abono registrado', `Abono de ${formatMXN(amount)} guardado`)
+            setAbonoLoan(null)
+          }}
+        />
+      )}
+
+      {markPaidLoan && (
+        <MarkPaidModal
+          open
+          loan={markPaidLoan}
+          payments={loans.paymentsByLoan[markPaidLoan.id] ?? []}
+          onClose={() => setMarkPaidLoan(null)}
+          onSubmit={async (opts) => {
+            await loans.markPaid(markPaidLoan.id, opts)
+            toast.success('Préstamo saldado', `El préstamo de ${markPaidLoan.name} está saldado`)
+            setMarkPaidLoan(null)
+          }}
+        />
+      )}
+
+      {settleAllOpen && (
+        <SettleAllModal
+          open
+          contactName={g.members.find((m) => !memberIsMe(m, user?.id))?.name ?? g.group.name}
+          net={myNet}
+          breakdown={[
+            ...g.legacyLoans
+              .filter((l) => !l.paid_at)
+              .map((l) => ({
+                label: `Préstamo · ${l.direction === 'owed_to_me' ? 'te debe' : 'debes'}`,
+                amount: loanRemaining(l, loans.paymentsByLoan[l.id] ?? []),
+              }))
+              .filter((line) => line.amount > 0),
+            ...(Math.abs(g.mySplitNet) > 0.005
+              ? [{ label: 'Gastos compartidos (neto)', amount: Math.abs(g.mySplitNet) }]
+              : []),
+          ]}
+          onClose={() => setSettleAllOpen(false)}
+          onConfirm={async (opts) => {
+            if (!groupId) return
+            await settleAllWithContact(groupId, opts)
+            toast.success('Todo saldado', `Cuentas en cero · ${formatMXN(Math.abs(myNet))}`)
+          }}
+        />
+      )}
 
       <ConfirmModal
         open={!!deletingExpense}
