@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.0.1"
+            version="1.0.2"
             date="7 jul 2026"
             current
+            notes={[
+              'Los contactos conectados muestran su foto de perfil real',
+              'Los gastos compartidos se desglosan y editan directamente en el card de cada persona',
+              'KPIs y saldos en enteros — sin decimales descuadrados',
+            ]}
+          />
+          <VersionRow
+            version="1.0.1"
+            date="7 jul 2026"
             notes={[
               'Relación 1:1 coherente: al conectarse una persona, sus préstamos se convierten en registros compartidos del grupo',
               'Sin duplicados: la sección Grupos es solo para 3+ personas; cada persona vive en un solo card',

@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { GroupFormModal } from '@/components/split/GroupFormModal'
 import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
+import { ExpenseFormModal } from '@/components/split/ExpenseFormModal'
 import { SettleAllModal, type SettleAllBreakdownLine } from '@/components/split/SettleAllModal'
 import { LoanFlowChart } from '@/components/LoanFlowChart'
 import { buildLoanFlow } from '@/lib/loanFlow'
@@ -38,10 +39,13 @@ import type { Loan, LoanDirection, LoanPayment, SplitExpense, SplitExpenseShare,
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Whole-peso display for KPIs and card nets — decimals looked broken there. */
 function fmtCompact(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (Math.abs(n) >= 10_000) return `$${(n / 1_000).toFixed(1)}k`
-  return formatMXN(n)
+  const sign = n < 0 ? '−' : ''
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 10_000) return `${sign}$${(abs / 1_000).toFixed(1)}k`
+  return `${sign}$${Math.round(abs).toLocaleString('es-MX')}`
 }
 
 function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
@@ -60,6 +64,19 @@ interface ContactGroup {
   name: string
   loans: Loan[]
   net: number
+}
+
+/** Shared-group movement shown (and editable) inline on a contact card. */
+interface SplitMovement {
+  kind: 'expense' | 'settlement'
+  id: string
+  description: string
+  payerName: string
+  date: string
+  /** Contribution to my net: + they owe me, − I owe. */
+  myEffect: number
+  expense?: SplitExpense
+  settlement?: SplitSettlement
 }
 
 // ── LoanRow ───────────────────────────────────────────────────────────────────
@@ -229,6 +246,11 @@ function ContactGroupCard({
   onOpenGroup,
   onSettleAll,
   connected = false,
+  avatarUrl,
+  splitMovements = [],
+  onEditExpense,
+  onDeleteExpense,
+  onDeleteSettlement,
 }: {
   group: ContactGroup
   paymentsByLoan: Record<string, LoanPayment[]>
@@ -244,6 +266,13 @@ function ContactGroupCard({
   onSettleAll?: () => void
   /** The contact has a linked Fortnight account (real 1:1 sync). */
   connected?: boolean
+  /** Linked contact's profile photo. */
+  avatarUrl?: string
+  /** Shared expenses/settlements of the direct group, editable inline. */
+  splitMovements?: SplitMovement[]
+  onEditExpense?: (expense: SplitExpense) => void
+  onDeleteExpense?: (expense: SplitExpense) => void
+  onDeleteSettlement?: (settlement: SplitSettlement) => void
 }) {
   const [expanded, setExpanded] = useState(true)
   const avatarColor = nameColorClass(group.name)
@@ -256,14 +285,22 @@ function ContactGroupCard({
           onClick={() => setExpanded((v) => !v)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <div
-            className={clsx(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold',
-              avatarColor,
-            )}
-          >
-            {(group.name[0] ?? '?').toUpperCase()}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={group.name}
+              className="h-9 w-9 shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <div
+              className={clsx(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold',
+                avatarColor,
+              )}
+            >
+              {(group.name[0] ?? '?').toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-text">
               <span className="truncate">{group.name}</span>
@@ -327,6 +364,87 @@ function ContactGroupCard({
               />
             </li>
           ))}
+          {!isPaidSection &&
+            splitMovements.map((mv) => (
+              <li key={`${mv.kind}:${mv.id}`} className="py-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={clsx(
+                      'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
+                      mv.kind === 'settlement'
+                        ? 'bg-asset/10 text-asset-deep'
+                        : mv.myEffect >= 0
+                          ? 'bg-primary/10 text-primary-deep'
+                          : 'bg-debt/10 text-debt-deep',
+                    )}
+                  >
+                    {mv.kind === 'settlement' ? (
+                      <IconCheck size={12} stroke={2.5} />
+                    ) : mv.myEffect >= 0 ? (
+                      <IconArrowDown size={12} stroke={2.5} />
+                    ) : (
+                      <IconArrowUp size={12} stroke={2.5} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {mv.kind === 'settlement' ? (
+                        <Badge variant="success">Liquidación</Badge>
+                      ) : (
+                        <Badge variant={mv.myEffect >= 0 ? 'info' : 'danger'}>
+                          {mv.myEffect >= 0 ? 'Te deben' : 'Debes'}
+                        </Badge>
+                      )}
+                      <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] font-bold text-text-secondary">
+                        Compartido
+                      </span>
+                    </div>
+                    <p className="mt-0.5 line-clamp-1 text-[12px] text-text-secondary">
+                      {mv.description}
+                      {mv.kind === 'expense' && mv.payerName && ` · Pagó ${mv.payerName}`}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold tabular-nums text-text">
+                      {formatMXN(Math.abs(mv.myEffect))}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-text-tertiary">
+                      {formatDateGroupMX(mv.date)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {mv.kind === 'expense' && mv.expense && onEditExpense && (
+                      <button
+                        type="button"
+                        onClick={() => onEditExpense(mv.expense!)}
+                        aria-label="Editar gasto"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+                      >
+                        <IconEdit size={15} />
+                      </button>
+                    )}
+                    {mv.kind === 'expense' && mv.expense && onDeleteExpense && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteExpense(mv.expense!)}
+                        aria-label="Eliminar gasto"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
+                      >
+                        <IconTrash size={15} />
+                      </button>
+                    )}
+                    {mv.kind === 'settlement' && mv.settlement && onDeleteSettlement && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSettlement(mv.settlement!)}
+                        aria-label="Eliminar liquidación"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
+                      >
+                        <IconTrash size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
         </ul>
       )}
 
@@ -365,6 +483,7 @@ export function MisPrestamos() {
   } = useLoans()
   const {
     groups: splitGroups,
+    profiles,
     recentContacts,
     splitCobrar,
     splitPagar,
@@ -373,6 +492,9 @@ export function MisPrestamos() {
     createGroup,
     ensureDirectGroup,
     settleAllWithContact,
+    updateExpense,
+    deleteExpense,
+    deleteSettlement,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -387,6 +509,9 @@ export function MisPrestamos() {
     net: number
     breakdown: SettleAllBreakdownLine[]
   } | null>(null)
+  const [inlineExpense, setInlineExpense] = useState<SplitExpense | null>(null)
+  const [deletingSplitExpense, setDeletingSplitExpense] = useState<SplitExpense | null>(null)
+  const [deletingSplitSettlement, setDeletingSplitSettlement] = useState<SplitSettlement | null>(null)
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
   const [formDefaultDir, setFormDefaultDir] = useState<LoanDirection>('owed_to_me')
   const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
@@ -522,17 +647,102 @@ export function MisPrestamos() {
     }
   }, [directGroupByContact])
 
+  /** Linked contact's profile photo, when connected. */
+  const contactAvatar = useMemo(() => {
+    return (contactKey: string): string | undefined => {
+      const direct = directGroupByContact.get(contactKey)
+      const contact = direct?.activeMembers.find((m) => !memberIsMe(m, user?.id))
+      if (!contact?.member_user_id) return undefined
+      return profiles.get(contact.member_user_id)?.avatar_url ?? undefined
+    }
+  }, [directGroupByContact, profiles, user?.id])
+
+  /** Shared movements of the contact's direct group, newest first. */
+  const contactMovements = useMemo(() => {
+    return (contactKey: string): SplitMovement[] => {
+      const direct = directGroupByContact.get(contactKey)
+      if (!direct || !user) return []
+      const meMember = direct.activeMembers.find((m) => memberIsMe(m, user.id))
+      if (!meMember) return []
+      const out: SplitMovement[] = []
+      for (const e of direct.expenses) {
+        const shares = direct.sharesByExpense.get(e.id) ?? []
+        const myShare = shares
+          .filter((sh) => sh.member_id === meMember.id)
+          .reduce((s, sh) => s + Number(sh.amount), 0)
+        const iPaid = e.paid_by_member_id === meMember.id
+        const payer = direct.members.find((m) => m.id === e.paid_by_member_id)
+        out.push({
+          kind: 'expense',
+          id: e.id,
+          description: e.description,
+          payerName: payer ? displayName(payer) : '—',
+          date: e.expense_date,
+          myEffect: iPaid ? Number(e.amount) - myShare : -myShare,
+          expense: e,
+        })
+      }
+      for (const s of direct.settlements) {
+        const received = s.to_member_id === meMember.id
+        out.push({
+          kind: 'settlement',
+          id: s.id,
+          description: received ? 'Recibiste un pago' : 'Pagaste',
+          payerName: '',
+          date: s.created_at,
+          myEffect: received ? -Number(s.amount) : Number(s.amount),
+          settlement: s,
+        })
+      }
+      return out.sort((a, b) => b.date.localeCompare(a.date))
+    }
+  }, [directGroupByContact, user, displayName])
+
+  async function handleDeleteSplitExpense() {
+    if (!deletingSplitExpense) return
+    try {
+      await deleteExpense(deletingSplitExpense.id)
+      toast.success('Gasto eliminado', 'El gasto compartido fue eliminado')
+    } catch {
+      toast.error('Error', 'No se pudo eliminar el gasto')
+    }
+    setDeletingSplitExpense(null)
+  }
+
+  async function handleDeleteSplitSettlement() {
+    if (!deletingSplitSettlement) return
+    try {
+      await deleteSettlement(deletingSplitSettlement.id)
+      toast.success('Liquidación eliminada', 'Los balances fueron restaurados')
+    } catch {
+      toast.error('Error', 'No se pudo eliminar la liquidación')
+    }
+    setDeletingSplitSettlement(null)
+  }
+
+  // Group + members backing the inline expense editor.
+  const inlineExpenseGroup = inlineExpense
+    ? splitGroups.find((g) => g.group.id === inlineExpense.group_id)
+    : undefined
+
   // Connected 1:1 relationships without open loans still deserve their
   // contact card (the relationship's single home) — synthesize entries
   // for connected 2-person groups not already covered by a loans card.
   const connectedExtras = useMemo(() => {
     const loanNames = new Set(activeGroups.map((g) => g.name.trim().toLowerCase()))
-    const out: Array<{ name: string; groupId: string; net: number }> = []
+    const out: Array<{ name: string; localKey: string; groupId: string; net: number }> = []
     for (const g of splitGroups) {
       if (g.activeMembers.length !== 2 || !g.isConnected) continue
       const contact = g.activeMembers.find((m) => !memberIsMe(m, user?.id))
       if (!contact || loanNames.has(contact.name.trim().toLowerCase())) continue
-      out.push({ name: displayName(contact), groupId: g.group.id, net: g.mySplitNet })
+      out.push({
+        name: displayName(contact),
+        // Lookup key for directGroupByContact (the member's LOCAL name,
+        // which can differ from the linked profile's display name).
+        localKey: contact.name.trim().toLowerCase(),
+        groupId: g.group.id,
+        net: g.mySplitNet,
+      })
     }
     return out
   }, [splitGroups, activeGroups, user?.id, displayName])
@@ -698,7 +908,7 @@ export function MisPrestamos() {
               netoTotal > 0 ? 'text-asset-deep' : netoTotal < 0 ? 'text-debt-deep' : 'text-text',
             )}
           >
-            {netoTotal > 0 ? '+' : ''}{formatMXN(netoTotal)}
+            {netoTotal > 0 ? '+' : ''}{fmtCompact(netoTotal)}
           </p>
           {(totalCobrar > 0 || totalPagar > 0) && (
             <div className="mt-2.5 flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
@@ -834,13 +1044,16 @@ export function MisPrestamos() {
                 </div>
               </div>
               {activeGroups.map((g) => {
+                const key = g.name.trim().toLowerCase()
                 const combined = { ...g, net: contactNet(g) }
-                const isConnected = directGroupByContact.get(g.name.trim().toLowerCase())?.isConnected ?? false
+                const isConnected = directGroupByContact.get(key)?.isConnected ?? false
                 return (
                   <ContactGroupCard
                     key={g.name.toLowerCase()}
                     group={combined}
                     connected={isConnected}
+                    avatarUrl={contactAvatar(key)}
+                    splitMovements={contactMovements(key)}
                     paymentsByLoan={paymentsByLoan}
                     onAbono={(loan) => setAbonoLoan(loan)}
                     onMarkPaid={(loan) => setMarkPaidLoan(loan)}
@@ -849,17 +1062,23 @@ export function MisPrestamos() {
                     onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
                     onOpenGroup={splitReady ? () => void handleOpenContactGroup(g.name) : undefined}
                     onSettleAll={splitReady ? () => openSettleAll(combined) : undefined}
+                    onEditExpense={setInlineExpense}
+                    onDeleteExpense={setDeletingSplitExpense}
+                    onDeleteSettlement={setDeletingSplitSettlement}
                   />
                 )
               })}
               {/* Connected 1:1 relationships without open loans */}
               {connectedExtras.map((extra) => {
+                const key = extra.localKey
                 const pseudo: ContactGroup = { name: extra.name, loans: [], net: extra.net }
                 return (
                   <ContactGroupCard
                     key={`connected:${extra.groupId}`}
                     group={pseudo}
                     connected
+                    avatarUrl={contactAvatar(key)}
+                    splitMovements={contactMovements(key)}
                     paymentsByLoan={paymentsByLoan}
                     onAbono={() => {}}
                     onMarkPaid={() => {}}
@@ -870,6 +1089,9 @@ export function MisPrestamos() {
                     onSettleAll={
                       Math.abs(extra.net) > 0.005 ? () => openSettleAll(pseudo) : undefined
                     }
+                    onEditExpense={setInlineExpense}
+                    onDeleteExpense={setDeletingSplitExpense}
+                    onDeleteSettlement={setDeletingSplitSettlement}
                   />
                 )
               })}
@@ -1030,6 +1252,43 @@ export function MisPrestamos() {
           onConfirm={handleSettleAll}
         />
       )}
+
+      {/* Inline shared-expense editing — same capabilities as the group detail */}
+      {inlineExpense && inlineExpenseGroup && (
+        <ExpenseFormModal
+          open
+          onClose={() => setInlineExpense(null)}
+          members={inlineExpenseGroup.activeMembers.map((m) => ({ ...m, name: displayName(m) }))}
+          editing={{
+            expense: inlineExpense,
+            shares: inlineExpenseGroup.sharesByExpense.get(inlineExpense.id) ?? [],
+          }}
+          onSubmit={async (exp) => {
+            await updateExpense(inlineExpense.id, inlineExpense.group_id, exp)
+            toast.success('Gasto actualizado', `${exp.description} · ${formatMXN(exp.amount)}`)
+          }}
+        />
+      )}
+
+      <ConfirmModal
+        open={!!deletingSplitExpense}
+        title="Eliminar gasto"
+        message={`¿Eliminar "${deletingSplitExpense?.description ?? ''}"? Si se registró en una cuenta, el movimiento no se revierte automáticamente.`}
+        confirmLabel="Eliminar"
+        destructive
+        onConfirm={() => void handleDeleteSplitExpense()}
+        onClose={() => setDeletingSplitExpense(null)}
+      />
+
+      <ConfirmModal
+        open={!!deletingSplitSettlement}
+        title="Eliminar liquidación"
+        message="Se restaurarán los balances. Abonos a préstamos y movimientos de cuenta creados junto con esta liquidación NO se revierten automáticamente."
+        confirmLabel="Eliminar"
+        destructive
+        onConfirm={() => void handleDeleteSplitSettlement()}
+        onClose={() => setDeletingSplitSettlement(null)}
+      />
 
       <GroupFormModal
         open={groupFormOpen}
