@@ -13,6 +13,7 @@
  */
 
 import { isResponse, json, requireUser } from '../_lib/auth.js'
+import { syncLoansIntoGroup } from '../_lib/splitSync.js'
 
 export async function POST(req: Request): Promise<Response> {
   try {
@@ -70,6 +71,9 @@ export async function POST(req: Request): Promise<Response> {
         .eq('id', slot.id)
       if (uErr) return json({ error: 'link_failed' }, 500)
       // The member UPDATE trigger emits member_linked → notifications fan out.
+      // 1:1 coherence: convert the owner's open loans with this contact into
+      // shared expenses so both sides see the same balance from day one.
+      await syncLoansIntoGroup(admin, group.id).catch(() => {})
       return json({ ok: true, groupId: group.id })
     }
 
@@ -106,6 +110,7 @@ export async function POST(req: Request): Promise<Response> {
     }
     if (cErr) return json({ error: 'join_failed' }, 500)
 
+    await syncLoansIntoGroup(admin, group.id).catch(() => {})
     return json({ ok: true, groupId: group.id })
   } catch (err) {
     if (isResponse(err)) return err

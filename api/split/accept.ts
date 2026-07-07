@@ -10,6 +10,7 @@
  */
 
 import { isResponse, json, requireUser } from '../_lib/auth.js'
+import { syncLoansIntoGroup } from '../_lib/splitSync.js'
 
 export async function POST(req: Request): Promise<Response> {
   try {
@@ -101,6 +102,10 @@ export async function POST(req: Request): Promise<Response> {
       .from('split_invites')
       .update({ status: 'accepted', responded_at: now })
       .eq('id', invite.id)
+
+    // 1:1 coherence: convert the owner's open loans with this contact into
+    // shared expenses so both sides see the same balance.
+    await syncLoansIntoGroup(admin, invite.group_id).catch(() => {})
 
     return json({ ok: true, groupId: invite.group_id })
   } catch (err) {

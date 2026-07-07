@@ -292,5 +292,6 @@ export function useLoans() {
     deleteLoan,
     addPayment,
     deletePayment,
+    refetch: fetchAll,
   }
 }

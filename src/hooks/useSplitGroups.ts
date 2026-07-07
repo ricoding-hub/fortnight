@@ -339,9 +339,9 @@ export function useSplitGroups(legacy: LegacyInputs) {
   )
 
   /**
-   * People I've shared any group with, deduped (linked contacts by user id,
-   * local members by normalized name), most-recent group first. Used by the
-   * "Recientes" chips when creating groups or adding members.
+   * REAL Fortnight users I've shared any group with (linked accounts only —
+   * local name-only members are excluded on purpose), deduped by user id,
+   * most-recent group first. Used by the "Recientes" chips.
    */
   const recentContacts = useMemo(() => {
     if (!user) return [] as Array<{ name: string; memberUserId: string | null }>
@@ -350,10 +350,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
     for (const g of computed) {
       for (const m of g.members) {
         if (memberIsMe(m, user.id)) continue
-        const key = m.member_user_id ?? `local:${normName(m.name)}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        const p = m.member_user_id ? profiles.get(m.member_user_id) : undefined
+        if (!m.member_user_id) continue
+        if (seen.has(m.member_user_id)) continue
+        seen.add(m.member_user_id)
+        const p = profiles.get(m.member_user_id)
         out.push({ name: p?.display_name ?? m.name, memberUserId: m.member_user_id })
       }
     }
@@ -675,11 +675,12 @@ export function useSplitGroups(legacy: LegacyInputs) {
     if (!user) throw new Error('Not authenticated')
     const key = normName(contactName)
 
+    // Match connected groups too — excluding them here used to spawn a
+    // DUPLICATE group for a contact that had already linked their account.
     let groupId = computed.find(
       (g) =>
-        !g.isConnected &&
-        g.members.length === 2 &&
-        g.members.some((m) => !m.is_me && normName(m.name) === key),
+        g.activeMembers.length === 2 &&
+        g.activeMembers.some((m) => !memberIsMe(m, user.id) && normName(m.name) === key),
     )?.group.id
 
     if (!groupId) {
@@ -697,14 +698,88 @@ export function useSplitGroups(legacy: LegacyInputs) {
   }
 
   /**
-   * Settle EVERYTHING with the direct contact of a group in one action:
-   * computes the combined net (loans + splits) and runs addSettlement,
-   * whose waterfall pays open loans oldest-first and records the leftover
-   * as a settlement. Throws if there is nothing to settle.
-   *
-   * Members are fetched FRESH: right after ensureDirectGroup creates the
-   * group, the `computed` closure is still stale (React hasn't re-rendered)
-   * and a lookup there used to throw "Grupo no encontrado".
+   * Convert MY open loans with the group's direct contact into shared
+   * expenses (same math, visible to both users) and close the originals
+   * WITHOUT payments — no money moved, so "recovered" stats stay honest.
+   * Client-side twin of the server-side sync that runs when someone joins;
+   * used retroactively for groups that connected before this existed.
+   */
+  async function syncLoansIntoGroup(groupId: string): Promise<number> {
+    if (!user) throw new Error('Not authenticated')
+    const { data: freshMembers, error: mErr } = await supabase
+      .from('split_members')
+      .select('*')
+      .eq('group_id', groupId)
+    if (mErr) throw mErr
+    const gMembers = ((freshMembers ?? []) as SplitMember[]).filter((m) => m.left_at == null)
+    const me = gMembers.find((m) => memberIsMe(m, user.id))
+    const contact = gMembers.find((m) => !memberIsMe(m, user.id))
+    if (!me || !contact) throw new Error('El grupo no tiene un contacto directo')
+
+    const openLoans = legacy.loans.filter(
+      (l) =>
+        !l.paid_at &&
+        (l.group_id === groupId ||
+          (l.group_id == null && normName(l.name) === normName(contact.name))),
+    )
+
+    let migrated = 0
+    for (const loan of openLoans) {
+      const paid = (legacy.paymentsByLoan[loan.id] ?? []).reduce(
+        (s, p) => s + Number(p.amount),
+        0,
+      )
+      const remaining = fromCents(Math.max(0, toCents(Number(loan.amount)) - toCents(paid)))
+      if (remaining <= 0) {
+        await supabase.from('loans').update({ paid_at: new Date().toISOString() }).eq('id', loan.id)
+        continue
+      }
+      const owedToMe = loan.direction === 'owed_to_me'
+      const payer = owedToMe ? me : contact
+      const debtor = owedToMe ? contact : me
+
+      const { data: exp, error: eErr } = await supabase
+        .from('split_expenses')
+        .insert({
+          group_id: groupId,
+          user_id: user.id,
+          description: loan.notes?.trim() || 'Préstamo',
+          amount: remaining,
+          paid_by_member_id: payer.id,
+          split_method: 'exact',
+          account_id: null,
+          expense_date: loan.created_at.slice(0, 10),
+        })
+        .select('id')
+        .single()
+      if (eErr || !exp) throw eErr ?? new Error('No se pudo sincronizar')
+
+      const { error: sErr } = await supabase.from('split_expense_shares').insert([
+        { expense_id: exp.id, member_id: debtor.id, user_id: user.id, amount: remaining, weight: null, group_id: groupId },
+        { expense_id: exp.id, member_id: payer.id, user_id: user.id, amount: 0, weight: null, group_id: groupId },
+      ])
+      if (sErr) {
+        await supabase.from('split_expenses').delete().eq('id', exp.id)
+        throw sErr
+      }
+
+      await supabase
+        .from('loans')
+        .update({ paid_at: new Date().toISOString(), notes: 'Sincronizado al grupo', group_id: groupId })
+        .eq('id', loan.id)
+      migrated++
+    }
+    await fetchAll()
+    return migrated
+  }
+
+  /**
+   * Settle EVERYTHING with the direct contact of a group in one action.
+   * Closes EVERY open loan in BOTH directions (full-remaining payment +
+   * paid_at — the old net-only waterfall left opposing loans open with
+   * cancelling residues), settles the split-only net with a settlement
+   * row, and records ONE optional account transaction for the combined
+   * net. Members and loans are read fresh (never from a stale closure).
    */
   async function settleAllWithContact(
     groupId: string,
@@ -721,17 +796,40 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const contact = gMembers.find((m) => !memberIsMe(m, user.id))
     if (!me || !contact) throw new Error('El grupo no tiene un contacto directo')
 
-    // Combined net: legacy loans (stamped or name-matched) + split activity
-    // from state. A just-created group has no split rows, so the net is the
-    // loans-only balance — exactly what "Saldar todo" must cover.
-    const contactLoans = legacy.loans.filter(
+    // Fresh open loans with this contact, BOTH directions.
+    const { data: loanRows, error: lErr } = await supabase
+      .from('loans')
+      .select('*, loan_payments(*)')
+      .is('paid_at', null)
+      .order('created_at', { ascending: true })
+    if (lErr) throw lErr
+    const openLoans = ((loanRows ?? []) as Array<Loan & { loan_payments: LoanPayment[] }>).filter(
       (l) =>
-        !l.paid_at &&
-        (l.group_id === groupId ||
-          (l.group_id == null && normName(l.name) === normName(contact.name))),
+        l.group_id === groupId ||
+        (l.group_id == null && normName(l.name) === normName(contact.name)),
     )
-    const { myNetCents } = loanNetForContact(contactLoans, legacy.paymentsByLoan)
 
+    let loansNetCents = 0
+    for (const loan of openLoans) {
+      const paid = (loan.loan_payments ?? []).reduce((s, p) => s + toCents(Number(p.amount)), 0)
+      const remaining = Math.max(0, toCents(Number(loan.amount)) - paid)
+      if (remaining <= 0) {
+        await supabase.from('loans').update({ paid_at: new Date().toISOString() }).eq('id', loan.id)
+        continue
+      }
+      loansNetCents += loan.direction === 'owed_to_me' ? remaining : -remaining
+      // Full-remaining payment closes the loan for real (money moved).
+      const { error: pErr } = await supabase.from('loan_payments').insert({
+        loan_id: loan.id,
+        user_id: user.id,
+        amount: fromCents(remaining),
+        note: opts?.note ?? 'Saldar todo',
+      })
+      if (pErr) throw pErr
+      await supabase.from('loans').update({ paid_at: new Date().toISOString() }).eq('id', loan.id)
+    }
+
+    // Split-only net from state (expenses/settlements of this group).
     const gExpenses = expenses.filter((e) => e.group_id === groupId)
     const gSettlements = settlements.filter((s) => s.group_id === groupId)
     const netsCents = memberNets(
@@ -750,22 +848,39 @@ export function useSplitGroups(legacy: LegacyInputs) {
         toMemberId: s.to_member_id,
         amountCents: toCents(Number(s.amount)),
       })),
-      new Map([
-        [me.id, myNetCents],
-        [contact.id, -myNetCents],
-      ]),
     )
-    const myNet = fromCents(netsCents.get(me.id) ?? 0)
-    if (Math.abs(myNet) < 0.005) throw new Error('No hay saldo pendiente con esta persona')
+    const splitNetCents = netsCents.get(me.id) ?? 0
+    if (splitNetCents !== 0) {
+      const { error: stErr } = await supabase.from('split_settlements').insert({
+        group_id: groupId,
+        user_id: user.id,
+        from_member_id: splitNetCents > 0 ? contact.id : me.id,
+        to_member_id: splitNetCents > 0 ? me.id : contact.id,
+        amount: fromCents(Math.abs(splitNetCents)),
+        note: opts?.note ?? 'Saldar todo',
+        account_id: opts?.accountId ?? null,
+      })
+      if (stErr) throw stErr
+    }
 
-    await addSettlement(groupId, {
-      // net > 0 ⇒ they owe me ⇒ contact pays me; net < 0 ⇒ I pay them.
-      fromMemberId: myNet > 0 ? contact.id : me.id,
-      toMemberId: myNet > 0 ? me.id : contact.id,
-      amount: Math.abs(myNet),
-      accountId: opts?.accountId ?? null,
-      note: opts?.note ?? 'Saldar todo',
-    })
+    const combinedNetCents = loansNetCents + splitNetCents
+    if (combinedNetCents === 0 && openLoans.length === 0) {
+      throw new Error('No hay saldo pendiente con esta persona')
+    }
+
+    // ONE account transaction for the real money that changed hands (the net).
+    if (opts?.accountId && combinedNetCents !== 0) {
+      const groupName = groups.find((g) => g.id === groupId)?.name ?? ''
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        account_id: opts.accountId,
+        amount: fromCents(combinedNetCents), // + I receive, − I pay
+        type: 'transaction',
+        description: `Saldar todo: ${contact.name}${groupName && groupName !== contact.name ? ` · ${groupName}` : ''}`,
+        date: new Date().toISOString().slice(0, 10),
+      })
+    }
+    await fetchAll()
   }
 
   /** Soft-leave: caller must verify my net is 0 before offering this. */
@@ -806,6 +921,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     leaveGroup,
     ensureDirectGroup,
     settleAllWithContact,
+    syncLoansIntoGroup,
     refetch: fetchAll,
   }
 }

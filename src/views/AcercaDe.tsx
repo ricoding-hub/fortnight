@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.0.1"
+            date="7 jul 2026"
+            current
+            notes={[
+              'Relación 1:1 coherente: al conectarse una persona, sus préstamos se convierten en registros compartidos del grupo',
+              'Sin duplicados: la sección Grupos es solo para 3+ personas; cada persona vive en un solo card',
+              '"Saldar todo" ahora salda TODOS los préstamos (ambas direcciones) y refresca al instante',
+              'Recientes muestra solo usuarios reales con cuenta conectada',
+            ]}
+          />
+          <VersionRow
             version="1.0.0"
             date="6 jul 2026"
-            current
             notes={[
               'Versión estable — auditoría completa de sistema con todas las causas raíz corregidas',
               'XP arreglado: premios atómicos en servidor, sin reinicios ni parpadeos a nivel 1',

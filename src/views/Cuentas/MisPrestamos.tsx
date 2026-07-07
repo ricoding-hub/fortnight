@@ -228,6 +228,7 @@ function ContactGroupCard({
   onUnmarkPaid,
   onOpenGroup,
   onSettleAll,
+  connected = false,
 }: {
   group: ContactGroup
   paymentsByLoan: Record<string, LoanPayment[]>
@@ -241,6 +242,8 @@ function ContactGroupCard({
   onOpenGroup?: () => void
   /** One-tap settlement of the full combined net with this person. */
   onSettleAll?: () => void
+  /** The contact has a linked Fortnight account (real 1:1 sync). */
+  connected?: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
   const avatarColor = nameColorClass(group.name)
@@ -262,7 +265,14 @@ function ContactGroupCard({
             {(group.name[0] ?? '?').toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-text">{group.name}</p>
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-text">
+              <span className="truncate">{group.name}</span>
+              {connected && (
+                <span className="shrink-0 rounded-full bg-asset-soft px-1.5 py-0.5 text-[9px] font-extrabold text-asset-deep">
+                  Conectado
+                </span>
+              )}
+            </p>
             {!isPaidSection && (
               <p
                 className={clsx(
@@ -351,6 +361,7 @@ export function MisPrestamos() {
     unmarkPaid,
     deleteLoan,
     addPayment,
+    refetch: refetchLoans,
   } = useLoans()
   const {
     groups: splitGroups,
@@ -358,6 +369,7 @@ export function MisPrestamos() {
     splitCobrar,
     splitPagar,
     ready: splitReady,
+    displayName,
     createGroup,
     ensureDirectGroup,
     settleAllWithContact,
@@ -482,36 +494,48 @@ export function MisPrestamos() {
     return Array.from(names).sort()
   }, [active, paid])
 
-  // Shared groups worth their own card: N>2 people or any split activity.
-  // Backfilled 2-person shells (isDirect) keep rendering as contact cards only.
+  // GRUPOS section = real multi-person groups ONLY (3+ active members).
+  // A balance with one person is a 1:1 relationship, never "a group" —
+  // 2-person groups (connected or not) live in the ACTIVOS contact cards.
   const sharedGroups = useMemo(
-    () => splitGroups.filter((g) => !g.isDirect),
+    () => splitGroups.filter((g) => g.activeMembers.length > 2),
     [splitGroups],
   )
 
-  // Direct 2-person group per contact (non-connected), for combined nets,
-  // "Ver grupo" navigation and "Saldar todo".
+  // Direct 2-person group per contact (connected or not), for combined
+  // nets, "Ver grupo" navigation and "Saldar todo".
   const directGroupByContact = useMemo(() => {
     const map = new Map<string, (typeof splitGroups)[number]>()
     for (const g of splitGroups) {
-      if (g.isConnected || g.members.length !== 2) continue
-      const contact = g.members.find((m) => !memberIsMe(m, user?.id))
+      if (g.activeMembers.length !== 2) continue
+      const contact = g.activeMembers.find((m) => !memberIsMe(m, user?.id))
       if (contact) map.set(contact.name.trim().toLowerCase(), g)
     }
     return map
   }, [splitGroups, user?.id])
 
-  /** Combined net (loans + splits) for a contact; falls back to loans-only. */
+  /** Combined net for a contact: open loans + split-only net of their group. */
   const contactNet = useMemo(() => {
     return (group: ContactGroup): number => {
       const direct = directGroupByContact.get(group.name.trim().toLowerCase())
-      if (direct) {
-        const me = direct.members.find((m) => memberIsMe(m, user?.id))
-        if (me) return direct.nets.get(me.id) ?? group.net
-      }
-      return group.net
+      return group.net + (direct?.mySplitNet ?? 0)
     }
-  }, [directGroupByContact, user?.id])
+  }, [directGroupByContact])
+
+  // Connected 1:1 relationships without open loans still deserve their
+  // contact card (the relationship's single home) — synthesize entries
+  // for connected 2-person groups not already covered by a loans card.
+  const connectedExtras = useMemo(() => {
+    const loanNames = new Set(activeGroups.map((g) => g.name.trim().toLowerCase()))
+    const out: Array<{ name: string; groupId: string; net: number }> = []
+    for (const g of splitGroups) {
+      if (g.activeMembers.length !== 2 || !g.isConnected) continue
+      const contact = g.activeMembers.find((m) => !memberIsMe(m, user?.id))
+      if (!contact || loanNames.has(contact.name.trim().toLowerCase())) continue
+      out.push({ name: displayName(contact), groupId: g.group.id, net: g.mySplitNet })
+    }
+    return out
+  }, [splitGroups, activeGroups, user?.id, displayName])
 
   /* ── KPI derivations ── */
   const totalCobrar = porCobrar + splitCobrar
@@ -521,24 +545,21 @@ export function MisPrestamos() {
   const { peopleOwingMe, peopleIOwe } = useMemo(() => {
     let owing = 0
     let iOwe = 0
-    const countedContacts = new Set<string>()
     for (const g of activeGroups) {
       const net = contactNet(g)
-      countedContacts.add(g.name.trim().toLowerCase())
       if (net > 0.005) owing++
       else if (net < -0.005) iOwe++
     }
+    for (const extra of connectedExtras) {
+      if (extra.net > 0.005) owing++
+      else if (extra.net < -0.005) iOwe++
+    }
     for (const g of sharedGroups) {
-      // Skip direct groups already counted through their contact card.
-      if (g.members.length === 2 && !g.isConnected) {
-        const contact = g.members.find((m) => !memberIsMe(m, user?.id))
-        if (contact && countedContacts.has(contact.name.trim().toLowerCase())) continue
-      }
       if (g.mySplitNet > 0.005) owing++
       else if (g.mySplitNet < -0.005) iOwe++
     }
     return { peopleOwingMe: owing, peopleIOwe: iOwe }
-  }, [activeGroups, sharedGroups, contactNet, user?.id])
+  }, [activeGroups, connectedExtras, sharedGroups, contactNet])
 
   // Recovered in the last 30 days: abonos on owed_to_me loans + settlements received.
   const recuperado30d = useMemo(() => {
@@ -626,6 +647,9 @@ export function MisPrestamos() {
     if (!settleAllContact) return
     const groupId = await ensureDirectGroup(settleAllContact.name)
     await settleAllWithContact(groupId, opts)
+    // Immediate refresh — loan payments live in useLoans, whose realtime
+    // echo may lag; without this the settled balance lingered on screen.
+    await refetchLoans()
     toast.success(
       'Todo saldado',
       `Cuentas en cero con ${settleAllContact.name} · ${formatMXN(Math.abs(settleAllContact.net))}`,
@@ -656,7 +680,8 @@ export function MisPrestamos() {
     )
   }
 
-  const hasAny = active.length > 0 || paid.length > 0 || sharedGroups.length > 0
+  const hasAny =
+    active.length > 0 || paid.length > 0 || sharedGroups.length > 0 || connectedExtras.length > 0
 
   return (
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
@@ -783,7 +808,7 @@ export function MisPrestamos() {
           )}
 
           {/* Active contact groups */}
-          {activeGroups.length > 0 && (
+          {(activeGroups.length > 0 || connectedExtras.length > 0) && (
             <div className="flex flex-col gap-2 px-4">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
@@ -810,10 +835,12 @@ export function MisPrestamos() {
               </div>
               {activeGroups.map((g) => {
                 const combined = { ...g, net: contactNet(g) }
+                const isConnected = directGroupByContact.get(g.name.trim().toLowerCase())?.isConnected ?? false
                 return (
                   <ContactGroupCard
                     key={g.name.toLowerCase()}
                     group={combined}
+                    connected={isConnected}
                     paymentsByLoan={paymentsByLoan}
                     onAbono={(loan) => setAbonoLoan(loan)}
                     onMarkPaid={(loan) => setMarkPaidLoan(loan)}
@@ -822,6 +849,27 @@ export function MisPrestamos() {
                     onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
                     onOpenGroup={splitReady ? () => void handleOpenContactGroup(g.name) : undefined}
                     onSettleAll={splitReady ? () => openSettleAll(combined) : undefined}
+                  />
+                )
+              })}
+              {/* Connected 1:1 relationships without open loans */}
+              {connectedExtras.map((extra) => {
+                const pseudo: ContactGroup = { name: extra.name, loans: [], net: extra.net }
+                return (
+                  <ContactGroupCard
+                    key={`connected:${extra.groupId}`}
+                    group={pseudo}
+                    connected
+                    paymentsByLoan={paymentsByLoan}
+                    onAbono={() => {}}
+                    onMarkPaid={() => {}}
+                    onEdit={() => {}}
+                    onDelete={() => {}}
+                    onUnmarkPaid={() => {}}
+                    onOpenGroup={() => void navigate(`/cuentas/prestamos/${extra.groupId}`)}
+                    onSettleAll={
+                      Math.abs(extra.net) > 0.005 ? () => openSettleAll(pseudo) : undefined
+                    }
                   />
                 )
               })}

@@ -65,6 +65,7 @@ export function PrestamoGrupo() {
     deleteGroup,
     leaveGroup,
     settleAllWithContact,
+    syncLoansIntoGroup,
   } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
 
   const storeExpenseOpen = useUiStore((s) => s.expenseModalOpen)
@@ -106,6 +107,40 @@ export function PrestamoGrupo() {
   )
   const me = g?.members.find((m) => memberIsMe(m, user?.id))
   const myNet = me ? (g?.nets.get(me.id) ?? 0) : 0
+
+  // Connected 1:1 groups exclude private loans from the shared math — any
+  // still-open loans of mine with the contact must be SYNCED (converted to
+  // shared expenses) so both users see the same balance.
+  const unsyncedLoans = useMemo(() => {
+    if (!g || !g.isConnected || g.activeMembers.length !== 2 || !user) return []
+    const contact = g.activeMembers.find((m) => !memberIsMe(m, user.id))
+    if (!contact) return []
+    const key = contact.name.trim().toLowerCase()
+    return loans.data.filter(
+      (l) =>
+        !l.paid_at &&
+        (l.group_id === g.group.id ||
+          (l.group_id == null && l.name.trim().toLowerCase() === key)),
+    )
+  }, [g, user, loans.data])
+  const [syncing, setSyncing] = useState(false)
+
+  async function handleSyncLoans() {
+    if (!groupId) return
+    setSyncing(true)
+    try {
+      const n = await syncLoansIntoGroup(groupId)
+      await loans.refetch()
+      toast.success(
+        'Préstamos sincronizados',
+        `${n} préstamo${n === 1 ? '' : 's'} ahora ${n === 1 ? 'es un gasto' : 'son gastos'} del grupo`,
+      )
+    } catch {
+      toast.error('Error', 'No se pudieron sincronizar los préstamos')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // Recent contacts not already in this group (for the add-member modal).
   const addableContacts = useMemo(() => {
@@ -296,6 +331,23 @@ export function PrestamoGrupo() {
             className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-asset/10 py-2.5 text-[12.5px] font-bold text-asset-deep transition-colors hover:bg-asset/20"
           >
             <IconCheck size={14} stroke={2.5} /> Saldar todo ({formatMXN(Math.abs(myNet))})
+          </button>
+        )}
+        {unsyncedLoans.length > 0 && (
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={() => void handleSyncLoans()}
+            className="mt-2 flex w-full flex-col items-center gap-0.5 rounded-xl bg-primary-soft/40 px-3 py-2.5 text-center transition-colors hover:bg-primary-soft/60 disabled:opacity-60"
+          >
+            <span className="text-[12.5px] font-bold text-primary-deep">
+              {syncing
+                ? 'Sincronizando…'
+                : `Sincronizar ${unsyncedLoans.length} préstamo${unsyncedLoans.length === 1 ? '' : 's'} al grupo`}
+            </span>
+            <span className="text-[10.5px] leading-snug text-text-secondary">
+              Se convierten en gastos compartidos para que ambos vean el mismo saldo.
+            </span>
           </button>
         )}
       </div>
@@ -669,6 +721,7 @@ export function PrestamoGrupo() {
           onClose={() => setAbonoLoan(null)}
           onSubmit={async (amount, opts) => {
             await loans.addPayment(abonoLoan.id, amount, opts)
+            await loans.refetch()
             toast.success('Abono registrado', `Abono de ${formatMXN(amount)} guardado`)
             setAbonoLoan(null)
           }}
@@ -683,6 +736,7 @@ export function PrestamoGrupo() {
           onClose={() => setMarkPaidLoan(null)}
           onSubmit={async (opts) => {
             await loans.markPaid(markPaidLoan.id, opts)
+            await loans.refetch()
             toast.success('Préstamo saldado', `El préstamo de ${markPaidLoan.name} está saldado`)
             setMarkPaidLoan(null)
           }}
@@ -710,6 +764,7 @@ export function PrestamoGrupo() {
           onConfirm={async (opts) => {
             if (!groupId) return
             await settleAllWithContact(groupId, opts)
+            await loans.refetch()
             toast.success('Todo saldado', `Cuentas en cero · ${formatMXN(Math.abs(myNet))}`)
           }}
         />
