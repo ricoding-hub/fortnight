@@ -22,6 +22,8 @@ import {
 
 import { useAuth } from '@/hooks/useAuth'
 import { useConfig } from '@/hooks/useConfig'
+import { useProfile } from '@/hooks/useProfile'
+import { resizeImage } from '@/lib/image'
 import { useGamification, LEVEL_XP } from '@/hooks/useGamification'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
@@ -70,24 +72,6 @@ function initial(s: string | null | undefined): string {
 function nextLevelFor(lv: number) { return LEVEL_XP[lv] ?? (LEVEL_XP[LEVEL_XP.length - 1] * 2) }
 
 /** Resize an image to max side via canvas, return a Blob. */
-async function resizeImage(file: File, maxPx = 400): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w; canvas.height = h
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
-      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/webp', 0.85)
-    }
-    img.onerror = reject
-    img.src = url
-  })
-}
 
 /* ─────────────────────────────────────── Achievements definition ── */
 
@@ -141,6 +125,7 @@ function useAchievements(xp: number, streakDays: number, txCount: number, score:
 
 export function Profile() {
   const { user, signOut } = useAuth()
+  const { displayName, avatarUrl, updateNickname } = useProfile()
   const { data: config, update } = useConfig()
   const { data: gami, loading: gamiLoading } = useGamification()
   const { data: accounts } = useAccounts()
@@ -151,14 +136,28 @@ export function Profile() {
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [confettiAchievement, setConfettiAchievement] = useState<string | null>(null)
+  const [nickname, setNickname] = useState('')
+  const [nicknameDirty, setNicknameDirty] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const displayName =
-    (user?.user_metadata?.full_name as string | undefined) ??
-    user?.email?.split('@')[0] ??
-    'Usuario'
   const handle = '@' + displayName.toLowerCase().replace(/[^a-z0-9_]/g, '')
-  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
+
+  // Seed the nickname field from the resolved display name (unless the user
+  // is mid-edit).
+  useEffect(() => {
+    if (!nicknameDirty) setNickname(displayName)
+  }, [displayName, nicknameDirty])
+
+  async function saveNickname() {
+    setNicknameDirty(false)
+    if (!nickname.trim() || nickname.trim() === displayName) return
+    try {
+      await updateNickname(nickname.trim())
+      toast.success('Sobrenombre actualizado', 'Así te verán en toda la app')
+    } catch {
+      toast.error('Error', 'No se pudo guardar el sobrenombre')
+    }
+  }
 
   // Achievement signals
   const txCount = transactions.length
@@ -438,6 +437,27 @@ export function Profile() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Sobrenombre ── */}
+      <SectionHeader>Sobrenombre</SectionHeader>
+      <div className="px-4">
+        <Card className="flex flex-col gap-2">
+          <Eyebrow>Cómo te ven en toda la app</Eyebrow>
+          <input
+            value={nickname}
+            onChange={(e) => { setNickname(e.target.value); setNicknameDirty(true) }}
+            onBlur={() => void saveNickname()}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            placeholder="Tu nombre o apodo"
+            autoComplete="off"
+            className="h-11 w-full rounded-md bg-bg-secondary px-3.5 text-base font-semibold text-text outline-none placeholder:text-text-tertiary focus-visible:ring-2 focus-visible:ring-primary/40"
+          />
+          <p className="text-[11px] leading-snug text-text-tertiary">
+            Este nombre aparece en Home, préstamos, grupos y para las personas
+            conectadas contigo.
+          </p>
+        </Card>
       </div>
 
       {/* ── Tu pago ── */}

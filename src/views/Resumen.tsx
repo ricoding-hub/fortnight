@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useInstallments } from '@/hooks/useInstallments'
 import { useLoans } from '@/hooks/useLoans'
+import { useProfile } from '@/hooks/useProfile'
 import { useSplitGroups } from '@/hooks/useSplitGroups'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useGoals } from '@/hooks/useGoals'
@@ -66,6 +67,7 @@ export function Resumen() {
   const [heroInfoOpen, setHeroInfoOpen] = useState(false)
   const [heroTab, setHeroTab] = useState<'info' | 'desglose'>('info')
   const { user } = useAuth()
+  const { displayName, avatarUrl } = useProfile()
   const { data: accounts, loading, error } = useAccounts()
   const { active: activeLoans, data: allLoans, paymentsByLoan, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
   const { splitCobrar, splitPagar } = useSplitGroups({ loans: allLoans, paymentsByLoan })
@@ -81,12 +83,7 @@ export function Resumen() {
 
   /* --------------------------------- derived */
 
-  const displayName =
-    (user?.user_metadata?.full_name as string | undefined) ??
-    user?.email?.split('@')[0] ??
-    'amigo'
   const avatarInitial = (displayName[0] ?? '?').toUpperCase()
-  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
 
   const debitAccounts = accounts.filter((a) => a.type === 'debit')
   const creditAccounts = accounts.filter((a) => a.type === 'credit')

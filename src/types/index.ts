@@ -138,6 +138,8 @@ export interface SplitGroup {
   user_id: string
   name: string
   emoji: string | null
+  /** Group photo URL for identification (migration 026); any member can set it. */
+  image_url: string | null
   /** Shareable join code (/join/{code}); any member can share it. */
   invite_code: string
   created_at: string
@@ -358,6 +360,16 @@ export interface UserConfig {
   notif_email: boolean
   /** UI preference — render the floating Richeto companion. */
   pet_floating: boolean
+  /** Cloud-synced manual order of the loans list (migration 026). */
+  loan_order: LoanOrder | null
+}
+
+/** Pinned order of the loans list; keys not present fall back to recency. */
+export interface LoanOrder {
+  /** Contact keys (normalized names) for the ACTIVOS section. */
+  activos?: string[]
+  /** Group ids for the GRUPOS section. */
+  grupos?: string[]
 }
 
 export interface UserGamification {

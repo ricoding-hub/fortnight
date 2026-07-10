@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { resizeImage } from '@/lib/image'
 import {
   computeShares,
   fromCents,
@@ -434,14 +435,30 @@ export function useSplitGroups(legacy: LegacyInputs) {
     await fetchAll()
   }
 
-  /** Rename a group (any member). The DB trigger logs group_renamed. */
-  async function updateGroup(groupId: string, patch: { name: string }) {
-    const { error: err } = await supabase
-      .from('split_groups')
-      .update({ name: patch.name.trim() })
-      .eq('id', groupId)
+  /** Update a group (any member): rename and/or set its photo. */
+  async function updateGroup(groupId: string, patch: { name?: string; image_url?: string | null }) {
+    const update: Record<string, unknown> = {}
+    if (patch.name !== undefined) update.name = patch.name.trim()
+    if (patch.image_url !== undefined) update.image_url = patch.image_url
+    const { error: err } = await supabase.from('split_groups').update(update).eq('id', groupId)
     if (err) throw err
     await fetchAll()
+  }
+
+  /**
+   * Upload a group photo (any member). Reuses the 'avatars' bucket; the path
+   * is prefixed with the uploader's uid so the per-user-folder RLS passes.
+   */
+  async function uploadGroupImage(groupId: string, file: File): Promise<void> {
+    if (!user) throw new Error('Not authenticated')
+    const blob = await resizeImage(file, 400)
+    const path = `${user.id}/group-${groupId}-${Date.now()}.webp`
+    const { error: upErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, blob, { upsert: true, contentType: 'image/webp' })
+    if (upErr) throw upErr
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+    await updateGroup(groupId, { image_url: urlData.publicUrl })
   }
 
   async function addExpense(groupId: string, exp: NewExpense) {
@@ -912,6 +929,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     createGroup,
     addMember,
     updateGroup,
+    uploadGroupImage,
     addExpense,
     updateExpense,
     deleteExpense,

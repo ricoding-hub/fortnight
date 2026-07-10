@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -15,6 +15,7 @@ import {
   IconTrash,
   IconUserPlus,
   IconUsers,
+  IconCamera,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
@@ -66,6 +67,7 @@ export function PrestamoGrupo() {
     leaveGroup,
     settleAllWithContact,
     syncLoansIntoGroup,
+    uploadGroupImage,
   } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
 
   const storeExpenseOpen = useUiStore((s) => s.expenseModalOpen)
@@ -81,6 +83,8 @@ export function PrestamoGrupo() {
   const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
   const [markPaidLoan, setMarkPaidLoan] = useState<Loan | null>(null)
   const [settleAllOpen, setSettleAllOpen] = useState(false)
+  const [uploadingGroupImage, setUploadingGroupImage] = useState(false)
+  const groupImageRef = useRef<HTMLInputElement>(null)
   const [deletingGroup, setDeletingGroup] = useState(false)
   const [leavingGroup, setLeavingGroup] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -124,6 +128,21 @@ export function PrestamoGrupo() {
     )
   }, [g, user, loans.data])
   const [syncing, setSyncing] = useState(false)
+
+  async function handleGroupImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !groupId) return
+    setUploadingGroupImage(true)
+    try {
+      await uploadGroupImage(groupId, file)
+      toast.success('Foto del grupo actualizada', 'Todos los miembros la verán')
+    } catch (err) {
+      toast.error('Error al subir foto', err instanceof Error ? err.message : 'Inténtalo de nuevo.')
+    } finally {
+      setUploadingGroupImage(false)
+      if (groupImageRef.current) groupImageRef.current.value = ''
+    }
+  }
 
   async function handleSyncLoans() {
     if (!groupId) return
@@ -261,6 +280,37 @@ export function PrestamoGrupo() {
         >
           <IconArrowLeft size={18} />
         </button>
+        {g.activeMembers.length > 2 && (
+          <>
+            <button
+              type="button"
+              onClick={() => groupImageRef.current?.click()}
+              aria-label="Cambiar foto del grupo"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-lavender-soft text-lavender-deep transition-transform active:scale-95"
+            >
+              {g.group.image_url ? (
+                <img src={g.group.image_url} alt={g.group.name} className="h-full w-full object-cover" />
+              ) : (
+                <IconUsers size={20} stroke={2} />
+              )}
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-white ring-2 ring-bg">
+                <IconCamera size={9} stroke={2.5} />
+              </span>
+              {uploadingGroupImage && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                </span>
+              )}
+            </button>
+            <input
+              ref={groupImageRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => void handleGroupImage(e)}
+            />
+          </>
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold text-text">{g.group.name}</p>
           <p className="text-[11px] text-text-tertiary">

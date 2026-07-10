@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.1.0"
+            date="8 jul 2026"
+            current
+            notes={[
+              'Sobrenombre en Perfil: el nombre que eliges se usa en toda la app y lo ven las personas conectadas',
+              'Foto para los grupos, para identificarlos de un vistazo',
+              'Reordena personas y grupos arrastrándolos; el orden se guarda y se sincroniza entre dispositivos',
+              'Los grupos ahora se expanden en la lista: balances y movimientos sin entrar al detalle',
+            ]}
+          />
+          <VersionRow
             version="1.0.2"
             date="7 jul 2026"
-            current
             notes={[
               'Los contactos conectados muestran su foto de perfil real',
               'Los gastos compartidos se desglosan y editan directamente en el card de cada persona',
