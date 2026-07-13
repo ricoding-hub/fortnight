@@ -701,14 +701,33 @@ export function useSplitGroups(legacy: LegacyInputs) {
     )?.group.id
 
     if (!groupId) {
-      const { id } = await createGroup(contactName.trim(), [{ name: contactName.trim() }])
-      groupId = id
+      // Fresh DB check before creating — `computed` can be stale right after
+      // a mutation, which used to spawn duplicate empty groups.
+      const { data: myGroups } = await supabase
+        .from('split_groups')
+        .select('id, split_members(name, member_user_id, left_at)')
+        .eq('user_id', user.id)
+        .is('archived_at', null)
+      const existing = ((myGroups ?? []) as Array<{
+        id: string
+        split_members: Array<{ name: string; member_user_id: string | null; left_at: string | null }>
+      }>).find((g) => {
+        const active = g.split_members.filter((m) => m.left_at == null)
+        return active.length === 2 && active.some((m) => m.member_user_id == null && normName(m.name) === key)
+      })
+      if (existing) {
+        groupId = existing.id
+      } else {
+        const { id } = await createGroup(contactName.trim(), [{ name: contactName.trim() }])
+        groupId = id
+      }
     }
 
     // Stamp orphan loans of this contact (by id — no more name-match reliance).
     const orphans = legacy.loans.filter((l) => l.group_id == null && normName(l.name) === key)
     for (const l of orphans) {
-      await supabase.from('loans').update({ group_id: groupId }).eq('id', l.id)
+      const { error: sErr } = await supabase.from('loans').update({ group_id: groupId }).eq('id', l.id)
+      if (sErr) throw sErr // don't corrupt silently — surface the real cause
     }
     if (orphans.length > 0) await fetchAll()
     return groupId

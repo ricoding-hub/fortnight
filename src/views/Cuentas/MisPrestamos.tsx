@@ -1032,8 +1032,9 @@ export function MisPrestamos() {
     try {
       const id = await ensureDirectGroup(contactName)
       void navigate(`/cuentas/prestamos/${id}`)
-    } catch {
-      toast.error('Error', 'No se pudo abrir el grupo de esta persona')
+    } catch (e) {
+      // Surface the real cause instead of a generic message.
+      toast.error('No se pudo abrir el grupo', e instanceof Error ? e.message : 'Inténtalo de nuevo.')
     }
   }
 

@@ -77,8 +77,8 @@ export function GroupFormModal({ open, onClose, recentContacts = [], onCreate }:
     try {
       await onCreate(name.trim(), cleaned)
       onClose()
-    } catch {
-      setFormError('No se pudo crear el grupo')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo crear el grupo')
     } finally {
       setSubmitting(false)
     }

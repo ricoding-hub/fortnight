@@ -57,8 +57,8 @@ export function SettleAllModal({
         note: note.trim() || null,
       })
       onClose()
-    } catch {
-      setFormError('No se pudo saldar. Inténtalo de nuevo.')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo saldar. Inténtalo de nuevo.')
       setSubmitting(false)
     }
   }

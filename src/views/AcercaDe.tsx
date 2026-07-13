@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.1.0"
+            version="1.1.1"
             date="8 jul 2026"
             current
+            notes={[
+              'Corregido: abrir grupo y saldar con personas nuevas ya no falla',
+              'Se evita crear grupos duplicados al abrir el de un contacto',
+              'Los errores muestran la causa real en vez de un mensaje genérico',
+            ]}
+          />
+          <VersionRow
+            version="1.1.0"
+            date="8 jul 2026"
             notes={[
               'Sobrenombre en Perfil: el nombre que eliges se usa en toda la app y lo ven las personas conectadas',
               'Foto para los grupos, para identificarlos de un vistazo',
