@@ -3,6 +3,7 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { resizeImage } from '@/lib/image'
+import { errorMessage } from '@/lib/errorMessage'
 import {
   computeShares,
   fromCents,
@@ -386,7 +387,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
       .insert({ user_id: user.id, name: name.trim(), emoji: emoji ?? null })
       .select('id')
       .single()
-    if (gErr || !g) throw gErr ?? new Error('No se pudo crear el grupo')
+    if (gErr || !g) {
+      console.error('createGroup: split_groups insert failed', gErr)
+      throw new Error(errorMessage(gErr ?? 'No se pudo crear el grupo'))
+    }
 
     const meName = members.some((m) => normName(m.name) === 'yo') ? 'Tú' : 'Yo'
     const meRow: Record<string, unknown> = {
@@ -415,8 +419,9 @@ export function useSplitGroups(legacy: LegacyInputs) {
       .insert(rows)
       .select('*')
     if (mErr) {
+      console.error('createGroup: split_members insert failed', mErr)
       await supabase.from('split_groups').delete().eq('id', g.id)
-      throw mErr
+      throw new Error(errorMessage(mErr))
     }
     await fetchAll()
     return { id: g.id as string, members: (created ?? []) as SplitMember[] }
@@ -703,11 +708,12 @@ export function useSplitGroups(legacy: LegacyInputs) {
     if (!groupId) {
       // Fresh DB check before creating — `computed` can be stale right after
       // a mutation, which used to spawn duplicate empty groups.
-      const { data: myGroups } = await supabase
+      const { data: myGroups, error: checkErr } = await supabase
         .from('split_groups')
         .select('id, split_members(name, member_user_id, left_at)')
         .eq('user_id', user.id)
         .is('archived_at', null)
+      if (checkErr) console.error('ensureDirectGroup: fresh check failed', checkErr)
       const existing = ((myGroups ?? []) as Array<{
         id: string
         split_members: Array<{ name: string; member_user_id: string | null; left_at: string | null }>
@@ -727,7 +733,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const orphans = legacy.loans.filter((l) => l.group_id == null && normName(l.name) === key)
     for (const l of orphans) {
       const { error: sErr } = await supabase.from('loans').update({ group_id: groupId }).eq('id', l.id)
-      if (sErr) throw sErr // don't corrupt silently — surface the real cause
+      if (sErr) {
+        console.error('ensureDirectGroup: loan stamp failed', sErr)
+        throw new Error(errorMessage(sErr)) // don't corrupt silently
+      }
     }
     if (orphans.length > 0) await fetchAll()
     return groupId

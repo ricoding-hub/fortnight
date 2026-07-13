@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { errorMessage } from '@/lib/errorMessage'
 
 export interface GroupMemberDraft {
   name: string
@@ -78,7 +79,8 @@ export function GroupFormModal({ open, onClose, recentContacts = [], onCreate }:
       await onCreate(name.trim(), cleaned)
       onClose()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo crear el grupo')
+      console.error('create group failed', err)
+      setFormError(errorMessage(err))
     } finally {
       setSubmitting(false)
     }

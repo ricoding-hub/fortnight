@@ -35,6 +35,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { StatCard } from '@/components/StatCard'
 import { nameColorClass } from '@/lib/avatarColors'
+import { errorMessage } from '@/lib/errorMessage'
 import { SplitMovementRow, type SplitMovement } from '@/components/split/SplitMovementRow'
 import { SortablePersonRow } from '@/components/split/SortablePersonRow'
 import {
@@ -352,7 +353,7 @@ function ContactGroupCard({
           <button
             type="button"
             onClick={onOpenGroup}
-            aria-label={`Ver grupo de ${group.name}`}
+            aria-label={`Ver conexión con ${group.name}`}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
           >
             <IconUsers size={16} />
@@ -1033,8 +1034,9 @@ export function MisPrestamos() {
       const id = await ensureDirectGroup(contactName)
       void navigate(`/cuentas/prestamos/${id}`)
     } catch (e) {
-      // Surface the real cause instead of a generic message.
-      toast.error('No se pudo abrir el grupo', e instanceof Error ? e.message : 'Inténtalo de nuevo.')
+      // Surface the real cause (Supabase errors aren't Error instances).
+      console.error('ensureDirectGroup failed', e)
+      toast.error('No se pudo abrir la conexión', errorMessage(e))
     }
   }
 

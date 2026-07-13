@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { AccountLinkField } from '@/components/split/AccountLinkField'
 import { formatMXN } from '@/lib/format'
+import { errorMessage } from '@/lib/errorMessage'
 
 export interface SettleAllBreakdownLine {
   label: string
@@ -58,7 +59,8 @@ export function SettleAllModal({
       })
       onClose()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo saldar. Inténtalo de nuevo.')
+      console.error('settle all failed', err)
+      setFormError(errorMessage(err))
       setSubmitting(false)
     }
   }

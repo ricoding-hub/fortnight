@@ -212,6 +212,8 @@ export function PrestamoGrupo() {
   const hasActivity = g.expenses.length > 0 || g.settlements.length > 0 || g.legacyLoans.length > 0
   const visibleActivity = showAllActivity ? g.activity : g.activity.slice(0, 8)
   const canLeave = multiUserReady && !g.isOwner && Math.abs(myNet) < 0.005
+  // A 2-person relationship is a direct 1:1 connection, not a "group".
+  const isDirect = g.activeMembers.length === 2
 
   function creatorName(userId: string): string | null {
     if (userId === user?.id) return null // don't label your own expenses
@@ -314,23 +316,29 @@ export function PrestamoGrupo() {
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold text-text">{g.group.name}</p>
           <p className="text-[11px] text-text-tertiary">
-            {g.activeMembers.length} personas · {g.expenses.length} gasto{g.expenses.length === 1 ? '' : 's'}
-            {g.isConnected && ' · conectado'}
+            {isDirect
+              ? g.isConnected
+                ? 'Conexión directa · conectado'
+                : 'Conexión directa'
+              : `${g.activeMembers.length} personas · ${g.expenses.length} gasto${g.expenses.length === 1 ? '' : 's'}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setRenameOpen(true)}
-          aria-label="Renombrar grupo"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
-        >
-          <IconPencil size={16} />
-        </button>
+        {/* Renaming applies to real groups; a 1:1 name comes from the person. */}
+        {!isDirect && (
+          <button
+            type="button"
+            onClick={() => setRenameOpen(true)}
+            aria-label="Renombrar grupo"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+          >
+            <IconPencil size={16} />
+          </button>
+        )}
         {canLeave && (
           <button
             type="button"
             onClick={() => setLeavingGroup(true)}
-            aria-label="Salir del grupo"
+            aria-label={isDirect ? 'Salir de la conexión' : 'Salir del grupo'}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
           >
             <IconLogout size={16} />
@@ -340,7 +348,7 @@ export function PrestamoGrupo() {
           <button
             type="button"
             onClick={() => setDeletingGroup(true)}
-            aria-label="Eliminar grupo"
+            aria-label={isDirect ? 'Eliminar conexión' : 'Eliminar grupo'}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
           >
             <IconTrash size={16} />
@@ -468,7 +476,7 @@ export function PrestamoGrupo() {
       {g.suggestions.length > 0 && (
         <div className="flex flex-col gap-2 px-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-            Para saldar el grupo
+            {isDirect ? 'Para saldar' : 'Para saldar el grupo'}
           </p>
           <Card className="px-4 py-1">
             <ul className="divide-y divide-border">
@@ -508,7 +516,7 @@ export function PrestamoGrupo() {
       <div className="flex flex-col gap-2 px-4">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-            Movimientos del grupo
+            {isDirect ? 'Movimientos' : 'Movimientos del grupo'}
           </p>
           <button
             type="button"
@@ -842,8 +850,12 @@ export function PrestamoGrupo() {
 
       <ConfirmModal
         open={deletingGroup}
-        title="Eliminar grupo"
-        message="Se eliminarán los gastos y liquidaciones del grupo para todos los miembros. Los préstamos 1:1 asociados se conservan. Esta acción no se puede deshacer."
+        title={isDirect ? 'Eliminar conexión' : 'Eliminar grupo'}
+        message={
+          isDirect
+            ? 'Se eliminarán los gastos compartidos de esta conexión. Los préstamos 1:1 se conservan. Esta acción no se puede deshacer.'
+            : 'Se eliminarán los gastos y liquidaciones del grupo para todos los miembros. Los préstamos 1:1 asociados se conservan. Esta acción no se puede deshacer.'
+        }
         confirmLabel="Eliminar"
         destructive
         onConfirm={() => void handleDeleteGroup()}
