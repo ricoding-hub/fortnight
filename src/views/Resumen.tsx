@@ -232,7 +232,9 @@ export function Resumen() {
     }
   }, [recentTx, accounts, score, allLoans, activeLoans, subs])
 
-  const { missions } = useMissions(missionCtx)
+  // `enabled` off while accounts load — a transient empty-accounts render
+  // inflates the score and would falsely auto-claim the "score ≥ 7" mission.
+  const { missions } = useMissions(missionCtx, { enabled: !loading })
 
   // Friends data is gated behind a future gamification migration — Liga is
   // hidden when there's nothing to show.

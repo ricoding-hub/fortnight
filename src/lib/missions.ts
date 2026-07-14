@@ -29,6 +29,13 @@ export interface MissionDef {
   reward: number
   icon: Icon
   color: string
+  /**
+   * "Maintain" missions reflect a LIVE threshold (e.g. keep your score ≥ 7)
+   * rather than a one-time achievement. XP is still awarded once per week, but
+   * the done/claimed badge tracks the current condition — if it drops below the
+   * threshold the mission shows as in-progress again (no XP is clawed back).
+   */
+  maintain?: boolean
   /** Computes current/total from live signals. */
   progress: (ctx: MissionContext) => { current: number; total: number }
 }
@@ -78,6 +85,7 @@ export const MISSION_CATALOG: MissionDef[] = [
     reward: 50,
     icon: IconTarget,
     color: '#2A4BFF',
+    maintain: true,
     progress: ({ score }) => ({
       current: score >= 5 ? 1 : 0,
       total: 1,
@@ -89,6 +97,7 @@ export const MISSION_CATALOG: MissionDef[] = [
     reward: 75,
     icon: IconStar,
     color: '#9B7BFF',
+    maintain: true,
     progress: ({ score }) => ({
       current: score >= 7 ? 1 : 0,
       total: 1,

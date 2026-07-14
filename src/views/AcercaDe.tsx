@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.1.3"
+            date="14 jul 2026"
+            current
+            notes={[
+              'Corregido: crear una conexión o saldar con una persona nueva ya no falla por permisos',
+              'Las misiones de score ya no se marcan como logradas si tu score no llega a la meta',
+            ]}
+          />
+          <VersionRow
             version="1.1.2"
             date="9 jul 2026"
-            current
             notes={[
               'Los saldos con una persona se tratan como conexión directa 1-a-1, no como grupo',
               'Los errores muestran la causa real (antes se ocultaba en los mensajes de Supabase)',

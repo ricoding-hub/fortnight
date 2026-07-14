@@ -17,13 +17,24 @@ export interface MissionView extends Omit<MissionDef, 'progress'> {
   claimed: boolean
 }
 
+interface UseMissionsOptions {
+  /**
+   * Gate for the auto-claim effect. Pass `false` while the data that feeds
+   * `ctx` (accounts, transactions) is still loading — otherwise a transient
+   * empty-data render can spike the score and falsely auto-claim a threshold
+   * mission (e.g. "score ≥ 7") that the user hasn't actually earned.
+   */
+  enabled?: boolean
+}
+
 /**
  * Drives the home-screen Misiones surface. Computes per-mission progress from
  * the live `ctx`, fetches which missions are already claimed for the current
  * ISO week, and auto-claims any mission that just hit 100% (one INSERT per
  * mission per week thanks to the unique constraint on mission_completions).
  */
-export function useMissions(ctx: MissionContext) {
+export function useMissions(ctx: MissionContext, opts: UseMissionsOptions = {}) {
+  const { enabled = true } = opts
   const { user } = useAuth()
   const { addXP } = useGamification()
   const toast = useToast()
@@ -101,7 +112,15 @@ export function useMissions(ctx: MissionContext) {
 
   const missions: MissionView[] = MISSION_CATALOG.map((m) => {
     const { current, total } = m.progress(ctx)
-    const done = total > 0 && current >= total
+    const live = total > 0 && current >= total
+    const hasRow = claimed.has(m.id)
+    // "Maintain" missions track the LIVE threshold: they only read as
+    // done/claimed while the condition currently holds — so a persisted (or
+    // stale/bogus) completion row can't keep showing a ✓ once the score drops.
+    // One-time missions stay done/claimed once earned, even if live dips
+    // afterwards (you did complete it; XP was awarded).
+    const done = m.maintain ? live : live || hasRow
+    const isClaimed = m.maintain ? hasRow && live : hasRow
     // Drop the function-typed `progress` so the view is plain data.
     const { progress: _p, ...rest } = m
     void _p
@@ -110,7 +129,7 @@ export function useMissions(ctx: MissionContext) {
       current,
       total,
       done,
-      claimed: claimed.has(m.id),
+      claimed: isClaimed,
     }
   })
 
@@ -118,7 +137,9 @@ export function useMissions(ctx: MissionContext) {
   // ctx changes, so toggling a balance / hitting the threshold immediately
   // triggers the claim.
   useEffect(() => {
-    if (loading || !user) return
+    // `enabled` guards against auto-claiming from a transient render where the
+    // source data (accounts/tx) hasn't loaded yet and the score is inflated.
+    if (loading || !user || !enabled) return
     for (const m of missions) {
       if (m.done && !m.claimed) {
         void claim(m)
@@ -126,7 +147,7 @@ export function useMissions(ctx: MissionContext) {
     }
     // claim is stable enough; we want to re-check missions on every ctx change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.weekTxCount, ctx.score, ctx.weekDebtPayments, loading, user])
+  }, [ctx.weekTxCount, ctx.score, ctx.weekDebtPayments, loading, user, enabled])
 
   return {
     missions,
