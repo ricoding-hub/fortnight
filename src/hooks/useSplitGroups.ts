@@ -429,6 +429,11 @@ export function useSplitGroups(legacy: LegacyInputs) {
 
   async function addMember(groupId: string, name: string, memberUserId?: string | null) {
     if (!user) throw new Error('Not authenticated')
+    // Do NOT add `.select()`/RETURNING here for a non-owner path: split_members'
+    // SELECT policy is is_group_member(group_id), a STABLE SECURITY DEFINER
+    // function that can't see the membership row being inserted in the same
+    // command — the same RLS-snapshot trap that caused the 42501 on split_groups
+    // (fixed in migration 029). A bare INSERT (no RETURNING) is safe.
     const { error: err } = await supabase.from('split_members').insert({
       group_id: groupId,
       user_id: user.id,
@@ -454,7 +459,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
    * Upload a group photo (any member). Reuses the 'avatars' bucket; the path
    * is prefixed with the uploader's uid so the per-user-folder RLS passes.
    */
-  async function uploadGroupImage(groupId: string, file: File): Promise<void> {
+  async function uploadGroupImage(groupId: string, file: Blob): Promise<void> {
     if (!user) throw new Error('Not authenticated')
     const blob = await resizeImage(file, 400)
     const path = `${user.id}/group-${groupId}-${Date.now()}.webp`
@@ -671,7 +676,18 @@ export function useSplitGroups(legacy: LegacyInputs) {
   }
 
   async function deleteGroup(groupId: string) {
-    // Legacy loans keep living (FK is on delete set null) — only split data cascades.
+    // Loans that were AUTO-synced into this group were closed (paid_at) WITHOUT
+    // a real payment and re-represented as shared expenses. Deleting the group
+    // cascades those expenses away — so first REOPEN those loans, otherwise the
+    // debt would vanish from both the loan ledger and the split math.
+    const { error: reopenErr } = await supabase
+      .from('loans')
+      .update({ paid_at: null })
+      .eq('group_id', groupId)
+      .eq('notes', 'Sincronizado al grupo')
+      .not('paid_at', 'is', null)
+    if (reopenErr) throw reopenErr
+    // Remaining legacy loans keep living (FK is on delete set null) — only split data cascades.
     const { error: err } = await supabase.from('split_groups').delete().eq('id', groupId)
     if (err) throw err
     await fetchAll()
@@ -707,11 +723,14 @@ export function useSplitGroups(legacy: LegacyInputs) {
 
     if (!groupId) {
       // Fresh DB check before creating — `computed` can be stale right after
-      // a mutation, which used to spawn duplicate empty groups.
+      // a mutation, which used to spawn duplicate empty groups. RLS already
+      // scopes this to MY groups (owned + ones I'm a member of), so we must
+      // NOT filter by user_id (the contact may own the connection) and must
+      // match the contact by linked account OR name, INCLUDING already-linked
+      // slots (`member_user_id` set) — both were blind spots that spawned dupes.
       const { data: myGroups, error: checkErr } = await supabase
         .from('split_groups')
         .select('id, split_members(name, member_user_id, left_at)')
-        .eq('user_id', user.id)
         .is('archived_at', null)
       if (checkErr) console.error('ensureDirectGroup: fresh check failed', checkErr)
       const existing = ((myGroups ?? []) as Array<{
@@ -719,7 +738,11 @@ export function useSplitGroups(legacy: LegacyInputs) {
         split_members: Array<{ name: string; member_user_id: string | null; left_at: string | null }>
       }>).find((g) => {
         const active = g.split_members.filter((m) => m.left_at == null)
-        return active.length === 2 && active.some((m) => m.member_user_id == null && normName(m.name) === key)
+        if (active.length !== 2) return false
+        // The "other" member is the one that isn't me.
+        return active.some(
+          (m) => m.member_user_id !== user.id && normName(m.name) === key,
+        )
       })
       if (existing) {
         groupId = existing.id
@@ -761,16 +784,26 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const contact = gMembers.find((m) => !memberIsMe(m, user.id))
     if (!me || !contact) throw new Error('El grupo no tiene un contacto directo')
 
-    const openLoans = legacy.loans.filter(
+    // Read loans FRESH: the server-side sync (runs when the contact accepts the
+    // invite) may have already closed + converted these loans. Using the stale
+    // `legacy.loans` prop here raced that sync and inserted a DUPLICATE expense
+    // for the same loan. A fresh `paid_at is null` read closes the window.
+    const { data: freshLoans, error: flErr } = await supabase
+      .from('loans')
+      .select('*, loan_payments(*)')
+      .is('paid_at', null)
+      .order('created_at', { ascending: true })
+    if (flErr) throw flErr
+    const openLoans = ((freshLoans ?? []) as Array<Loan & { loan_payments: LoanPayment[] }>).filter(
       (l) =>
-        !l.paid_at &&
+        l.notes !== 'Sincronizado al grupo' &&
         (l.group_id === groupId ||
           (l.group_id == null && normName(l.name) === normName(contact.name))),
     )
 
     let migrated = 0
     for (const loan of openLoans) {
-      const paid = (legacy.paymentsByLoan[loan.id] ?? []).reduce(
+      const paid = (loan.loan_payments ?? []).reduce(
         (s, p) => s + Number(p.amount),
         0,
       )
@@ -874,16 +907,27 @@ export function useSplitGroups(legacy: LegacyInputs) {
       await supabase.from('loans').update({ paid_at: new Date().toISOString() }).eq('id', loan.id)
     }
 
-    // Split-only net from state (expenses/settlements of this group).
-    const gExpenses = expenses.filter((e) => e.group_id === groupId)
-    const gSettlements = settlements.filter((s) => s.group_id === groupId)
+    // Split-only net read FRESH from the DB (not from possibly-stale state):
+    // settling right after adding an expense used to compute a net that missed
+    // it, leaving residual debt and a short account transaction.
+    const [freshExp, freshShares, freshSettle] = await Promise.all([
+      supabase.from('split_expenses').select('*').eq('group_id', groupId),
+      supabase.from('split_expense_shares').select('*').eq('group_id', groupId),
+      supabase.from('split_settlements').select('*').eq('group_id', groupId),
+    ])
+    if (freshExp.error) throw freshExp.error
+    if (freshShares.error) throw freshShares.error
+    if (freshSettle.error) throw freshSettle.error
+    const gExpenses = (freshExp.data ?? []) as SplitExpense[]
+    const gShares = (freshShares.data ?? []) as SplitExpenseShare[]
+    const gSettlements = (freshSettle.data ?? []) as SplitSettlement[]
     const netsCents = memberNets(
       gMembers.map((m) => m.id),
       gExpenses.map((e) => ({
         paidByMemberId: e.paid_by_member_id,
         totalCents: toCents(Number(e.amount)),
         shares: new Map(
-          shares
+          gShares
             .filter((sh) => sh.expense_id === e.id)
             .map((sh) => [sh.member_id, toCents(Number(sh.amount))]),
         ),

@@ -10,6 +10,7 @@ import {
   IconEdit,
   IconTrash,
   IconUsers,
+  IconLink,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
@@ -356,7 +357,7 @@ function ContactGroupCard({
             aria-label={`Ver conexión con ${group.name}`}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
           >
-            <IconUsers size={16} />
+            <IconLink size={16} />
           </button>
         )}
       </div>

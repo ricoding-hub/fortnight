@@ -24,10 +24,16 @@ export interface MarkPaidOpts {
 const EMPTY: Loan[] = []
 const EMPTY_PAYMENTS: LoanPayment[] = []
 
-/** Remaining balance on a loan after partial payments. */
+/**
+ * Remaining balance on a loan after partial payments. Computed in integer
+ * centavos (matching the settle/waterfall math in useSplitGroups, which sums
+ * `toCents` per payment) so the amount shown never disagrees with the amount
+ * actually settled by a centavo.
+ */
 export function loanRemaining(loan: Loan, payments: LoanPayment[]): number {
-  const paid = payments.reduce((s, p) => s + Number(p.amount), 0)
-  return Math.max(0, Number(loan.amount) - paid)
+  const paidCents = payments.reduce((s, p) => s + Math.round(Number(p.amount) * 100), 0)
+  const amountCents = Math.round(Number(loan.amount) * 100)
+  return Math.max(0, (amountCents - paidCents) / 100)
 }
 
 export function useLoans() {

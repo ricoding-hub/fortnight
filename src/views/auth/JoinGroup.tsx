@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { IconArrowRight, IconUserPlus, IconUsers } from '@tabler/icons-react'
+import { IconArrowRight, IconLink, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -74,7 +74,7 @@ export function JoinGroup() {
       } catch (e) {
         setError(
           e instanceof Error && e.message === 'group_not_found'
-            ? 'Este enlace de invitación no es válido o el grupo fue eliminado.'
+            ? 'Este enlace de invitación no es válido o ya no está disponible.'
             : 'No se pudo cargar la invitación. Revisa tu conexión e inténtalo de nuevo.',
         )
       }
@@ -91,13 +91,15 @@ export function JoinGroup() {
       setError(
         e instanceof Error && e.message === 'member_already_linked'
           ? 'Esa persona ya está vinculada a otra cuenta. Elige otra o únete como nueva persona.'
-          : 'No se pudo completar la unión al grupo. Inténtalo de nuevo.',
+          : 'No se pudo completar. Inténtalo de nuevo.',
       )
       setSubmitting(false)
     }
   }
 
   const claimable = preview?.members.filter((m) => !m.linked) ?? []
+  // A 2-person invite is a 1:1 connection, not a group — reword accordingly.
+  const isConnect = (preview?.members.length ?? 0) === 2
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-4 bg-bg-secondary px-6 py-10">
@@ -116,16 +118,18 @@ export function JoinGroup() {
         <p className="text-sm text-text-secondary">Cargando invitación…</p>
       ) : (
         <div className="flex w-full max-w-[420px] flex-col gap-4">
-          {/* Group header */}
+          {/* Header */}
           <div className="flex flex-col items-center gap-2 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-primary-deep">
-              <IconUsers size={26} stroke={2} />
+              {isConnect ? <IconLink size={26} stroke={2} /> : <IconUsers size={26} stroke={2} />}
             </div>
             <h1 className="font-display text-[22px] font-bold leading-tight text-text">
-              Te invitaron a "{preview.name}"
+              {isConnect ? 'Te invitaron a conectar cuentas' : `Te invitaron a "${preview.name}"`}
             </h1>
             <p className="text-[13px] text-text-secondary">
-              {preview.members.length} personas comparten gastos aquí. ¿Quién eres tú?
+              {isConnect
+                ? 'Al conectarte, los dos verán el mismo saldo en tiempo real.'
+                : `${preview.members.length} personas comparten gastos aquí. ¿Quién eres tú?`}
             </p>
           </div>
 
@@ -133,7 +137,7 @@ export function JoinGroup() {
           {claimable.length > 0 && (
             <div className="flex flex-col gap-2 rounded-2xl bg-bg-elevated p-4 shadow-card">
               <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-                Ya estoy en el grupo
+                {isConnect ? 'Conéctate como' : 'Ya estoy en el grupo'}
               </p>
               {claimable.map((m) => (
                 <button
@@ -158,7 +162,7 @@ export function JoinGroup() {
           {/* Join as new person */}
           <div className="flex flex-col gap-2.5 rounded-2xl bg-bg-elevated p-4 shadow-card">
             <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-              {claimable.length > 0 ? 'O soy alguien nuevo' : 'Únete al grupo'}
+              {claimable.length > 0 ? 'O soy alguien nuevo' : isConnect ? 'Conéctate' : 'Únete al grupo'}
             </p>
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-asset/10 text-asset-deep">
@@ -177,7 +181,7 @@ export function JoinGroup() {
               disabled={!newName.trim()}
               onClick={() => void join({ action: 'new', name: newName.trim() })}
             >
-              Unirme al grupo
+              {isConnect ? 'Conectarme' : 'Unirme al grupo'}
             </Button>
           </div>
 

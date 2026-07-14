@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { IconCheck, IconCopy, IconShare, IconUserPlus } from '@tabler/icons-react'
+import { IconCheck, IconCopy, IconLink, IconShare, IconUserPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -14,6 +14,12 @@ interface AddMemberModalProps {
   /** Contacts from other groups, excluding people already in this one. */
   recentContacts: RecentContact[]
   onAdd: (name: string, memberUserId?: string | null) => Promise<void>
+  /**
+   * When set, the modal is a 1:1 CONNECTION invite (not "add people to a
+   * group"): it only offers the share-link, worded to connect this one person,
+   * and hides the recent-contacts and new-local-member sections.
+   */
+  connectName?: string
 }
 
 export function AddMemberModal({
@@ -23,7 +29,9 @@ export function AddMemberModal({
   inviteLink,
   recentContacts,
   onAdd,
+  connectName,
 }: AddMemberModalProps) {
+  const connectMode = connectName != null
   const [name, setName] = useState('')
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -58,7 +66,9 @@ export function AddMemberModal({
     if (canNativeShare) {
       try {
         await navigator.share({
-          title: `Únete a "${groupName}" en Fortnight`,
+          title: connectMode
+            ? `Conéctate conmigo en Fortnight`
+            : `Únete a "${groupName}" en Fortnight`,
           url: inviteLink,
         })
         return
@@ -76,8 +86,18 @@ export function AddMemberModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Agregar personas">
+    <Modal open={open} onClose={onClose} title={connectMode ? `Conectar con ${connectName}` : 'Agregar personas'}>
       <div className="flex flex-col gap-3">
+        {connectMode && (
+          <p className="flex items-start gap-2 rounded-xl bg-primary-soft/30 px-3.5 py-3 text-[12px] leading-snug text-text-secondary">
+            <IconLink size={15} className="mt-0.5 shrink-0 text-primary" />
+            <span>
+              Comparte este enlace para que <b className="text-text">{connectName}</b> conecte su
+              cuenta. Cuando se una, los dos verán el mismo saldo en tiempo real.
+            </span>
+          </p>
+        )}
+
         {/* Share invite link — the Splitwise way */}
         {inviteLink && (
           <button
@@ -90,17 +110,23 @@ export function AddMemberModal({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-bold text-text">
-                {copied ? '¡Enlace copiado!' : 'Compartir enlace de invitación'}
+                {copied
+                  ? '¡Enlace copiado!'
+                  : connectMode
+                    ? `Compartir enlace con ${connectName}`
+                    : 'Compartir enlace de invitación'}
               </span>
               <span className="block text-[11px] leading-snug text-text-secondary">
-                Quien lo abra elige quién es en el grupo o se agrega como persona nueva.
+                {connectMode
+                  ? 'Al abrirlo, se conecta contigo con su propia cuenta.'
+                  : 'Quien lo abra elige quién es en el grupo o se agrega como persona nueva.'}
               </span>
             </span>
           </button>
         )}
 
         {/* Recent contacts */}
-        {recentContacts.length > 0 && (
+        {!connectMode && recentContacts.length > 0 && (
           <div>
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
               Recientes
@@ -131,6 +157,7 @@ export function AddMemberModal({
         )}
 
         {/* New local member */}
+        {!connectMode && (
         <div>
           <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
             Persona nueva (la administras tú)
@@ -153,6 +180,7 @@ export function AddMemberModal({
             </Button>
           </div>
         </div>
+        )}
 
         {formError && <p className="text-xs text-debt">• {formError}</p>}
       </div>

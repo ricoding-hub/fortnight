@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.1.4"
+            version="1.2.0"
             date="14 jul 2026"
             current
+            notes={[
+              'Las relaciones con una persona ahora son conexiones 1‑a‑1 claras: sin lenguaje de "grupo" ni opción de agregar personas, con iconos de enlace',
+              'Puedes recortar tu foto de perfil o de grupo al subirla, y tocar cualquier foto para verla en grande',
+              'Correcciones de integridad en préstamos y conexiones: sin grupos duplicados, sin deuda doble al sincronizar, y al eliminar una conexión los préstamos sincronizados vuelven a tu lista',
+            ]}
+          />
+          <VersionRow
+            version="1.1.4"
+            date="14 jul 2026"
             notes={[
               'Corregido de raíz: crear una conexión con una persona nueva ya no falla (el permiso de lectura no dejaba leer la conexión recién creada)',
             ]}

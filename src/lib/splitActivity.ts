@@ -27,19 +27,35 @@ export function activityLabel(
   a: SplitActivity,
   myMemberId: string | null,
   myShare?: number | null,
+  /** True for a 1:1 connection (2 members) — reword "grupo" as "conexión". */
+  direct = false,
 ): ActivityLine {
   const subject = a.subject ?? ''
   switch (a.verb) {
     case 'group_created':
-      return { text: `${a.actor_name} creó el grupo "${subject}"`, impact: null, struck: false }
+      return {
+        text: direct
+          ? `${a.actor_name} creó la conexión`
+          : `${a.actor_name} creó el grupo "${subject}"`,
+        impact: null,
+        struck: false,
+      }
     case 'group_renamed':
       return { text: `${a.actor_name} renombró el grupo a "${subject}"`, impact: null, struck: false }
     case 'member_added':
       return { text: `${a.actor_name} agregó a ${subject}`, impact: null, struck: false }
     case 'member_linked':
-      return { text: `${a.actor_name} se unió al grupo`, impact: null, struck: false }
+      return {
+        text: direct ? `${a.actor_name} se conectó` : `${a.actor_name} se unió al grupo`,
+        impact: null,
+        struck: false,
+      }
     case 'member_left':
-      return { text: `${subject} salió del grupo`, impact: null, struck: false }
+      return {
+        text: direct ? `${subject} salió de la conexión` : `${subject} salió del grupo`,
+        impact: null,
+        struck: false,
+      }
     case 'invite_sent':
       return { text: `${a.actor_name} invitó a ${subject}`, impact: null, struck: false }
     case 'settlement_added':

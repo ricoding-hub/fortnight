@@ -16,6 +16,7 @@ import {
   IconUserPlus,
   IconUsers,
   IconCamera,
+  IconLink,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
@@ -37,6 +38,8 @@ import { SettleModal } from '@/components/split/SettleModal'
 import { AddMemberModal } from '@/components/split/AddMemberModal'
 import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
 import { SettleAllModal } from '@/components/split/SettleAllModal'
+import { ImageCropModal } from '@/components/ui/ImageCropModal'
+import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { activityLabel } from '@/lib/splitActivity'
 import { nameColorClass } from '@/lib/avatarColors'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
@@ -85,6 +88,8 @@ export function PrestamoGrupo() {
   const [settleAllOpen, setSettleAllOpen] = useState(false)
   const [uploadingGroupImage, setUploadingGroupImage] = useState(false)
   const groupImageRef = useRef<HTMLInputElement>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [viewer, setViewer] = useState<{ src: string; alt: string; onChange?: () => void } | null>(null)
   const [deletingGroup, setDeletingGroup] = useState(false)
   const [leavingGroup, setLeavingGroup] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -129,18 +134,27 @@ export function PrestamoGrupo() {
   }, [g, user, loans.data])
   const [syncing, setSyncing] = useState(false)
 
-  async function handleGroupImage(e: React.ChangeEvent<HTMLInputElement>) {
+  // File pick → open the square cropper. Upload happens on crop confirm.
+  function handleGroupImagePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file || !groupId) return
+    if (!file) return
+    setViewer(null)
+    setCropSrc(URL.createObjectURL(file))
+    if (groupImageRef.current) groupImageRef.current.value = ''
+  }
+
+  async function handleGroupCropped(blob: Blob) {
+    if (!groupId) return
     setUploadingGroupImage(true)
     try {
-      await uploadGroupImage(groupId, file)
+      await uploadGroupImage(groupId, blob)
+      if (cropSrc) URL.revokeObjectURL(cropSrc)
+      setCropSrc(null)
       toast.success('Foto del grupo actualizada', 'Todos los miembros la verán')
     } catch (err) {
       toast.error('Error al subir foto', err instanceof Error ? err.message : 'Inténtalo de nuevo.')
     } finally {
       setUploadingGroupImage(false)
-      if (groupImageRef.current) groupImageRef.current.value = ''
     }
   }
 
@@ -152,7 +166,7 @@ export function PrestamoGrupo() {
       await loans.refetch()
       toast.success(
         'Préstamos sincronizados',
-        `${n} préstamo${n === 1 ? '' : 's'} ahora ${n === 1 ? 'es un gasto' : 'son gastos'} del grupo`,
+        `${n} préstamo${n === 1 ? '' : 's'} ahora ${n === 1 ? 'es un gasto compartido' : 'son gastos compartidos'} de la conexión`,
       )
     } catch {
       toast.error('Error', 'No se pudieron sincronizar los préstamos')
@@ -197,8 +211,8 @@ export function PrestamoGrupo() {
       <div className="p-4">
         <EmptyState
           icon={IconUsers}
-          title="Grupo no encontrado"
-          description="El grupo no existe o fue eliminado."
+          title="No encontrado"
+          description="No existe o fue eliminado."
           action={
             <Button compact onClick={() => void navigate('/cuentas/prestamos')}>
               <IconArrowLeft size={14} /> Volver a préstamos
@@ -211,9 +225,16 @@ export function PrestamoGrupo() {
 
   const hasActivity = g.expenses.length > 0 || g.settlements.length > 0 || g.legacyLoans.length > 0
   const visibleActivity = showAllActivity ? g.activity : g.activity.slice(0, 8)
-  const canLeave = multiUserReady && !g.isOwner && Math.abs(myNet) < 0.005
   // A 2-person relationship is a direct 1:1 connection, not a "group".
   const isDirect = g.activeMembers.length === 2
+  // Leaving is a group concept; a 1:1 connection is deleted, never "left"
+  // (soft-leaving a 2-person group strands it in a broken half-state).
+  const canLeave = multiUserReady && !g.isOwner && !isDirect && Math.abs(myNet) < 0.005
+  // The other person in a 1:1 connection (for header avatar + invite wording).
+  const contact = isDirect ? g.activeMembers.find((m) => !memberIsMe(m, user?.id)) : undefined
+  const contactProfile = contact?.member_user_id ? profiles.get(contact.member_user_id) : undefined
+  const contactName = contact ? displayName(contact) : g.group.name
+  const noun = isDirect ? 'conexión' : 'grupo'
 
   function creatorName(userId: string): string | null {
     if (userId === user?.id) return null // don't label your own expenses
@@ -223,14 +244,14 @@ export function PrestamoGrupo() {
   async function handleSettle(s: NewSettlement) {
     if (!groupId) return
     await addSettlement(groupId, s)
-    toast.success('Liquidación registrada', 'Los balances del grupo fueron actualizados')
+    toast.success('Liquidación registrada', `Los balances de la ${noun} fueron actualizados`)
   }
 
   async function handleDeleteExpense() {
     if (!deletingExpense) return
     try {
       await deleteExpense(deletingExpense.id)
-      toast.success('Gasto eliminado', 'El gasto fue eliminado del grupo')
+      toast.success('Gasto eliminado', `El gasto fue eliminado de la ${noun}`)
     } catch {
       toast.error('Error', 'No se pudo eliminar el gasto')
     }
@@ -241,7 +262,7 @@ export function PrestamoGrupo() {
     if (!deletingSettlement) return
     try {
       await deleteSettlement(deletingSettlement.id)
-      toast.success('Liquidación eliminada', 'Los balances del grupo fueron restaurados')
+      toast.success('Liquidación eliminada', `Los balances de la ${noun} fueron restaurados`)
     } catch {
       toast.error('Error', 'No se pudo eliminar la liquidación')
     }
@@ -252,10 +273,13 @@ export function PrestamoGrupo() {
     if (!groupId) return
     try {
       await deleteGroup(groupId)
-      toast.success('Grupo eliminado', 'Los préstamos 1:1 asociados se conservan')
+      toast.success(
+        isDirect ? 'Conexión eliminada' : 'Grupo eliminado',
+        'Los préstamos que se habían sincronizado vuelven a tu lista',
+      )
       void navigate('/cuentas/prestamos')
     } catch {
-      toast.error('Error', 'No se pudo eliminar el grupo')
+      toast.error('Error', `No se pudo eliminar la ${noun}`)
     }
   }
 
@@ -268,6 +292,7 @@ export function PrestamoGrupo() {
     } catch {
       toast.error('Error', 'No se pudo salir del grupo')
     }
+    // Note: leaving is only offered for 3+ groups (canLeave excludes isDirect).
   }
 
   return (
@@ -282,12 +307,21 @@ export function PrestamoGrupo() {
         >
           <IconArrowLeft size={18} />
         </button>
-        {g.activeMembers.length > 2 && (
+        {/* 3+ groups have an editable group photo. */}
+        {!isDirect && (
           <>
             <button
               type="button"
-              onClick={() => groupImageRef.current?.click()}
-              aria-label="Cambiar foto del grupo"
+              onClick={() =>
+                g.group.image_url
+                  ? setViewer({
+                      src: g.group.image_url,
+                      alt: g.group.name,
+                      onChange: () => groupImageRef.current?.click(),
+                    })
+                  : groupImageRef.current?.click()
+              }
+              aria-label={g.group.image_url ? 'Ver foto del grupo' : 'Agregar foto del grupo'}
               className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-lavender-soft text-lavender-deep transition-transform active:scale-95"
             >
               {g.group.image_url ? (
@@ -309,18 +343,44 @@ export function PrestamoGrupo() {
               type="file"
               accept="image/*"
               className="sr-only"
-              onChange={(e) => void handleGroupImage(e)}
+              onChange={handleGroupImagePick}
             />
           </>
         )}
+        {/* A 1:1 connection shows the OTHER person's avatar (never a group photo). */}
+        {isDirect && (
+          contactProfile?.avatar_url ? (
+            <button
+              type="button"
+              onClick={() => setViewer({ src: contactProfile.avatar_url!, alt: contactName })}
+              aria-label={`Ver foto de ${contactName}`}
+              className="h-10 w-10 shrink-0 overflow-hidden rounded-xl transition-transform active:scale-95"
+            >
+              <img src={contactProfile.avatar_url} alt={contactName} className="h-full w-full object-cover" />
+            </button>
+          ) : (
+            <div
+              className={clsx(
+                'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[15px] font-bold',
+                nameColorClass(contactName),
+              )}
+              aria-hidden
+            >
+              {(contactName[0] ?? '?').toUpperCase()}
+            </div>
+          )
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold text-text">{g.group.name}</p>
-          <p className="text-[11px] text-text-tertiary">
-            {isDirect
-              ? g.isConnected
-                ? 'Conexión directa · conectado'
-                : 'Conexión directa'
-              : `${g.activeMembers.length} personas · ${g.expenses.length} gasto${g.expenses.length === 1 ? '' : 's'}`}
+          <p className="flex items-center gap-1 text-[11px] text-text-tertiary">
+            {isDirect ? (
+              <>
+                <IconLink size={11} className="shrink-0" />
+                {g.isConnected ? 'Conexión directa · conectado' : 'Conexión directa'}
+              </>
+            ) : (
+              `${g.activeMembers.length} personas · ${g.expenses.length} gasto${g.expenses.length === 1 ? '' : 's'}`
+            )}
           </p>
         </div>
         {/* Renaming applies to real groups; a 1:1 name comes from the person. */}
@@ -426,11 +486,18 @@ export function PrestamoGrupo() {
               return (
                 <li key={m.id} className="flex items-center gap-3 py-2.5">
                   {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt={name}
-                      className="h-8 w-8 shrink-0 rounded-xl object-cover"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setViewer({ src: profile.avatar_url!, alt: name })}
+                      aria-label={`Ver foto de ${name}`}
+                      className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-transform active:scale-95"
+                    >
+                      <img
+                        src={profile.avatar_url}
+                        alt={name}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
                   ) : (
                     <div
                       className={clsx(
@@ -462,13 +529,25 @@ export function PrestamoGrupo() {
               )
             })}
           </ul>
-          <button
-            type="button"
-            onClick={() => setAddMemberOpen(true)}
-            className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-[12.5px] font-semibold text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
-          >
-            <IconUserPlus size={14} /> Agregar persona
-          </button>
+          {/* 3+ groups can add people. A 1:1 connection never grows — it only
+              invites THAT one person to connect their account. */}
+          {!isDirect ? (
+            <button
+              type="button"
+              onClick={() => setAddMemberOpen(true)}
+              className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-[12.5px] font-semibold text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              <IconUserPlus size={14} /> Agregar persona
+            </button>
+          ) : !g.isConnected && inviteLink ? (
+            <button
+              type="button"
+              onClick={() => setAddMemberOpen(true)}
+              className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-soft/50 py-2.5 text-[12.5px] font-bold text-primary-deep transition-colors hover:bg-primary-soft"
+            >
+              <IconLink size={14} /> Invitar a {contactName} a conectarse
+            </button>
+          ) : null}
         </Card>
       </div>
 
@@ -531,7 +610,7 @@ export function PrestamoGrupo() {
           <EmptyState
             icon={IconReceipt}
             title="Sin gastos aún"
-            description="Registra el primer gasto compartido del grupo."
+            description={`Registra el primer gasto compartido de esta ${noun}.`}
             action={
               <Button compact onClick={() => setExpenseFormOpen(true)}>
                 <IconPlus size={14} /> Agregar gasto
@@ -614,7 +693,7 @@ export function PrestamoGrupo() {
                   <li key={l.id} className="py-2.5">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
-                        <IconUsers size={15} stroke={2} />
+                        <IconArrowsExchange size={15} stroke={2} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-semibold text-text">
@@ -670,7 +749,7 @@ export function PrestamoGrupo() {
                           ?.find((sh) => sh.member_id === me.id)?.amount ?? 0,
                       )
                     : null
-                const line = activityLabel(a, me?.id ?? null, myShare)
+                const line = activityLabel(a, me?.id ?? null, myShare, isDirect)
                 return (
                   <li key={a.id} className="flex items-start gap-2.5 py-2.5">
                     <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-bg-secondary text-text-tertiary">
@@ -750,6 +829,7 @@ export function PrestamoGrupo() {
         groupName={g.group.name}
         inviteLink={inviteLink}
         recentContacts={addableContacts}
+        connectName={isDirect ? contactName : undefined}
         onAdd={async (name, memberUserId) => {
           if (!groupId) return
           await addMember(groupId, name, memberUserId)
@@ -841,7 +921,7 @@ export function PrestamoGrupo() {
       <ConfirmModal
         open={!!deletingSettlement}
         title="Eliminar liquidación"
-        message="Se restaurarán los balances del grupo. Abonos a préstamos y movimientos de cuenta creados junto con esta liquidación NO se revierten automáticamente."
+        message={`Se restaurarán los balances de la ${noun}. Abonos a préstamos y movimientos de cuenta creados junto con esta liquidación NO se revierten automáticamente.`}
         confirmLabel="Eliminar"
         destructive
         onConfirm={() => void handleDeleteSettlement()}
@@ -853,8 +933,8 @@ export function PrestamoGrupo() {
         title={isDirect ? 'Eliminar conexión' : 'Eliminar grupo'}
         message={
           isDirect
-            ? 'Se eliminarán los gastos compartidos de esta conexión. Los préstamos 1:1 se conservan. Esta acción no se puede deshacer.'
-            : 'Se eliminarán los gastos y liquidaciones del grupo para todos los miembros. Los préstamos 1:1 asociados se conservan. Esta acción no se puede deshacer.'
+            ? 'Se eliminarán los gastos compartidos de esta conexión. Los préstamos que se habían sincronizado vuelven a tu lista de préstamos. Esta acción no se puede deshacer.'
+            : 'Se eliminarán los gastos y liquidaciones del grupo para todos los miembros. Los préstamos que se habían sincronizado vuelven a tu lista de préstamos. Esta acción no se puede deshacer.'
         }
         confirmLabel="Eliminar"
         destructive
@@ -869,6 +949,25 @@ export function PrestamoGrupo() {
         confirmLabel="Salir"
         onConfirm={() => void handleLeaveGroup()}
         onClose={() => setLeavingGroup(false)}
+      />
+
+      <ImageCropModal
+        open={cropSrc != null}
+        imageSrc={cropSrc}
+        title="Recortar foto del grupo"
+        onCancel={() => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc)
+          setCropSrc(null)
+        }}
+        onCropped={handleGroupCropped}
+      />
+
+      <ImageViewerModal
+        open={viewer != null}
+        src={viewer?.src ?? null}
+        alt={viewer?.alt}
+        onChange={viewer?.onChange}
+        onClose={() => setViewer(null)}
       />
     </div>
   )

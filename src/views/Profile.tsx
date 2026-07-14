@@ -31,6 +31,8 @@ import { useLoans } from '@/hooks/useLoans'
 import { useCategories } from '@/hooks/useCategories'
 import { useToast } from '@/hooks/useToast'
 import { Card } from '@/components/ui/Card'
+import { ImageCropModal } from '@/components/ui/ImageCropModal'
+import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { Richeto } from '@/components/Richeto'
 import { Confetti } from '@/components/Confetti'
 import { supabase } from '@/lib/supabase'
@@ -135,6 +137,8 @@ export function Profile() {
   const toast = useToast()
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarCropSrc, setAvatarCropSrc] = useState<string | null>(null)
+  const [avatarViewerOpen, setAvatarViewerOpen] = useState(false)
   const [confettiAchievement, setConfettiAchievement] = useState<string | null>(null)
   const [nickname, setNickname] = useState('')
   const [nicknameDirty, setNicknameDirty] = useState(false)
@@ -279,14 +283,22 @@ export function Profile() {
 
   /* ───────── Avatar upload ───────── */
 
-  const handleAvatarChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File pick → open the cropper. Upload runs on crop confirm.
+  const handleAvatarPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !user) return
+    if (!file) return
+    setAvatarViewerOpen(false)
+    setAvatarCropSrc(URL.createObjectURL(file))
+    if (fileRef.current) fileRef.current.value = ''
+  }, [])
+
+  const handleAvatarCropped = useCallback(async (cropped: Blob) => {
+    if (!user) return
     setUploadingAvatar(true)
     try {
       // The 'avatars' bucket is provisioned by migration 025 — creating it
       // from the browser always failed (admin-only op) and hid real errors.
-      const blob = await resizeImage(file, 400)
+      const blob = await resizeImage(cropped, 400)
       const ext = 'webp'
       const path = `${user.id}/${Date.now()}.${ext}`
       const { error: uploadErr } = await supabase.storage
@@ -305,6 +317,8 @@ export function Profile() {
       // Keep the public profile in sync so group co-members see it too.
       await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
 
+      if (avatarCropSrc) URL.revokeObjectURL(avatarCropSrc)
+      setAvatarCropSrc(null)
       toast.success('Foto actualizada', 'Tu foto de perfil se guardó correctamente.')
     } catch (e) {
       // Surface the REAL error — the old generic copy blamed image size
@@ -313,9 +327,8 @@ export function Profile() {
       toast.error('Error al subir foto', message)
     } finally {
       setUploadingAvatar(false)
-      if (fileRef.current) fileRef.current.value = ''
     }
-  }, [user, toast])
+  }, [user, toast, avatarCropSrc])
 
   /* ───────── Export + sign out ───────── */
 
@@ -369,10 +382,10 @@ export function Profile() {
             <div className="relative shrink-0">
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
+                onClick={() => (avatarUrl ? setAvatarViewerOpen(true) : fileRef.current?.click())}
                 disabled={uploadingAvatar}
                 className="relative block h-[64px] w-[64px] overflow-hidden rounded-full border-2 border-white/50 transition-all active:scale-95"
-                aria-label="Cambiar foto de perfil"
+                aria-label={avatarUrl ? 'Ver foto de perfil' : 'Agregar foto de perfil'}
               >
                 {avatarUrl ? (
                   <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
@@ -396,7 +409,7 @@ export function Profile() {
                 type="file"
                 accept="image/*"
                 className="sr-only"
-                onChange={(e) => void handleAvatarChange(e)}
+                onChange={handleAvatarPick}
               />
             </div>
 
@@ -715,6 +728,25 @@ export function Profile() {
       </div>
 
       <div className="h-8" />
+
+      <ImageCropModal
+        open={avatarCropSrc != null}
+        imageSrc={avatarCropSrc}
+        title="Recortar foto de perfil"
+        onCancel={() => {
+          if (avatarCropSrc) URL.revokeObjectURL(avatarCropSrc)
+          setAvatarCropSrc(null)
+        }}
+        onCropped={handleAvatarCropped}
+      />
+
+      <ImageViewerModal
+        open={avatarViewerOpen}
+        src={avatarUrl ?? null}
+        alt={displayName}
+        onChange={() => fileRef.current?.click()}
+        onClose={() => setAvatarViewerOpen(false)}
+      />
     </div>
   )
 }
