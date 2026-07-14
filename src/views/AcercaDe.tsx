@@ -121,11 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.1.3"
+            version="1.1.4"
             date="14 jul 2026"
             current
             notes={[
-              'Corregido: crear una conexión o saldar con una persona nueva ya no falla por permisos',
+              'Corregido de raíz: crear una conexión con una persona nueva ya no falla (el permiso de lectura no dejaba leer la conexión recién creada)',
+            ]}
+          />
+          <VersionRow
+            version="1.1.3"
+            date="14 jul 2026"
+            notes={[
               'Las misiones de score ya no se marcan como logradas si tu score no llega a la meta',
             ]}
           />

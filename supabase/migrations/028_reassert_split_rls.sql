@@ -67,10 +67,14 @@ drop policy if exists "own split_expense_shares" on public.split_expense_shares;
 drop policy if exists "own split_settlements"    on public.split_settlements;
 
 -- split_groups
+-- NOTE: the owner check is a DIRECT column ref (user_id = auth.uid()) so that
+-- INSERT ... RETURNING (createGroup's `.select('id')`) can read back the row it
+-- just created — is_group_member() re-queries the table and can't see the
+-- in-flight row, which caused a 42501 on new connections (see migration 029).
 drop policy if exists "member select groups" on public.split_groups;
 create policy "member select groups"
   on public.split_groups for select
-  using (public.is_group_member(id));
+  using (user_id = auth.uid() or public.is_group_member(id));
 drop policy if exists "creator insert groups" on public.split_groups;
 create policy "creator insert groups"
   on public.split_groups for insert
