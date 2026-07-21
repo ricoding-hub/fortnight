@@ -225,6 +225,8 @@ export interface SplitExpense {
   split_method: SplitMethod
   /** Account the expense was paid from (only meaningful when payer is me). */
   account_id: string | null
+  /** Category (reuses the per-user `categories` taxonomy). Nullable (migration 030). */
+  category_id: string | null
   expense_date: string
   created_at: string
 }

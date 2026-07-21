@@ -59,9 +59,6 @@ export function SplitMovementRow({
               {mv.myEffect >= 0 ? 'Te deben' : 'Debes'}
             </Badge>
           )}
-          <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] font-bold text-text-secondary">
-            Compartido
-          </span>
         </div>
         <p className="mt-0.5 line-clamp-1 text-[12px] text-text-secondary">
           {mv.description}

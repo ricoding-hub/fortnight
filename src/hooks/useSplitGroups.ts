@@ -37,6 +37,8 @@ export interface NewExpense {
   /** Weight (pct/parts) or exact pesos per member, depending on method. */
   inputs: Array<{ memberId: string; weight?: number; exactAmount?: number }>
   accountId?: string | null
+  /** Category id (reuses the `categories` taxonomy); null = uncategorized. */
+  categoryId?: string | null
   date?: string
 }
 
@@ -491,6 +493,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         paid_by_member_id: exp.paidByMemberId,
         split_method: exp.method,
         account_id: exp.accountId ?? null,
+        category_id: exp.categoryId ?? null,
         expense_date: exp.date ?? new Date().toISOString().slice(0, 10),
       })
       .select('id')
@@ -554,6 +557,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         amount: exp.amount,
         paid_by_member_id: exp.paidByMemberId,
         split_method: exp.method,
+        category_id: exp.categoryId ?? null,
         ...(exp.date ? { expense_date: exp.date } : {}),
       })
       .eq('id', expenseId)

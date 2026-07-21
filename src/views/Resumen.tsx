@@ -11,7 +11,6 @@ import {
   IconRocket,
   IconTrendingUp,
   IconTrophy,
-  IconUsers,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
@@ -28,6 +27,8 @@ import { useScoreHistory } from '@/hooks/useScoreHistory'
 import { useMissions } from '@/hooks/useMissions'
 import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
+import { usePeopleBalances } from '@/hooks/usePeopleBalances'
+import { BalanceRow } from '@/components/split/BalanceRow'
 
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -69,8 +70,17 @@ export function Resumen() {
   const { user } = useAuth()
   const { displayName, avatarUrl } = useProfile()
   const { data: accounts, loading, error } = useAccounts()
-  const { active: activeLoans, data: allLoans, paymentsByLoan, porCobrar: loansPorCobrar, porPagar: loansPorPagar } = useLoans()
-  const { splitCobrar, splitPagar } = useSplitGroups({ loans: allLoans, paymentsByLoan })
+  const { active: activeLoans, data: allLoans, paymentsByLoan } = useLoans()
+  const { groups: splitGroups, profiles: splitProfiles, displayName: memberDisplayName } = useSplitGroups({ loans: allLoans, paymentsByLoan })
+  const balances = usePeopleBalances({
+    active: activeLoans,
+    paymentsByLoan,
+    splitGroups,
+    profiles: splitProfiles,
+    displayName: memberDisplayName,
+    userId: user?.id,
+  })
+  const topBalances = balances.entries.filter((e) => Math.abs(e.net) > 0.005).slice(0, 4)
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, loading: gamiLoading, nextLevelXP, levelProgress } = useGamification()
@@ -89,8 +99,6 @@ export function Resumen() {
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
   const debitTotal = debitAccounts.reduce((s, a) => s + a.balance, 0)
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
-  // Loans net + shared-groups net (split-only, so nothing is double counted)
-  const porCobrar = loansPorCobrar - loansPorPagar + splitCobrar - splitPagar
   const net = debitTotal - creditDebt
 
   const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)
@@ -772,13 +780,6 @@ export function Resumen() {
           color="#FF5A5F"
           softColor="var(--color-debt-soft)"
         />
-        <MiniStat
-          icon={IconUsers}
-          label="Préstamos"
-          value={`$${porCobrar.toLocaleString()}`}
-          color="#2A4BFF"
-          softColor="var(--color-primary-soft)"
-        />
         <button
           type="button"
           onClick={() => navigate('/perfil')}
@@ -794,6 +795,37 @@ export function Resumen() {
           />
         </button>
       </section>
+
+      {/* ── Saldos (préstamos) — por persona/grupo, tap para el detalle ── */}
+      {topBalances.length > 0 && (
+        <>
+          <SectionHeader
+            right={
+              <button
+                type="button"
+                onClick={() => navigate('/cuentas/prestamos')}
+                className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+              >
+                Ver todos
+              </button>
+            }
+          >
+            Saldos
+          </SectionHeader>
+          <section className="flex flex-col gap-2 px-4 pb-2">
+            {topBalances.map((e) => (
+              <BalanceRow
+                key={e.key}
+                entry={e}
+                compact
+                onOpen={() =>
+                  navigate(e.groupId ? `/cuentas/prestamos/${e.groupId}` : '/cuentas/prestamos')
+                }
+              />
+            ))}
+          </section>
+        </>
+      )}
 
       {/* ── Misiones de la semana ── */}
       <SectionHeader right={<span className="text-[11px] font-bold text-primary">{missions.length} activas</span>}>

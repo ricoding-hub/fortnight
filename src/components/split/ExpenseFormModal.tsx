@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useCategories } from '@/hooks/useCategories'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +10,8 @@ import { Select } from '@/components/ui/Select'
 import { AccountLinkField } from '@/components/split/AccountLinkField'
 import { computeShares, fromCents, toCents, SplitValidationError } from '@/lib/split'
 import { buildEditInputs } from '@/lib/splitEdit'
+import { categoryIcon, categoryColor } from '@/lib/categories'
+import { guessCategory } from '@/lib/categoryMatch'
 import { formatMXN } from '@/lib/format'
 import { memberIsMe, type NewExpense } from '@/hooks/useSplitGroups'
 import type { SplitExpense, SplitExpenseShare, SplitMember, SplitMethod } from '@/types'
@@ -32,10 +35,19 @@ interface ExpenseFormModalProps {
 export function ExpenseFormModal({ open, onClose, members, editing = null, onSubmit }: ExpenseFormModalProps) {
   const { user } = useAuth()
   const { data: accounts } = useAccounts()
+  const { data: categories } = useCategories()
+  // Categories worth tagging a shared expense with (income makes no sense here).
+  const pickableCategories = useMemo(
+    () => categories.filter((c) => c.kind !== 'income'),
+    [categories],
+  )
 
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [paidBy, setPaidBy] = useState('')
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  /** Once the user picks a category by hand, stop auto-suggesting over it. */
+  const [categoryTouched, setCategoryTouched] = useState(false)
   const [method, setMethod] = useState<SplitMethod>('equal')
   /** memberId → raw input (pct / parts / exact pesos, per method). */
   const [inputs, setInputs] = useState<Record<string, string>>({})
@@ -62,6 +74,8 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
         setDescription(editing.expense.description)
         setAmount(String(Number(editing.expense.amount)))
         setPaidBy(editing.expense.paid_by_member_id)
+        setCategoryId(editing.expense.category_id)
+        setCategoryTouched(true) // keep the saved category; don't overwrite it
         setMethod(state.method)
         setInputs(state.inputs)
         setParticipants(new Set(state.participantIds))
@@ -69,6 +83,8 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
         setDescription('')
         setAmount('')
         setPaidBy(me?.id ?? members[0]?.id ?? '')
+        setCategoryId(null)
+        setCategoryTouched(false)
         setMethod('equal')
         setInputs({})
         setParticipants(new Set(members.map((m) => m.id)))
@@ -152,6 +168,7 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
             : { memberId: m.id, weight: method === 'equal' ? undefined : (Number.isNaN(raw) ? 0 : raw) }
         }),
         accountId: linkAccount ? (accountId || null) : null,
+        categoryId,
       })
       onClose()
     } catch {
@@ -164,6 +181,19 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
   const payerMember = members.find((m) => m.id === paidBy)
   const payerIsMe = payerMember ? memberIsMe(payerMember, user?.id) : false
 
+  /** Typing the description auto-suggests a category until the user overrides it. */
+  function handleDescription(value: string) {
+    setDescription(value)
+    if (!categoryTouched) {
+      setCategoryId(guessCategory(value, pickableCategories)?.id ?? null)
+    }
+  }
+
+  function pickCategory(id: string | null) {
+    setCategoryTouched(true)
+    setCategoryId((prev) => (prev === id ? null : id))
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Editar gasto' : 'Nuevo gasto compartido'}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -171,7 +201,7 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
           label="Descripción"
           placeholder="Cena, súper, gasolina…"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => handleDescription(e.target.value)}
           autoFocus
         />
 
@@ -193,6 +223,36 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
             </option>
           ))}
         </Select>
+
+        {/* Category — auto-suggested from the description, tap to override/clear */}
+        {pickableCategories.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-text">Categoría</p>
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+              {pickableCategories.map((c) => {
+                const active = c.id === categoryId
+                const color = categoryColor(c)
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => pickCategory(c.id)}
+                    className={clsx(
+                      'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-all active:scale-95',
+                      active
+                        ? 'border-transparent text-white'
+                        : 'border-border bg-bg-elevated text-text-secondary hover:border-border-strong',
+                    )}
+                    style={active ? { background: color } : undefined}
+                  >
+                    {createElement(categoryIcon(c), { size: 14, stroke: 2 })}
+                    {c.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Split method segmented pill */}
         <div>

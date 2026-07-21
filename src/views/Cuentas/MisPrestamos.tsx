@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   IconArrowDown,
-  IconArrowRight,
   IconArrowUp,
   IconCheck,
   IconChevronDown,
@@ -17,6 +16,8 @@ import clsx from 'clsx'
 import { supabase } from '@/lib/supabase'
 import { useLoans, loanRemaining, type NewLoan } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe } from '@/hooks/useSplitGroups'
+import { usePeopleBalances, type BalanceEntry } from '@/hooks/usePeopleBalances'
+import { BalanceRow } from '@/components/split/BalanceRow'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
@@ -38,18 +39,6 @@ import { StatCard } from '@/components/StatCard'
 import { nameColorClass } from '@/lib/avatarColors'
 import { errorMessage } from '@/lib/errorMessage'
 import { SplitMovementRow, type SplitMovement } from '@/components/split/SplitMovementRow'
-import { SortablePersonRow } from '@/components/split/SortablePersonRow'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { useConfig } from '@/hooks/useConfig'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
 import type { Loan, LoanDirection, LoanPayment, SplitExpense, SplitExpenseShare, SplitSettlement } from '@/types'
 
@@ -62,16 +51,6 @@ function fmtCompact(n: number): string {
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
   if (abs >= 10_000) return `${sign}$${(abs / 1_000).toFixed(1)}k`
   return `${sign}$${Math.round(abs).toLocaleString('es-MX')}`
-}
-
-/** Stable sort: items whose key is in `saved` come first (in saved order),
- *  the rest keep their incoming (recency) order. */
-function sortBySaved<T>(items: T[], saved: string[], keyOf: (t: T) => string): T[] {
-  const idx = new Map(saved.map((k, i) => [k, i]))
-  return items
-    .map((it, i) => ({ it, i, r: idx.get(keyOf(it)) ?? Number.MAX_SAFE_INTEGER }))
-    .sort((a, b) => a.r - b.r || a.i - b.i)
-    .map((x) => x.it)
 }
 
 function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
@@ -407,159 +386,6 @@ function ContactGroupCard({
 
 // ── GroupCard (multi-person, expandable) ───────────────────────────────────────
 
-interface GroupMemberBalance {
-  id: string
-  name: string
-  avatarUrl?: string
-  net: number
-}
-
-function GroupCard({
-  name,
-  imageUrl,
-  net,
-  memberCount,
-  balances,
-  movements,
-  onOpen,
-  onAddExpense,
-  onEditExpense,
-  onDeleteExpense,
-  onDeleteSettlement,
-}: {
-  name: string
-  imageUrl?: string | null
-  net: number
-  memberCount: number
-  balances: GroupMemberBalance[]
-  movements: SplitMovement[]
-  onOpen: () => void
-  onAddExpense: () => void
-  onEditExpense?: (expense: SplitExpense) => void
-  onDeleteExpense?: (expense: SplitExpense) => void
-  onDeleteSettlement?: (settlement: SplitSettlement) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <Card className="overflow-hidden px-4 py-2">
-      <div className="flex w-full items-center gap-3 py-2">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          {imageUrl ? (
-            <img src={imageUrl} alt={name} className="h-9 w-9 shrink-0 rounded-xl object-cover" />
-          ) : (
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
-              <IconUsers size={17} stroke={2} />
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-text">{name}</p>
-            <p
-              className={clsx(
-                'text-[11px] font-medium',
-                net > 0 ? 'text-primary-deep' : net < 0 ? 'text-debt-deep' : 'text-text-tertiary',
-              )}
-            >
-              {net > 0
-                ? `Te deben ${fmtCompact(net)}`
-                : net < 0
-                  ? `Debes ${fmtCompact(Math.abs(net))}`
-                  : 'Grupo saldado'}
-              {` · ${memberCount} personas`}
-            </p>
-          </div>
-          {expanded ? (
-            <IconChevronDown size={16} className="shrink-0 text-text-tertiary" />
-          ) : (
-            <IconChevronRight size={16} className="shrink-0 text-text-tertiary" />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`Abrir ${name}`}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
-        >
-          <IconArrowRight size={16} />
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="pb-1">
-          {/* Member balances */}
-          <ul className="divide-y divide-border border-t border-border">
-            {balances.map((b) => (
-              <li key={b.id} className="flex items-center gap-2.5 py-2">
-                {b.avatarUrl ? (
-                  <img src={b.avatarUrl} alt={b.name} className="h-7 w-7 shrink-0 rounded-lg object-cover" />
-                ) : (
-                  <div
-                    className={clsx(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold',
-                      nameColorClass(b.name),
-                    )}
-                  >
-                    {(b.name[0] ?? '?').toUpperCase()}
-                  </div>
-                )}
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">
-                  {b.name}
-                </span>
-                <span
-                  className={clsx(
-                    'font-mono text-[12px] font-bold tabular-nums',
-                    b.net > 0 ? 'text-asset-deep' : b.net < 0 ? 'text-debt-deep' : 'text-text-tertiary',
-                  )}
-                >
-                  {b.net > 0 ? `+${fmtCompact(b.net)}` : b.net < 0 ? fmtCompact(b.net) : '—'}
-                </span>
-              </li>
-            ))}
-          </ul>
-
-          {/* Recent movements */}
-          {movements.length > 0 && (
-            <ul className="divide-y divide-border border-t border-border">
-              {movements.map((mv) => (
-                <li key={`${mv.kind}:${mv.id}`}>
-                  <SplitMovementRow
-                    mv={mv}
-                    onEditExpense={onEditExpense}
-                    onDeleteExpense={onDeleteExpense}
-                    onDeleteSettlement={onDeleteSettlement}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="mt-1 flex items-center gap-2 border-t border-border pt-2">
-            <button
-              type="button"
-              onClick={onAddExpense}
-              className="flex-1 rounded-lg bg-primary/10 py-2 text-[12px] font-bold text-primary-deep transition-colors hover:bg-primary/20"
-            >
-              + Gasto
-            </button>
-            <button
-              type="button"
-              onClick={onOpen}
-              className="flex-1 rounded-lg bg-bg-secondary py-2 text-[12px] font-bold text-text-secondary transition-colors hover:bg-border"
-            >
-              Ver grupo
-            </button>
-          </div>
-        </div>
-      )}
-    </Card>
-  )
-}
-
-// ── Main view ─────────────────────────────────────────────────────────────────
-
 export function MisPrestamos() {
   const {
     data: allLoans,
@@ -595,18 +421,10 @@ export function MisPrestamos() {
     deleteSettlement,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const { user } = useAuth()
-  const { data: config, update: updateConfig } = useConfig()
   const navigate = useNavigate()
   const toast = useToast()
   const storeLoanOpen = useUiStore((s) => s.loanModalOpen)
   const closeLoanModal = useUiStore((s) => s.closeLoanModal)
-
-  const [reorderMode, setReorderMode] = useState(false)
-  const sensors = useSensors(
-    // A short press-delay lets normal taps/scroll through; hold to drag.
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } }),
-  )
 
   const [loanFormOpen, setLoanFormOpen] = useState(false)
   const [groupFormOpen, setGroupFormOpen] = useState(false)
@@ -754,106 +572,6 @@ export function MisPrestamos() {
     }
   }, [directGroupByContact])
 
-  /** Linked contact's profile photo, when connected. */
-  const contactAvatar = useMemo(() => {
-    return (contactKey: string): string | undefined => {
-      const direct = directGroupByContact.get(contactKey)
-      const contact = direct?.activeMembers.find((m) => !memberIsMe(m, user?.id))
-      if (!contact?.member_user_id) return undefined
-      return profiles.get(contact.member_user_id)?.avatar_url ?? undefined
-    }
-  }, [directGroupByContact, profiles, user?.id])
-
-  /** Shared movements of the contact's direct group, newest first. */
-  const contactMovements = useMemo(() => {
-    return (contactKey: string): SplitMovement[] => {
-      const direct = directGroupByContact.get(contactKey)
-      if (!direct || !user) return []
-      const meMember = direct.activeMembers.find((m) => memberIsMe(m, user.id))
-      if (!meMember) return []
-      const out: SplitMovement[] = []
-      for (const e of direct.expenses) {
-        const shares = direct.sharesByExpense.get(e.id) ?? []
-        const myShare = shares
-          .filter((sh) => sh.member_id === meMember.id)
-          .reduce((s, sh) => s + Number(sh.amount), 0)
-        const iPaid = e.paid_by_member_id === meMember.id
-        const payer = direct.members.find((m) => m.id === e.paid_by_member_id)
-        out.push({
-          kind: 'expense',
-          id: e.id,
-          description: e.description,
-          payerName: payer ? displayName(payer) : '—',
-          date: e.expense_date,
-          myEffect: iPaid ? Number(e.amount) - myShare : -myShare,
-          expense: e,
-        })
-      }
-      for (const s of direct.settlements) {
-        const received = s.to_member_id === meMember.id
-        out.push({
-          kind: 'settlement',
-          id: s.id,
-          description: received ? 'Recibiste un pago' : 'Pagaste',
-          payerName: '',
-          date: s.created_at,
-          myEffect: received ? -Number(s.amount) : Number(s.amount),
-          settlement: s,
-        })
-      }
-      return out.sort((a, b) => b.date.localeCompare(a.date))
-    }
-  }, [directGroupByContact, user, displayName])
-
-  /** Balances + recent movements for an expandable multi-person group card. */
-  const groupCardData = useCallback(
-    (g: (typeof splitGroups)[number]) => {
-      const me = g.activeMembers.find((m) => memberIsMe(m, user?.id))
-      const net = me ? (g.nets.get(me.id) ?? 0) : 0
-      const balances: GroupMemberBalance[] = g.activeMembers.map((m) => ({
-        id: m.id,
-        name: displayName(m),
-        avatarUrl: m.member_user_id ? (profiles.get(m.member_user_id)?.avatar_url ?? undefined) : undefined,
-        net: g.nets.get(m.id) ?? 0,
-      }))
-      const movements: SplitMovement[] = []
-      if (me) {
-        for (const e of g.expenses) {
-          const shares = g.sharesByExpense.get(e.id) ?? []
-          const myShare = shares
-            .filter((sh) => sh.member_id === me.id)
-            .reduce((s, sh) => s + Number(sh.amount), 0)
-          const iPaid = e.paid_by_member_id === me.id
-          const payer = g.members.find((m) => m.id === e.paid_by_member_id)
-          movements.push({
-            kind: 'expense',
-            id: e.id,
-            description: e.description,
-            payerName: payer ? displayName(payer) : '—',
-            date: e.expense_date,
-            myEffect: iPaid ? Number(e.amount) - myShare : -myShare,
-            expense: e,
-          })
-        }
-        for (const s of g.settlements) {
-          const received = s.to_member_id === me.id
-          movements.push({
-            kind: 'settlement',
-            id: s.id,
-            description: received ? 'Recibiste un pago' : 'Pagaste',
-            payerName: '',
-            date: s.created_at,
-            myEffect: received ? -Number(s.amount) : Number(s.amount),
-            settlement: s,
-          })
-        }
-        movements.sort((a, b) => b.date.localeCompare(a.date))
-      }
-      return { net, balances, movements: movements.slice(0, 4) }
-    },
-    [user?.id, displayName, profiles],
-  )
-
   async function handleDeleteSplitExpense() {
     if (!deletingSplitExpense) return
     try {
@@ -905,51 +623,6 @@ export function MisPrestamos() {
     }
     return out
   }, [splitGroups, activeGroups, user?.id, displayName])
-
-  // Unified "people" list (contacts with loans + connected 1:1 without loans),
-  // ordered by the saved manual order first, then recency.
-  interface PersonItem {
-    key: string
-    kind: 'active' | 'connected'
-    activeGroup?: ContactGroup
-    connectedExtra?: (typeof connectedExtras)[number]
-  }
-  const peopleItems = useMemo<PersonItem[]>(() => {
-    const items: PersonItem[] = []
-    for (const g of activeGroups) {
-      items.push({ key: g.name.trim().toLowerCase(), kind: 'active', activeGroup: g })
-    }
-    for (const extra of connectedExtras) {
-      items.push({ key: extra.localKey, kind: 'connected', connectedExtra: extra })
-    }
-    return sortBySaved(items, config?.loan_order?.activos ?? [], (i) => i.key)
-  }, [activeGroups, connectedExtras, config?.loan_order])
-
-  const orderedGroups = useMemo(
-    () => sortBySaved(sharedGroups, config?.loan_order?.grupos ?? [], (g) => g.group.id),
-    [sharedGroups, config?.loan_order],
-  )
-
-  const totalOrderable = peopleItems.length + orderedGroups.length
-
-  async function savePeopleOrder(keys: string[]) {
-    await updateConfig({ loan_order: { ...(config?.loan_order ?? {}), activos: keys } })
-  }
-  async function saveGroupOrder(ids: string[]) {
-    await updateConfig({ loan_order: { ...(config?.loan_order ?? {}), grupos: ids } })
-  }
-  function onPeopleDragEnd(e: DragEndEvent) {
-    const { active: a, over } = e
-    if (!over || a.id === over.id) return
-    const keys = peopleItems.map((i) => i.key)
-    void savePeopleOrder(arrayMove(keys, keys.indexOf(a.id as string), keys.indexOf(over.id as string)))
-  }
-  function onGroupsDragEnd(e: DragEndEvent) {
-    const { active: a, over } = e
-    if (!over || a.id === over.id) return
-    const ids = orderedGroups.map((g) => g.group.id)
-    void saveGroupOrder(arrayMove(ids, ids.indexOf(a.id as string), ids.indexOf(over.id as string)))
-  }
 
   /* ── KPI derivations ── */
   const totalCobrar = porCobrar + splitCobrar
@@ -1072,6 +745,41 @@ export function MisPrestamos() {
     )
   }
 
+  // Unified Splitwise-style balances (people + groups), the source for the list.
+  const balances = usePeopleBalances({
+    active,
+    paymentsByLoan,
+    splitGroups,
+    profiles,
+    displayName,
+    userId: user?.id,
+  })
+  const teDeben = balances.entries.filter((e) => e.net > 0.005)
+  const debes = balances.entries.filter((e) => e.net < -0.005)
+  const enPaz = balances.entries.filter((e) => Math.abs(e.net) <= 0.005)
+
+  /** Open the person's connection or the group detail. */
+  function openEntry(e: BalanceEntry) {
+    if (e.groupId) void navigate(`/cuentas/prestamos/${e.groupId}`)
+    else if (e.contactName) void handleOpenContactGroup(e.contactName)
+  }
+
+  /** Settle everything with a 1:1 person (groups settle inside their detail). */
+  function settleEntry(e: BalanceEntry) {
+    if (e.kind !== 'person' || Math.abs(e.net) < 0.005) return
+    const key = (e.contactName ?? e.name).trim().toLowerCase()
+    const ag = activeGroups.find((g) => g.name.trim().toLowerCase() === key)
+    if (ag) {
+      openSettleAll(ag)
+    } else {
+      setSettleAllContact({
+        name: e.contactName ?? e.name,
+        net: e.net,
+        breakdown: [{ label: 'Gastos compartidos (neto)', amount: Math.abs(e.net) }],
+      })
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-2 px-4 py-3 animate-[fade-in_300ms_ease-out]">
@@ -1171,189 +879,70 @@ export function MisPrestamos() {
         </div>
       ) : (
         <>
-          {/* Reorder toggle — collapses cards to draggable rows */}
-          {totalOrderable > 1 && (
-            <div className="flex justify-end px-4">
+          {/* Saldos — Splitwise-style balances (people + groups) */}
+          <div className="flex flex-col gap-3 px-4">
+            <div className="flex items-center justify-end gap-3">
+              {splitReady && (
+                <button
+                  type="button"
+                  onClick={() => setGroupFormOpen(true)}
+                  className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                >
+                  + Grupo
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setReorderMode((v) => !v)}
+                onClick={() => openCreate()}
                 className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
               >
-                {reorderMode ? 'Listo' : 'Reordenar'}
+                + Nuevo
               </button>
             </div>
-          )}
 
-          {/* Shared expense groups */}
-          {orderedGroups.length > 0 && (
-            <div className="flex flex-col gap-2 px-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-                  Grupos
+            {teDeben.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-asset-deep">
+                  Te deben
                 </p>
-                {!reorderMode && (
-                  <button
-                    type="button"
-                    onClick={() => setGroupFormOpen(true)}
-                    className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
-                  >
-                    + Grupo
-                  </button>
-                )}
+                {teDeben.map((e) => (
+                  <BalanceRow
+                    key={e.key}
+                    entry={e}
+                    onOpen={() => openEntry(e)}
+                    onSettle={splitReady && e.kind === 'person' ? () => settleEntry(e) : undefined}
+                  />
+                ))}
               </div>
-              {reorderMode ? (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onGroupsDragEnd}>
-                  <SortableContext items={orderedGroups.map((g) => g.group.id)} strategy={verticalListSortingStrategy}>
-                    <div className="flex flex-col gap-2">
-                      {orderedGroups.map((g) => {
-                        const data = groupCardData(g)
-                        return (
-                          <SortablePersonRow
-                            key={g.group.id}
-                            id={g.group.id}
-                            name={g.group.name}
-                            net={data.net}
-                            netLabel={data.net === 0 ? 'Saldado' : (data.net > 0 ? '+' : '') + fmtCompact(data.net)}
-                            avatarUrl={g.group.image_url ?? undefined}
-                            group
-                          />
-                        )
-                      })}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              ) : (
-                orderedGroups.map((g) => {
-                  const data = groupCardData(g)
-                  return (
-                    <GroupCard
-                      key={g.group.id}
-                      name={g.group.name}
-                      imageUrl={g.group.image_url}
-                      net={data.net}
-                      memberCount={g.activeMembers.length}
-                      balances={data.balances}
-                      movements={data.movements}
-                      onOpen={() => void navigate(`/cuentas/prestamos/${g.group.id}`)}
-                      onAddExpense={() => setAddExpenseGroupId(g.group.id)}
-                      onEditExpense={setInlineExpense}
-                      onDeleteExpense={setDeletingSplitExpense}
-                      onDeleteSettlement={setDeletingSplitSettlement}
-                    />
-                  )
-                })
-              )}
-            </div>
-          )}
+            )}
 
-          {/* Active contact people (loans + connected 1:1) */}
-          {peopleItems.length > 0 && (
-            <div className="flex flex-col gap-2 px-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-                  Activos
+            {debes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-debt-deep">
+                  Debes
                 </p>
-                {!reorderMode && (
-                  <div className="flex items-center gap-3">
-                    {splitReady && (
-                      <button
-                        type="button"
-                        onClick={() => setGroupFormOpen(true)}
-                        className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
-                      >
-                        + Grupo
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => openCreate()}
-                      className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
-                    >
-                      + Nuevo
-                    </button>
-                  </div>
-                )}
+                {debes.map((e) => (
+                  <BalanceRow
+                    key={e.key}
+                    entry={e}
+                    onOpen={() => openEntry(e)}
+                    onSettle={splitReady && e.kind === 'person' ? () => settleEntry(e) : undefined}
+                  />
+                ))}
               </div>
-              {reorderMode ? (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onPeopleDragEnd}>
-                  <SortableContext items={peopleItems.map((i) => i.key)} strategy={verticalListSortingStrategy}>
-                    <div className="flex flex-col gap-2">
-                      {peopleItems.map((item) => {
-                        const net = item.activeGroup
-                          ? contactNet(item.activeGroup)
-                          : (item.connectedExtra?.net ?? 0)
-                        const name = item.activeGroup?.name ?? item.connectedExtra?.name ?? ''
-                        return (
-                          <SortablePersonRow
-                            key={item.key}
-                            id={item.key}
-                            name={name}
-                            net={net}
-                            netLabel={net === 0 ? 'Saldado' : (net > 0 ? '+' : '') + fmtCompact(net)}
-                            avatarUrl={contactAvatar(item.key)}
-                          />
-                        )
-                      })}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              ) : (
-                peopleItems.map((item) => {
-                  if (item.activeGroup) {
-                    const g = item.activeGroup
-                    const key = item.key
-                    const combined = { ...g, net: contactNet(g) }
-                    const isConnected = directGroupByContact.get(key)?.isConnected ?? false
-                    return (
-                      <ContactGroupCard
-                        key={`active:${key}`}
-                        group={combined}
-                        connected={isConnected}
-                        avatarUrl={contactAvatar(key)}
-                        splitMovements={contactMovements(key)}
-                        paymentsByLoan={paymentsByLoan}
-                        onAbono={(loan) => setAbonoLoan(loan)}
-                        onMarkPaid={(loan) => setMarkPaidLoan(loan)}
-                        onEdit={openEdit}
-                        onDelete={(loan) => setDeletingLoan(loan)}
-                        onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
-                        onOpenGroup={splitReady ? () => void handleOpenContactGroup(g.name) : undefined}
-                        onSettleAll={splitReady ? () => openSettleAll(combined) : undefined}
-                        onEditExpense={setInlineExpense}
-                        onDeleteExpense={setDeletingSplitExpense}
-                        onDeleteSettlement={setDeletingSplitSettlement}
-                      />
-                    )
-                  }
-                  const extra = item.connectedExtra!
-                  const key = item.key
-                  const pseudo: ContactGroup = { name: extra.name, loans: [], net: extra.net }
-                  return (
-                    <ContactGroupCard
-                      key={`connected:${extra.groupId}`}
-                      group={pseudo}
-                      connected
-                      avatarUrl={contactAvatar(key)}
-                      splitMovements={contactMovements(key)}
-                      paymentsByLoan={paymentsByLoan}
-                      onAbono={() => {}}
-                      onMarkPaid={() => {}}
-                      onEdit={() => {}}
-                      onDelete={() => {}}
-                      onUnmarkPaid={() => {}}
-                      onOpenGroup={() => void navigate(`/cuentas/prestamos/${extra.groupId}`)}
-                      onSettleAll={
-                        Math.abs(extra.net) > 0.005 ? () => openSettleAll(pseudo) : undefined
-                      }
-                      onEditExpense={setInlineExpense}
-                      onDeleteExpense={setDeletingSplitExpense}
-                      onDeleteSettlement={setDeletingSplitSettlement}
-                    />
-                  )
-                })
-              )}
-            </div>
-          )}
+            )}
+
+            {enPaz.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  En paz
+                </p>
+                {enPaz.map((e) => (
+                  <BalanceRow key={e.key} entry={e} onOpen={() => openEntry(e)} />
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Paid section toggle */}
           {paidGroups.length > 0 && (

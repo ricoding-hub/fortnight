@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.2.0"
+            version="1.3.0"
             date="14 jul 2026"
             current
+            notes={[
+              'Préstamos rediseñado estilo Splitwise: saldos claros por persona y grupo (te deben / debes), con acciones para saldar',
+              'Categoría en los gastos compartidos: se asigna sola por el nombre (p. ej. "alitas" → Comida) y puedes cambiarla',
+              'Toca un gasto para ver su detalle y reparto por persona; edítalo desde ahí',
+              'En Inicio ahora ves un resumen de saldos por persona/grupo con foto; tócalo para ir al detalle',
+            ]}
+          />
+          <VersionRow
+            version="1.2.0"
+            date="14 jul 2026"
             notes={[
               'Las relaciones con una persona ahora son conexiones 1‑a‑1 claras: sin lenguaje de "grupo" ni opción de agregar personas, con iconos de enlace',
               'Puedes recortar tu foto de perfil o de grupo al subirla, y tocar cualquier foto para verla en grande',

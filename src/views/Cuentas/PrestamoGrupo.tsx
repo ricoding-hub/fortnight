@@ -38,8 +38,11 @@ import { SettleModal } from '@/components/split/SettleModal'
 import { AddMemberModal } from '@/components/split/AddMemberModal'
 import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
 import { SettleAllModal } from '@/components/split/SettleAllModal'
+import { ExpenseDetailModal } from '@/components/split/ExpenseDetailModal'
 import { ImageCropModal } from '@/components/ui/ImageCropModal'
 import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
+import { useCategories } from '@/hooks/useCategories'
+import { categoryIcon, categoryColor } from '@/lib/categories'
 import { activityLabel } from '@/lib/splitActivity'
 import { nameColorClass } from '@/lib/avatarColors'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
@@ -78,6 +81,7 @@ export function PrestamoGrupo() {
 
   const [expenseFormOpen, setExpenseFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<SplitExpense | null>(null)
+  const [viewingExpense, setViewingExpense] = useState<SplitExpense | null>(null)
   const [settleEdge, setSettleEdge] = useState<{ from: SplitMember; to: SplitMember; amount: number } | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -103,6 +107,13 @@ export function PrestamoGrupo() {
       closeExpenseModal()
     }
   }, [storeExpenseOpen, closeExpenseModal])
+
+  const { data: categories } = useCategories()
+  const categoriesById = useMemo(() => {
+    const map = new Map<string, (typeof categories)[number]>()
+    for (const c of categories) map.set(c.id, c)
+    return map
+  }, [categories])
 
   const membersById = useMemo(() => {
     const map = new Map<string, SplitMember>()
@@ -376,7 +387,7 @@ export function PrestamoGrupo() {
             {isDirect ? (
               <>
                 <IconLink size={11} className="shrink-0" />
-                {g.isConnected ? 'Conexión directa · conectado' : 'Conexión directa'}
+                Conexión directa
               </>
             ) : (
               `${g.activeMembers.length} personas · ${g.expenses.length} gasto${g.expenses.length === 1 ? '' : 's'}`
@@ -513,9 +524,6 @@ export function PrestamoGrupo() {
                       {name}
                       {isMe && <span className="ml-1 text-[10px] font-bold text-text-tertiary">(tú)</span>}
                     </p>
-                    {multiUserReady && !isMe && linked && (
-                      <p className="text-[10px] font-bold text-asset-deep">Conectado</p>
-                    )}
                   </div>
                   <span
                     className={clsx(
@@ -623,36 +631,32 @@ export function PrestamoGrupo() {
               {g.expenses.map((e) => {
                 const payer = membersById.get(e.paid_by_member_id)
                 const creator = creatorName(e.user_id)
+                const cat = e.category_id ? categoriesById.get(e.category_id) ?? null : null
+                const CatIcon = cat ? categoryIcon(cat) : IconReceipt
                 return (
-                  <li key={e.id} className="flex items-center gap-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-deep">
-                      <IconReceipt size={15} stroke={2} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-text">{e.description}</p>
-                      <p className="truncate text-[11px] text-text-tertiary">
-                        Pagó {payer ? displayName(payer) : '—'} · {formatDateGroupMX(e.expense_date)}
-                        {creator && ` · Añadió ${creator}`}
-                      </p>
-                    </div>
-                    <span className="font-mono text-[13px] font-bold tabular-nums text-text">
-                      {formatMXN(Number(e.amount))}
-                    </span>
+                  <li key={e.id}>
                     <button
                       type="button"
-                      onClick={() => { setEditingExpense(e); setExpenseFormOpen(true) }}
-                      aria-label="Editar gasto"
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+                      onClick={() => setViewingExpense(e)}
+                      className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-bg-secondary/40"
                     >
-                      <IconPencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeletingExpense(e)}
-                      aria-label="Eliminar gasto"
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
-                    >
-                      <IconTrash size={14} />
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white"
+                        style={{ background: cat ? categoryColor(cat) : 'var(--color-primary)' }}
+                      >
+                        <CatIcon size={15} stroke={2} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-text">{e.description}</p>
+                        <p className="truncate text-[11px] text-text-tertiary">
+                          Pagó {payer ? displayName(payer) : '—'} · {formatDateGroupMX(e.expense_date)}
+                          {creator && ` · Añadió ${creator}`}
+                        </p>
+                      </div>
+                      <span className="font-mono text-[13px] font-bold tabular-nums text-text">
+                        {formatMXN(Number(e.amount))}
+                      </span>
+                      <IconChevronRight size={15} className="shrink-0 text-text-tertiary" />
                     </button>
                   </li>
                 )
@@ -809,6 +813,24 @@ export function PrestamoGrupo() {
             await addExpense(groupId, exp)
             toast.success('Gasto registrado', `${exp.description} · ${formatMXN(exp.amount)}`)
           }
+        }}
+      />
+
+      <ExpenseDetailModal
+        open={viewingExpense != null}
+        onClose={() => setViewingExpense(null)}
+        expense={viewingExpense}
+        shares={viewingExpense ? g.sharesByExpense.get(viewingExpense.id) ?? [] : []}
+        members={g.members.map((m) => ({ ...m, name: displayName(m) }))}
+        category={viewingExpense?.category_id ? categoriesById.get(viewingExpense.category_id) ?? null : null}
+        onEdit={() => {
+          setEditingExpense(viewingExpense)
+          setViewingExpense(null)
+          setExpenseFormOpen(true)
+        }}
+        onDelete={() => {
+          setDeletingExpense(viewingExpense)
+          setViewingExpense(null)
         }}
       />
 

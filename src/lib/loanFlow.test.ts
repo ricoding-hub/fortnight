@@ -33,6 +33,7 @@ function expense(overrides: Partial<SplitExpense>): SplitExpense {
     paid_by_member_id: 'me',
     split_method: 'equal',
     account_id: null,
+    category_id: null,
     expense_date: '2026-06-15',
     created_at: '2026-06-15T00:00:00Z',
     ...overrides,
