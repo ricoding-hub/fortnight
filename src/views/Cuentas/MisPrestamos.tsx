@@ -1,424 +1,53 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconEdit,
-  IconTrash,
-  IconUsers,
-  IconLink,
-} from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconCheck, IconUsers } from '@tabler/icons-react'
 import clsx from 'clsx'
 
 import { supabase } from '@/lib/supabase'
-import { useLoans, loanRemaining, type NewLoan } from '@/hooks/useLoans'
+import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe } from '@/hooks/useSplitGroups'
 import { usePeopleBalances, type BalanceEntry } from '@/hooks/usePeopleBalances'
+import { useLoanActions } from '@/hooks/useLoanActions'
 import { BalanceRow } from '@/components/split/BalanceRow'
+import { ContactLoansModal } from '@/components/split/ContactLoansModal'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { GroupFormModal } from '@/components/split/GroupFormModal'
-import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
 import { ExpenseFormModal } from '@/components/split/ExpenseFormModal'
 import { SettleAllModal, type SettleAllBreakdownLine } from '@/components/split/SettleAllModal'
 import { LoanFlowChart } from '@/components/LoanFlowChart'
 import { buildLoanFlow } from '@/lib/loanFlow'
 import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
-import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { StatCard } from '@/components/StatCard'
-import { nameColorClass } from '@/lib/avatarColors'
-import { errorMessage } from '@/lib/errorMessage'
-import { SplitMovementRow, type SplitMovement } from '@/components/split/SplitMovementRow'
-import { formatMXN, formatDateGroupMX } from '@/lib/format'
-import type { Loan, LoanDirection, LoanPayment, SplitExpense, SplitExpenseShare, SplitSettlement } from '@/types'
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Whole-peso display for KPIs and card nets — decimals looked broken there. */
-function fmtCompact(n: number): string {
-  const sign = n < 0 ? '−' : ''
-  const abs = Math.abs(n)
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-  if (abs >= 10_000) return `${sign}$${(abs / 1_000).toFixed(1)}k`
-  return `${sign}$${Math.round(abs).toLocaleString('es-MX')}`
-}
-
-function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
-  if (loan.paid_at) return `Saldado el ${formatDateGroupMX(loan.paid_at)}`
-  const last = payments[payments.length - 1]
-  if (last) return `Último abono ${formatDateGroupMX(last.created_at)}`
-  return `Desde el ${formatDateGroupMX(loan.created_at)}`
-}
-
-function loanActivityKey(loan: Loan, payments: LoanPayment[]): string {
-  const lastPay = payments.length > 0 ? payments[payments.length - 1].created_at : ''
-  return loan.paid_at ?? (lastPay > loan.created_at ? lastPay : loan.created_at)
-}
-
-interface ContactGroup {
-  name: string
-  loans: Loan[]
-  net: number
-}
-
-
-// ── LoanRow ───────────────────────────────────────────────────────────────────
-
-function LoanRow({
-  loan,
-  payments,
-  isPaidSection = false,
-  onAbono,
-  onMarkPaid,
-  onEdit,
-  onDelete,
-  onUnmarkPaid,
-}: {
-  loan: Loan
-  payments: LoanPayment[]
-  isPaidSection?: boolean
-  onAbono: () => void
-  onMarkPaid: () => void
-  onEdit: () => void
-  onDelete: () => void
-  onUnmarkPaid: () => void
-}) {
-  const remaining = loanRemaining(loan, payments)
-  const hasPayments = payments.length > 0
-  const paidPercent =
-    Number(loan.amount) > 0
-      ? Math.round((1 - remaining / Number(loan.amount)) * 100)
-      : 0
-  const dateHint = loanDateHint(loan, payments)
-  const showRemaining = !isPaidSection && hasPayments && remaining < Number(loan.amount)
-
-  return (
-    <div className="py-3">
-      <div className="flex items-start gap-3">
-        {/* Direction icon */}
-        <div
-          className={clsx(
-            'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
-            loan.direction === 'owed_to_me'
-              ? 'bg-primary/10 text-primary-deep'
-              : 'bg-debt/10 text-debt-deep',
-          )}
-        >
-          {loan.direction === 'owed_to_me' ? (
-            <IconArrowDown size={12} stroke={2.5} />
-          ) : (
-            <IconArrowUp size={12} stroke={2.5} />
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={loan.direction === 'owed_to_me' ? 'info' : 'danger'}>
-              {loan.direction === 'owed_to_me' ? 'Te deben' : 'Debes'}
-            </Badge>
-            {isPaidSection && <Badge variant="success">Saldado</Badge>}
-          </div>
-          {loan.notes && (
-            <p className="mt-0.5 line-clamp-1 text-[12px] text-text-secondary">
-              {loan.notes}
-            </p>
-          )}
-
-          {/* Amount — remaining first when applicable */}
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-1">
-            {showRemaining ? (
-              <>
-                <span className="text-sm font-bold tabular-nums text-text">
-                  {formatMXN(remaining)}
-                </span>
-                <span className="text-[11px] text-text-tertiary">restante</span>
-                <span className="text-[11px] text-text-tertiary">
-                  · de {formatMXN(Number(loan.amount))}
-                </span>
-              </>
-            ) : (
-              <span
-                className={clsx(
-                  'text-sm font-bold tabular-nums',
-                  isPaidSection ? 'text-text-tertiary line-through' : 'text-text',
-                )}
-              >
-                {formatMXN(Number(loan.amount))}
-              </span>
-            )}
-          </div>
-
-          {/* Date hint */}
-          <p className="mt-0.5 text-[10px] text-text-tertiary">{dateHint}</p>
-
-          {!isPaidSection && hasPayments && (
-            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-border">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${paidPercent}%` }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Always-visible action row */}
-      <div className="mt-2 flex items-center gap-1.5 pl-9">
-        {!isPaidSection && (
-          <>
-            <button
-              type="button"
-              onClick={onAbono}
-              className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-deep transition-colors hover:bg-primary/20"
-            >
-              + Abono
-            </button>
-            <button
-              type="button"
-              onClick={onMarkPaid}
-              className="flex items-center gap-1 rounded-lg bg-asset/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-asset-deep transition-colors hover:bg-asset/20"
-            >
-              <IconCheck size={12} /> Saldado
-            </button>
-          </>
-        )}
-        {isPaidSection && (
-          <button
-            type="button"
-            onClick={onUnmarkPaid}
-            className="rounded-lg bg-bg-secondary px-2.5 py-1.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-border"
-          >
-            ↩ Recuperar
-          </button>
-        )}
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label="Editar"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
-          >
-            <IconEdit size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label="Eliminar"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
-          >
-            <IconTrash size={15} />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── ContactGroupCard ──────────────────────────────────────────────────────────
-
-function ContactGroupCard({
-  group,
-  paymentsByLoan,
-  isPaidSection = false,
-  onAbono,
-  onMarkPaid,
-  onEdit,
-  onDelete,
-  onUnmarkPaid,
-  onOpenGroup,
-  onSettleAll,
-  connected = false,
-  avatarUrl,
-  splitMovements = [],
-  onEditExpense,
-  onDeleteExpense,
-  onDeleteSettlement,
-}: {
-  group: ContactGroup
-  paymentsByLoan: Record<string, LoanPayment[]>
-  isPaidSection?: boolean
-  onAbono: (loan: Loan) => void
-  onMarkPaid: (loan: Loan) => void
-  onEdit: (loan: Loan) => void
-  onDelete: (loan: Loan) => void
-  onUnmarkPaid: (loanId: string) => void
-  /** Opens (creating on demand) the contact's direct group detail. */
-  onOpenGroup?: () => void
-  /** One-tap settlement of the full combined net with this person. */
-  onSettleAll?: () => void
-  /** The contact has a linked Fortnight account (real 1:1 sync). */
-  connected?: boolean
-  /** Linked contact's profile photo. */
-  avatarUrl?: string
-  /** Shared expenses/settlements of the direct group, editable inline. */
-  splitMovements?: SplitMovement[]
-  onEditExpense?: (expense: SplitExpense) => void
-  onDeleteExpense?: (expense: SplitExpense) => void
-  onDeleteSettlement?: (settlement: SplitSettlement) => void
-}) {
-  const [expanded, setExpanded] = useState(true)
-  const avatarColor = nameColorClass(group.name)
-
-  return (
-    <Card className="overflow-hidden px-4 py-2">
-      <div className="flex w-full items-center gap-3 py-2">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={group.name}
-              className="h-9 w-9 shrink-0 rounded-xl object-cover"
-            />
-          ) : (
-            <div
-              className={clsx(
-                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold',
-                avatarColor,
-              )}
-            >
-              {(group.name[0] ?? '?').toUpperCase()}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-text">
-              <span className="truncate">{group.name}</span>
-              {connected && (
-                <span className="shrink-0 rounded-full bg-asset-soft px-1.5 py-0.5 text-[9px] font-extrabold text-asset-deep">
-                  Conectado
-                </span>
-              )}
-            </p>
-            {!isPaidSection && (
-              <p
-                className={clsx(
-                  'text-[11px] font-medium',
-                  group.net > 0
-                    ? 'text-primary-deep'
-                    : group.net < 0
-                      ? 'text-debt-deep'
-                      : 'text-text-tertiary',
-                )}
-              >
-                {group.net > 0
-                  ? `Te deben ${fmtCompact(group.net)}`
-                  : group.net < 0
-                    ? `Debes ${fmtCompact(Math.abs(group.net))}`
-                    : 'Sin saldo pendiente'}
-                {group.loans.length > 1 && ` · ${group.loans.length} préstamos`}
-              </p>
-            )}
-          </div>
-          {expanded ? (
-            <IconChevronDown size={16} className="shrink-0 text-text-tertiary" />
-          ) : (
-            <IconChevronRight size={16} className="shrink-0 text-text-tertiary" />
-          )}
-        </button>
-        {onOpenGroup && (
-          <button
-            type="button"
-            onClick={onOpenGroup}
-            aria-label={`Ver conexión con ${group.name}`}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-primary-soft hover:text-primary-deep"
-          >
-            <IconLink size={16} />
-          </button>
-        )}
-      </div>
-
-      {expanded && (
-        <ul className="divide-y divide-border">
-          {group.loans.map((loan) => (
-            <li key={loan.id}>
-              <LoanRow
-                loan={loan}
-                payments={paymentsByLoan[loan.id] ?? []}
-                isPaidSection={isPaidSection}
-                onAbono={() => onAbono(loan)}
-                onMarkPaid={() => onMarkPaid(loan)}
-                onEdit={() => onEdit(loan)}
-                onDelete={() => onDelete(loan)}
-                onUnmarkPaid={() => onUnmarkPaid(loan.id)}
-              />
-            </li>
-          ))}
-          {!isPaidSection &&
-            splitMovements.map((mv) => (
-              <li key={`${mv.kind}:${mv.id}`}>
-                <SplitMovementRow
-                  mv={mv}
-                  onEditExpense={onEditExpense}
-                  onDeleteExpense={onDeleteExpense}
-                  onDeleteSettlement={onDeleteSettlement}
-                />
-              </li>
-            ))}
-        </ul>
-      )}
-
-      {!isPaidSection && onSettleAll && group.net !== 0 && (
-        <button
-          type="button"
-          onClick={onSettleAll}
-          className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-asset/10 py-2 text-[12px] font-bold text-asset-deep transition-colors hover:bg-asset/20"
-        >
-          <IconCheck size={13} stroke={2.5} /> Saldar todo ({fmtCompact(Math.abs(group.net))})
-        </button>
-      )}
-    </Card>
-  )
-}
-
-// ── GroupCard (multi-person, expandable) ───────────────────────────────────────
+import { fmtCompact } from '@/lib/loanFormat'
+import { formatMXN } from '@/lib/format'
+import type { Loan, LoanDirection, SplitExpense, SplitExpenseShare, SplitSettlement } from '@/types'
 
 export function MisPrestamos() {
+  const loansApi = useLoans()
   const {
     data: allLoans,
     active,
     paid,
     paymentsByLoan,
-    porCobrar,
-    porPagar,
     loading,
     error,
-    create,
-    update,
-    markPaid,
-    unmarkPaid,
-    deleteLoan,
-    addPayment,
     refetch: refetchLoans,
-  } = useLoans()
+  } = loansApi
   const {
     groups: splitGroups,
     profiles,
     recentContacts,
-    splitCobrar,
-    splitPagar,
     ready: splitReady,
     displayName,
     createGroup,
     ensureDirectGroup,
     settleAllWithContact,
     addExpense,
-    updateExpense,
-    deleteExpense,
-    deleteSettlement,
   } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -426,134 +55,23 @@ export function MisPrestamos() {
   const storeLoanOpen = useUiStore((s) => s.loanModalOpen)
   const closeLoanModal = useUiStore((s) => s.closeLoanModal)
 
-  const [loanFormOpen, setLoanFormOpen] = useState(false)
   const [groupFormOpen, setGroupFormOpen] = useState(false)
   const [settleAllContact, setSettleAllContact] = useState<{
     name: string
     net: number
     breakdown: SettleAllBreakdownLine[]
   } | null>(null)
-  const [inlineExpense, setInlineExpense] = useState<SplitExpense | null>(null)
   const [addExpenseGroupId, setAddExpenseGroupId] = useState<string | null>(null)
-  const [deletingSplitExpense, setDeletingSplitExpense] = useState<SplitExpense | null>(null)
-  const [deletingSplitSettlement, setDeletingSplitSettlement] = useState<SplitSettlement | null>(null)
-  const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
-  const [formDefaultDir, setFormDefaultDir] = useState<LoanDirection>('owed_to_me')
-  const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
-  const [markPaidLoan, setMarkPaidLoan] = useState<Loan | null>(null)
-  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null)
-  const [showPaid, setShowPaid] = useState(false)
-
-  function openCreate(dir: LoanDirection = 'owed_to_me') {
-    setEditingLoan(null)
-    setFormDefaultDir(dir)
-    setLoanFormOpen(true)
-  }
-
-  function openEdit(loan: Loan) {
-    setEditingLoan(loan)
-    setFormDefaultDir(loan.direction)
-    setLoanFormOpen(true)
-  }
-
-  useEffect(() => {
-    if (storeLoanOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      openCreate('owed_to_me')
-      closeLoanModal()
-    }
-  }, [storeLoanOpen, closeLoanModal])
-
-  async function handleUnmarkPaid(loanId: string) {
-    try {
-      await unmarkPaid(loanId)
-      toast.success('Préstamo reabierto', 'El préstamo volvió a estar activo')
-    } catch {
-      toast.error('Error', 'No se pudo desmarcar el préstamo')
-    }
-  }
-
-  async function handleDelete() {
-    if (!deletingLoan) return
-    const loan = deletingLoan
-    try {
-      await deleteLoan(loan.id)
-      toast.success('Préstamo eliminado', `Se eliminó el préstamo de ${loan.name}`)
-    } catch {
-      toast.error('Error', 'No se pudo eliminar el préstamo')
-    }
-  }
-
-  const activeGroups = useMemo<ContactGroup[]>(() => {
-    const map = new Map<string, Loan[]>()
-    for (const l of active) {
-      const key = l.name.trim().toLowerCase()
-      map.set(key, [...(map.get(key) ?? []), l])
-    }
-    return Array.from(map.values())
-      .map((loans) => {
-        const sorted = [...loans].sort((a, b) =>
-          loanActivityKey(b, paymentsByLoan[b.id] ?? []).localeCompare(
-            loanActivityKey(a, paymentsByLoan[a.id] ?? []),
-          ),
-        )
-        return {
-          name: sorted[0].name,
-          loans: sorted,
-          net: sorted.reduce((s, l) => {
-            const rem = loanRemaining(l, paymentsByLoan[l.id] ?? [])
-            return l.direction === 'owed_to_me' ? s + rem : s - rem
-          }, 0),
-        }
-      })
-      .sort((a, b) => {
-        const aKey = a.loans.reduce((mx, l) => {
-          const k = loanActivityKey(l, paymentsByLoan[l.id] ?? [])
-          return k > mx ? k : mx
-        }, '')
-        const bKey = b.loans.reduce((mx, l) => {
-          const k = loanActivityKey(l, paymentsByLoan[l.id] ?? [])
-          return k > mx ? k : mx
-        }, '')
-        return bKey.localeCompare(aKey)
-      })
-  }, [active, paymentsByLoan])
-
-  const paidGroups = useMemo<ContactGroup[]>(() => {
-    const map = new Map<string, Loan[]>()
-    for (const l of paid) {
-      const key = l.name.trim().toLowerCase()
-      map.set(key, [...(map.get(key) ?? []), l])
-    }
-    return Array.from(map.values())
-      .map((loans) => {
-        const sorted = [...loans].sort((a, b) =>
-          (b.paid_at ?? b.created_at).localeCompare(a.paid_at ?? a.created_at),
-        )
-        return { name: sorted[0].name, loans: sorted, net: 0 }
-      })
-      .sort((a, b) => {
-        const aKey = a.loans.reduce((mx, l) => ((l.paid_at ?? '') > mx ? (l.paid_at ?? '') : mx), '')
-        const bKey = b.loans.reduce((mx, l) => ((l.paid_at ?? '') > mx ? (l.paid_at ?? '') : mx), '')
-        return bKey.localeCompare(aKey)
-      })
-  }, [paid])
+  /** Person sheet for a contact with no split group (works offline). */
+  const [contactSheet, setContactSheet] = useState<BalanceEntry | null>(null)
 
   const allNames = useMemo(() => {
     const names = new Set([...active, ...paid].map((l) => l.name.trim()))
     return Array.from(names).sort()
   }, [active, paid])
 
-  // GRUPOS section = real multi-person groups ONLY (3+ active members).
-  // A balance with one person is a 1:1 relationship, never "a group" —
-  // 2-person groups (connected or not) live in the ACTIVOS contact cards.
-  const sharedGroups = useMemo(
-    () => splitGroups.filter((g) => g.activeMembers.length > 2),
-    [splitGroups],
-  )
-
-  // Direct 2-person group per contact (connected or not), for combined
-  // nets, "Ver grupo" navigation and "Saldar todo".
+  // Direct 2-person group per contact (connected or not), for the settle-all
+  // breakdown and for keeping a renamed contact in sync with their group.
   const directGroupByContact = useMemo(() => {
     const map = new Map<string, (typeof splitGroups)[number]>()
     for (const g of splitGroups) {
@@ -564,89 +82,69 @@ export function MisPrestamos() {
     return map
   }, [splitGroups, user?.id])
 
-  /** Combined net for a contact: open loans + split-only net of their group. */
-  const contactNet = useMemo(() => {
-    return (group: ContactGroup): number => {
-      const direct = directGroupByContact.get(group.name.trim().toLowerCase())
-      return group.net + (direct?.mySplitNet ?? 0)
-    }
-  }, [directGroupByContact])
+  // Unified Splitwise-style balances (people + groups) — the single source for
+  // the list AND the KPIs, so the hero can never disagree with the rows.
+  const balances = usePeopleBalances({
+    active,
+    paid,
+    paymentsByLoan,
+    splitGroups,
+    profiles,
+    displayName,
+    userId: user?.id,
+  })
+  const { totalCobrar, totalPagar, netoTotal, peopleOwingMe, peopleIOwe } = balances
+  const teDeben = balances.entries.filter((e) => e.net > 0.005)
+  const debes = balances.entries.filter((e) => e.net < -0.005)
+  const enPaz = balances.entries.filter((e) => Math.abs(e.net) <= 0.005)
 
-  async function handleDeleteSplitExpense() {
-    if (!deletingSplitExpense) return
-    try {
-      await deleteExpense(deletingSplitExpense.id)
-      toast.success('Gasto eliminado', 'El gasto compartido fue eliminado')
-    } catch {
-      toast.error('Error', 'No se pudo eliminar el gasto')
-    }
-    setDeletingSplitExpense(null)
+  /* ── Loan actions (detail, abono, saldar, editar, eliminar) ── */
+  const loanActions = useLoanActions({
+    loans: loansApi,
+    existingNames: allNames,
+    afterMutation: refetchLoans,
+    onCreate: async (data) => {
+      // Stamp the loan into the contact's existing direct group when there is
+      // one and it isn't connected (connected groups keep loans private).
+      const direct = directGroupByContact.get(data.name.trim().toLowerCase())
+      const groupId = direct && !direct.isConnected ? direct.group.id : null
+      await loansApi.create({ ...data, group_id: groupId })
+    },
+    onEdit: async (id, patch) => {
+      const before = allLoans.find((l) => l.id === id)
+      await loansApi.update(id, patch)
+      // Renaming the contact should rename their 1:1 member row too, or the
+      // loan silently detaches from the relationship it belongs to.
+      const oldName = before?.name.trim().toLowerCase()
+      const newName = patch.name?.trim()
+      if (!newName || !oldName || newName.toLowerCase() === oldName) return
+      const direct = directGroupByContact.get(oldName)
+      if (!direct || direct.isConnected) return
+      const member = direct.activeMembers.find((m) => !memberIsMe(m, user?.id))
+      if (!member) return
+      await supabase.from('split_members').update({ name: newName }).eq('id', member.id)
+      if (direct.group.name.trim().toLowerCase() === oldName) {
+        await supabase.from('split_groups').update({ name: newName }).eq('id', direct.group.id)
+      }
+    },
+  })
+
+  function openCreate(dir: LoanDirection = 'owed_to_me') {
+    loanActions.openCreate(dir)
   }
 
-  async function handleDeleteSplitSettlement() {
-    if (!deletingSplitSettlement) return
-    try {
-      await deleteSettlement(deletingSplitSettlement.id)
-      toast.success('Liquidación eliminada', 'Los balances fueron restaurados')
-    } catch {
-      toast.error('Error', 'No se pudo eliminar la liquidación')
+  useEffect(() => {
+    if (storeLoanOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      openCreate('owed_to_me')
+      closeLoanModal()
     }
-    setDeletingSplitSettlement(null)
-  }
+  }, [storeLoanOpen, closeLoanModal])
 
-  // Group + members backing the inline expense editor.
-  const inlineExpenseGroup = inlineExpense
-    ? splitGroups.find((g) => g.group.id === inlineExpense.group_id)
-    : undefined
+  // Group backing the add-expense modal.
   const addExpenseGroup = addExpenseGroupId
     ? splitGroups.find((g) => g.group.id === addExpenseGroupId)
     : undefined
-
-  // Connected 1:1 relationships without open loans still deserve their
-  // contact card (the relationship's single home) — synthesize entries
-  // for connected 2-person groups not already covered by a loans card.
-  const connectedExtras = useMemo(() => {
-    const loanNames = new Set(activeGroups.map((g) => g.name.trim().toLowerCase()))
-    const out: Array<{ name: string; localKey: string; groupId: string; net: number }> = []
-    for (const g of splitGroups) {
-      if (g.activeMembers.length !== 2 || !g.isConnected) continue
-      const contact = g.activeMembers.find((m) => !memberIsMe(m, user?.id))
-      if (!contact || loanNames.has(contact.name.trim().toLowerCase())) continue
-      out.push({
-        name: displayName(contact),
-        // Lookup key for directGroupByContact (the member's LOCAL name,
-        // which can differ from the linked profile's display name).
-        localKey: contact.name.trim().toLowerCase(),
-        groupId: g.group.id,
-        net: g.mySplitNet,
-      })
-    }
-    return out
-  }, [splitGroups, activeGroups, user?.id, displayName])
-
-  /* ── KPI derivations ── */
-  const totalCobrar = porCobrar + splitCobrar
-  const totalPagar = porPagar + splitPagar
-  const netoTotal = totalCobrar - totalPagar
-
-  const { peopleOwingMe, peopleIOwe } = useMemo(() => {
-    let owing = 0
-    let iOwe = 0
-    for (const g of activeGroups) {
-      const net = contactNet(g)
-      if (net > 0.005) owing++
-      else if (net < -0.005) iOwe++
-    }
-    for (const extra of connectedExtras) {
-      if (extra.net > 0.005) owing++
-      else if (extra.net < -0.005) iOwe++
-    }
-    for (const g of sharedGroups) {
-      if (g.mySplitNet > 0.005) owing++
-      else if (g.mySplitNet < -0.005) iOwe++
-    }
-    return { peopleOwingMe: owing, peopleIOwe: iOwe }
-  }, [activeGroups, connectedExtras, sharedGroups, contactNet])
 
   // Recovered in the last 30 days: abonos on owed_to_me loans + settlements received.
   const recuperado30d = useMemo(() => {
@@ -702,34 +200,30 @@ export function MisPrestamos() {
     [loanFlow],
   )
 
-  /** Open the contact's direct group (creating + stamping on demand). */
-  async function handleOpenContactGroup(contactName: string) {
-    try {
-      const id = await ensureDirectGroup(contactName)
-      void navigate(`/cuentas/prestamos/${id}`)
-    } catch (e) {
-      // Surface the real cause (Supabase errors aren't Error instances).
-      console.error('ensureDirectGroup failed', e)
-      toast.error('No se pudo abrir la conexión', errorMessage(e))
-    }
+  /**
+   * Open a balance. A real group navigates to its screen; a purely local
+   * contact opens their loans sheet instead of materialising a group as a
+   * side effect of a tap (which also broke before the split migrations).
+   */
+  function openEntry(e: BalanceEntry) {
+    if (e.groupId) void navigate(`/cuentas/prestamos/${e.groupId}`)
+    else setContactSheet(e)
   }
 
   /** Prepare the settle-all modal with a transparent breakdown. */
-  function openSettleAll(group: ContactGroup) {
-    const net = contactNet(group)
-    if (Math.abs(net) < 0.005) return
-    const breakdown: SettleAllBreakdownLine[] = group.loans
-      .filter((l) => !l.paid_at)
+  function openSettleAll(e: BalanceEntry) {
+    if (Math.abs(e.net) < 0.005) return
+    const breakdown: SettleAllBreakdownLine[] = e.loans
       .map((l) => ({
         label: `Préstamo · ${l.direction === 'owed_to_me' ? 'te debe' : 'debes'}`,
         amount: loanRemaining(l, paymentsByLoan[l.id] ?? []),
       }))
       .filter((line) => line.amount > 0)
-    const direct = directGroupByContact.get(group.name.trim().toLowerCase())
+    const direct = directGroupByContact.get((e.contactName ?? e.name).trim().toLowerCase())
     if (direct && Math.abs(direct.mySplitNet) > 0.005) {
       breakdown.push({ label: 'Gastos compartidos (neto)', amount: Math.abs(direct.mySplitNet) })
     }
-    setSettleAllContact({ name: group.name, net, breakdown })
+    setSettleAllContact({ name: e.contactName ?? e.name, net: e.net, breakdown })
   }
 
   async function handleSettleAll(opts: { accountId?: string | null; note?: string | null }) {
@@ -745,39 +239,15 @@ export function MisPrestamos() {
     )
   }
 
-  // Unified Splitwise-style balances (people + groups), the source for the list.
-  const balances = usePeopleBalances({
-    active,
+  /** Wiring shared by every BalanceRow: per-loan actions. */
+  const loanRowHandlers = {
     paymentsByLoan,
-    splitGroups,
-    profiles,
-    displayName,
-    userId: user?.id,
-  })
-  const teDeben = balances.entries.filter((e) => e.net > 0.005)
-  const debes = balances.entries.filter((e) => e.net < -0.005)
-  const enPaz = balances.entries.filter((e) => Math.abs(e.net) <= 0.005)
-
-  /** Open the person's connection or the group detail. */
-  function openEntry(e: BalanceEntry) {
-    if (e.groupId) void navigate(`/cuentas/prestamos/${e.groupId}`)
-    else if (e.contactName) void handleOpenContactGroup(e.contactName)
-  }
-
-  /** Settle everything with a 1:1 person (groups settle inside their detail). */
-  function settleEntry(e: BalanceEntry) {
-    if (e.kind !== 'person' || Math.abs(e.net) < 0.005) return
-    const key = (e.contactName ?? e.name).trim().toLowerCase()
-    const ag = activeGroups.find((g) => g.name.trim().toLowerCase() === key)
-    if (ag) {
-      openSettleAll(ag)
-    } else {
-      setSettleAllContact({
-        name: e.contactName ?? e.name,
-        net: e.net,
-        breakdown: [{ label: 'Gastos compartidos (neto)', amount: Math.abs(e.net) }],
-      })
-    }
+    onOpenLoan: loanActions.openDetail,
+    onAbonoLoan: loanActions.openAbono,
+    onMarkPaidLoan: loanActions.openMarkPaid,
+    onEditLoan: loanActions.openEdit,
+    onDeleteLoan: loanActions.openDelete,
+    onUnmarkPaidLoan: (l: Loan) => loanActions.openDetail(l),
   }
 
   if (loading) {
@@ -804,8 +274,7 @@ export function MisPrestamos() {
     )
   }
 
-  const hasAny =
-    active.length > 0 || paid.length > 0 || sharedGroups.length > 0 || connectedExtras.length > 0
+  const hasAny = balances.entries.length > 0
 
   return (
     <div className="flex flex-col gap-3 pb-24 animate-[fade-in_300ms_ease-out]">
@@ -909,8 +378,9 @@ export function MisPrestamos() {
                   <BalanceRow
                     key={e.key}
                     entry={e}
+                    {...loanRowHandlers}
                     onOpen={() => openEntry(e)}
-                    onSettle={splitReady && e.kind === 'person' ? () => settleEntry(e) : undefined}
+                    onSettle={splitReady && e.kind === 'person' ? () => openSettleAll(e) : undefined}
                   />
                 ))}
               </div>
@@ -925,8 +395,9 @@ export function MisPrestamos() {
                   <BalanceRow
                     key={e.key}
                     entry={e}
+                    {...loanRowHandlers}
                     onOpen={() => openEntry(e)}
-                    onSettle={splitReady && e.kind === 'person' ? () => settleEntry(e) : undefined}
+                    onSettle={splitReady && e.kind === 'person' ? () => openSettleAll(e) : undefined}
                   />
                 ))}
               </div>
@@ -938,46 +409,11 @@ export function MisPrestamos() {
                   En paz
                 </p>
                 {enPaz.map((e) => (
-                  <BalanceRow key={e.key} entry={e} onOpen={() => openEntry(e)} />
+                  <BalanceRow key={e.key} entry={e} {...loanRowHandlers} onOpen={() => openEntry(e)} />
                 ))}
               </div>
             )}
           </div>
-
-          {/* Paid section toggle */}
-          {paidGroups.length > 0 && (
-            <div className="px-4">
-              <button
-                type="button"
-                onClick={() => setShowPaid((v) => !v)}
-                className="mb-2 flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary-deep"
-              >
-                {showPaid ? (
-                  <IconChevronDown size={14} />
-                ) : (
-                  <IconChevronRight size={14} />
-                )}
-                {showPaid ? 'Ocultar saldados' : `Ver saldados (${paid.length})`}
-              </button>
-              {showPaid && (
-                <div className="flex flex-col gap-2 animate-[scale-in_200ms_ease-out]">
-                  {paidGroups.map((g) => (
-                    <ContactGroupCard
-                      key={g.name.toLowerCase()}
-                      group={g}
-                      paymentsByLoan={paymentsByLoan}
-                      isPaidSection
-                      onAbono={(loan) => setAbonoLoan(loan)}
-                      onMarkPaid={(loan) => setMarkPaidLoan(loan)}
-                      onEdit={openEdit}
-                      onDelete={(loan) => setDeletingLoan(loan)}
-                      onUnmarkPaid={(id) => void handleUnmarkPaid(id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
         </>
       )}
@@ -999,94 +435,28 @@ export function MisPrestamos() {
       )}
 
       {/* ── Modals ── */}
-      <LoanFormModal
-        open={loanFormOpen}
-        onClose={() => { setLoanFormOpen(false); setEditingLoan(null) }}
-        defaultDirection={formDefaultDir}
-        editingLoan={editingLoan}
-        existingNames={allNames}
-        onCreate={async (data) => {
-          // Stamp the loan into the contact's group when one exists, so the
-          // group↔loan link doesn't depend on exact name matching alone.
-          const contactKey = data.name.trim().toLowerCase()
-          const directGroup = splitGroups.find(
-            (g) =>
-              !g.isConnected &&
-              g.members.length === 2 &&
-              g.members.some((m) => !m.is_me && m.name.trim().toLowerCase() === contactKey),
-          )
-          await create({ ...data, group_id: directGroup?.group.id ?? null })
-          toast.success('Préstamo registrado', `Guardaste un préstamo con ${data.name}`)
-        }}
-        onEdit={async (id, patch) => {
-          const prev = allLoans.find((l) => l.id === id)
-          await update(id, patch)
-          // Keep the direct group coherent when the contact is renamed:
-          // if the group carries the old contact name, rename it too so
-          // history and navigation stay attached (best effort).
-          if (prev && patch.name && patch.name.trim().toLowerCase() !== prev.name.trim().toLowerCase()) {
-            const direct = directGroupByContact.get(prev.name.trim().toLowerCase())
-            if (direct) {
-              try {
-                const contactMember = direct.members.find((m) => !memberIsMe(m, user?.id))
-                if (contactMember) {
-                  await supabase
-                    .from('split_members')
-                    .update({ name: patch.name.trim() })
-                    .eq('id', contactMember.id)
-                }
-                if (direct.group.name.trim().toLowerCase() === prev.name.trim().toLowerCase()) {
-                  await supabase
-                    .from('split_groups')
-                    .update({ name: patch.name.trim() })
-                    .eq('id', direct.group.id)
-                }
-              } catch {
-                // Non-blocking: the loan itself is already stamped by id.
-              }
-            }
-          }
-          toast.success('Cambios guardados', 'El préstamo fue actualizado')
-        }}
-      />
+      {/* Loan detail / abono / saldar / editar / eliminar all live in the hook,
+          so a modal can never end up mounted without a way to reach it. */}
+      {loanActions.modals}
 
-      {abonoLoan && (
-        <AbonoModal
+      {contactSheet && (
+        <ContactLoansModal
           open
-          loan={abonoLoan}
-          payments={paymentsByLoan[abonoLoan.id] ?? []}
-          onClose={() => setAbonoLoan(null)}
-          onSubmit={async (amount, opts) => {
-            await addPayment(abonoLoan.id, amount, opts)
-            toast.success('Abono registrado', `Abono de ${formatMXN(amount)} guardado`)
-            setAbonoLoan(null)
-          }}
+          onClose={() => setContactSheet(null)}
+          name={contactSheet.name}
+          avatarUrl={contactSheet.avatarUrl}
+          net={contactSheet.net}
+          activeLoans={contactSheet.loans}
+          paidLoans={contactSheet.paidLoans}
+          paymentsByLoan={paymentsByLoan}
+          onOpenLoan={loanActions.openDetail}
+          onAbono={loanActions.openAbono}
+          onMarkPaid={loanActions.openMarkPaid}
+          onEdit={loanActions.openEdit}
+          onDelete={loanActions.openDelete}
+          onUnmarkPaid={loanActions.openDetail}
         />
       )}
-
-      {markPaidLoan && (
-        <MarkPaidModal
-          open
-          loan={markPaidLoan}
-          payments={paymentsByLoan[markPaidLoan.id] ?? []}
-          onClose={() => setMarkPaidLoan(null)}
-          onSubmit={async (opts) => {
-            await markPaid(markPaidLoan.id, opts)
-            toast.success('Préstamo saldado', `El préstamo de ${markPaidLoan.name} está saldado`)
-            setMarkPaidLoan(null)
-          }}
-        />
-      )}
-
-      <ConfirmModal
-        open={!!deletingLoan}
-        title="Eliminar préstamo"
-        message={`¿Eliminar el préstamo de ${deletingLoan?.name ?? ''}? Esta acción no se puede deshacer.`}
-        confirmLabel="Eliminar"
-        destructive
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeletingLoan(null)}
-      />
 
       {settleAllContact && (
         <SettleAllModal
@@ -1099,55 +469,18 @@ export function MisPrestamos() {
         />
       )}
 
-      {/* Inline shared-expense editing — same capabilities as the group detail */}
-      {inlineExpense && inlineExpenseGroup && (
-        <ExpenseFormModal
-          open
-          onClose={() => setInlineExpense(null)}
-          members={inlineExpenseGroup.activeMembers.map((m) => ({ ...m, name: displayName(m) }))}
-          editing={{
-            expense: inlineExpense,
-            shares: inlineExpenseGroup.sharesByExpense.get(inlineExpense.id) ?? [],
-          }}
-          onSubmit={async (exp) => {
-            await updateExpense(inlineExpense.id, inlineExpense.group_id, exp)
-            toast.success('Gasto actualizado', `${exp.description} · ${formatMXN(exp.amount)}`)
-          }}
-        />
-      )}
-
-      {/* Add a shared expense to a group without leaving the list */}
-      {addExpenseGroupId && addExpenseGroup && (
+      {addExpenseGroup && (
         <ExpenseFormModal
           open
           onClose={() => setAddExpenseGroupId(null)}
           members={addExpenseGroup.activeMembers.map((m) => ({ ...m, name: displayName(m) }))}
           onSubmit={async (exp) => {
-            await addExpense(addExpenseGroupId, exp)
+            await addExpense(addExpenseGroup.group.id, exp)
             toast.success('Gasto registrado', `${exp.description} · ${formatMXN(exp.amount)}`)
           }}
         />
       )}
 
-      <ConfirmModal
-        open={!!deletingSplitExpense}
-        title="Eliminar gasto"
-        message={`¿Eliminar "${deletingSplitExpense?.description ?? ''}"? Si se registró en una cuenta, el movimiento no se revierte automáticamente.`}
-        confirmLabel="Eliminar"
-        destructive
-        onConfirm={() => void handleDeleteSplitExpense()}
-        onClose={() => setDeletingSplitExpense(null)}
-      />
-
-      <ConfirmModal
-        open={!!deletingSplitSettlement}
-        title="Eliminar liquidación"
-        message="Se restaurarán los balances. Abonos a préstamos y movimientos de cuenta creados junto con esta liquidación NO se revierten automáticamente."
-        confirmLabel="Eliminar"
-        destructive
-        onConfirm={() => void handleDeleteSplitSettlement()}
-        onClose={() => setDeletingSplitSettlement(null)}
-      />
 
       <GroupFormModal
         open={groupFormOpen}
@@ -1166,152 +499,5 @@ export function MisPrestamos() {
         }}
       />
     </div>
-  )
-}
-
-// ── LoanFormModal ─────────────────────────────────────────────────────────────
-
-function LoanFormModal({
-  open,
-  onClose,
-  defaultDirection,
-  editingLoan,
-  existingNames,
-  onCreate,
-  onEdit,
-}: {
-  open: boolean
-  onClose: () => void
-  defaultDirection: LoanDirection
-  editingLoan: Loan | null
-  existingNames: string[]
-  onCreate: (data: NewLoan) => Promise<void>
-  onEdit: (id: string, patch: Partial<NewLoan>) => Promise<void>
-}) {
-  const isEdit = editingLoan !== null
-
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
-  const [notes, setNotes] = useState('')
-  const [direction, setDirection] = useState<LoanDirection>(defaultDirection)
-  const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setName(editingLoan?.name ?? '')
-      setAmount(editingLoan ? String(editingLoan.amount) : '')
-      setNotes(editingLoan?.notes ?? '')
-      setDirection(editingLoan?.direction ?? defaultDirection)
-      setFormError('')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const num = Number(amount)
-    if (!name.trim()) { setFormError('Escribe un nombre'); return }
-    if (!amount || Number.isNaN(num) || num <= 0) { setFormError('Escribe un monto válido'); return }
-    setSubmitting(true)
-    try {
-      if (isEdit) {
-        await onEdit(editingLoan.id, {
-          name: name.trim(),
-          amount: num,
-          notes: notes.trim() || null,
-          direction,
-        })
-      } else {
-        await onCreate({ name: name.trim(), amount: num, notes: notes.trim() || null, direction })
-      }
-      onClose()
-    } catch {
-      setFormError('No se pudo guardar')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Editar préstamo' : 'Nuevo préstamo'}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        {/* Direction toggle */}
-        <div>
-          <p className="mb-1.5 text-sm font-medium text-text">Tipo</p>
-          <div className="flex overflow-hidden rounded-xl border border-border">
-            <button
-              type="button"
-              onClick={() => setDirection('owed_to_me')}
-              className={clsx(
-                'flex-1 py-2.5 text-[13px] font-bold transition-colors',
-                direction === 'owed_to_me'
-                  ? 'bg-primary text-white'
-                  : 'bg-bg text-text-secondary hover:bg-primary/5',
-              )}
-            >
-              Me deben
-            </button>
-            <button
-              type="button"
-              onClick={() => setDirection('i_owe')}
-              className={clsx(
-                'flex-1 py-2.5 text-[13px] font-bold transition-colors',
-                direction === 'i_owe'
-                  ? 'bg-debt text-white'
-                  : 'bg-bg text-text-secondary hover:bg-debt/5',
-              )}
-            >
-              Yo debo
-            </button>
-          </div>
-        </div>
-
-        {/* Name with autocomplete */}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="loan-name-input" className="text-sm font-medium text-text">
-            {direction === 'owed_to_me' ? '¿Quién te debe?' : '¿A quién le debes?'}
-          </label>
-          <input
-            id="loan-name-input"
-            list="loan-names-list"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nombre"
-            autoComplete="off"
-            className="h-12 w-full rounded-xl border border-border bg-bg-elevated px-4 text-base text-text placeholder:text-text-tertiary transition-all hover:border-border-strong focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          />
-          <datalist id="loan-names-list">
-            {existingNames.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
-        </div>
-
-        <Input
-          label="Monto"
-          type="number"
-          inputMode="decimal"
-          placeholder="0"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min="0.01"
-          step="any"
-        />
-
-        <Input
-          label="Concepto (opcional)"
-          placeholder="Para el celular, comida de ayer…"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-
-        {formError && <p className="text-xs text-debt">• {formError}</p>}
-
-        <Button type="submit" loading={submitting} className="mt-1">
-          {isEdit ? 'Guardar cambios' : 'Registrar préstamo'}
-        </Button>
-      </form>
-    </Modal>
   )
 }

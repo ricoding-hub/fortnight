@@ -4,6 +4,9 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { resizeImage } from '@/lib/image'
 import { errorMessage } from '@/lib/errorMessage'
+import { memberIsMe } from '@/lib/loanFormat'
+
+export { memberIsMe }
 import {
   computeShares,
   fromCents,
@@ -65,6 +68,9 @@ export interface GroupComputed {
   invites: SplitInvite[]
   /** Legacy 1:1 loans in this group (empty for connected groups — loans stay private). */
   legacyLoans: Loan[]
+  /** Loans with this contact that are excluded from the shared math because the
+   *  group is connected. Private to their owner, but still shown to them. */
+  privateLoans: Loan[]
   /** expense_id → shares, for attribution and feed impact lines. */
   sharesByExpense: Map<string, SplitExpenseShare[]>
   /** memberId → net in pesos. Positive = creditor. */
@@ -94,11 +100,6 @@ function normName(s: string): string {
 }
 
 /** Is this member row the current user? Prefers the real link, falls back to is_me. */
-export function memberIsMe(m: SplitMember, userId: string | undefined): boolean {
-  if (!userId) return false
-  if (m.member_user_id != null) return m.member_user_id === userId
-  return m.is_me
-}
 
 /**
  * Shared-expense groups, multi-user aware. One realtime subscription on
@@ -254,15 +255,18 @@ export function useSplitGroups(legacy: LegacyInputs) {
         (m) => !memberIsMe(m, user.id) && m.member_user_id != null,
       )
 
+      // Loans belonging to this relationship, connected or not.
+      const matchedLoans = legacy.loans.filter(
+        (l) =>
+          l.group_id === group.id ||
+          (l.group_id == null && contact != null && normName(l.name) === normName(contact.name)),
+      )
       // Legacy loans stay PRIVATE: excluded from the shared math the moment
-      // a group is connected, so every member sees the same numbers.
-      const legacyLoans = isConnected
-        ? []
-        : legacy.loans.filter(
-            (l) =>
-              l.group_id === group.id ||
-              (l.group_id == null && contact != null && normName(l.name) === normName(contact.name)),
-          )
+      // a group is connected, so every member sees the same numbers. They are
+      // still surfaced to their owner via `privateLoans` — hiding them from the
+      // math must not mean hiding them from the person who registered them.
+      const legacyLoans = isConnected ? [] : matchedLoans
+      const privateLoans = isConnected ? matchedLoans : []
 
       let legacyNets: Map<string, number> | undefined
       if (legacyLoans.length > 0 && me && contact) {
@@ -312,6 +316,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         activity: activityByGroup.get(group.id) ?? [],
         invites: invitesByGroup.get(group.id) ?? [],
         legacyLoans,
+        privateLoans,
         sharesByExpense,
         nets: new Map([...netsCents.entries()].map(([id, c]) => [id, fromCents(c)])),
         suggestions: suggestions.map((t) => ({
@@ -736,7 +741,9 @@ export function useSplitGroups(legacy: LegacyInputs) {
         .from('split_groups')
         .select('id, split_members(name, member_user_id, left_at)')
         .is('archived_at', null)
-      if (checkErr) console.error('ensureDirectGroup: fresh check failed', checkErr)
+      // A failed check used to fall through to createGroup, which quietly
+      // spawned a duplicate group. Better to surface it than to corrupt.
+      if (checkErr) throw new Error(errorMessage(checkErr))
       const existing = ((myGroups ?? []) as Array<{
         id: string
         split_members: Array<{ name: string; member_user_id: string | null; left_at: string | null }>

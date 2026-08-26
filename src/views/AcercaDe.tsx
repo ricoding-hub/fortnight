@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.3.0"
+            version="1.3.1"
             date="14 jul 2026"
             current
+            notes={[
+              'Vuelve el detalle de cada préstamo: monto y saldo restante, concepto, fechas, historial de abonos y las acciones de abonar, saldar, editar, eliminar y recuperar',
+              'Ahora puedes eliminar un abono mal registrado y el saldo se recalcula',
+              'En Inicio cada saldo se despliega y muestra sus préstamos activos, con un botón para ir directo al detalle',
+              'Tus préstamos privados vuelven a verse dentro de una conexión, marcados como no incluidos en el balance del grupo',
+              'Los contactos con todo saldado ya no desaparecen: su historial sigue disponible',
+            ]}
+          />
+          <VersionRow
+            version="1.3.0"
+            date="14 jul 2026"
             notes={[
               'Préstamos rediseñado estilo Splitwise: saldos claros por persona y grupo (te deben / debes), con acciones para saldar',
               'Categoría en los gastos compartidos: se asigna sola por el nombre (p. ej. "alitas" → Comida) y puedes cambiarla',

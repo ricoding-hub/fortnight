@@ -27,8 +27,10 @@ import { useScoreHistory } from '@/hooks/useScoreHistory'
 import { useMissions } from '@/hooks/useMissions'
 import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
-import { usePeopleBalances } from '@/hooks/usePeopleBalances'
+import { usePeopleBalances, type BalanceEntry } from '@/hooks/usePeopleBalances'
+import { useLoanActions } from '@/hooks/useLoanActions'
 import { BalanceRow } from '@/components/split/BalanceRow'
+import { ContactLoansModal } from '@/components/split/ContactLoansModal'
 
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -70,17 +72,28 @@ export function Resumen() {
   const { user } = useAuth()
   const { displayName, avatarUrl } = useProfile()
   const { data: accounts, loading, error } = useAccounts()
-  const { active: activeLoans, data: allLoans, paymentsByLoan } = useLoans()
+  const loansApi = useLoans()
+  const { active: activeLoans, paid: paidLoans, data: allLoans, paymentsByLoan } = loansApi
   const { groups: splitGroups, profiles: splitProfiles, displayName: memberDisplayName } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const balances = usePeopleBalances({
     active: activeLoans,
+    paid: paidLoans,
     paymentsByLoan,
     splitGroups,
     profiles: splitProfiles,
     displayName: memberDisplayName,
     userId: user?.id,
   })
-  const topBalances = balances.entries.filter((e) => Math.abs(e.net) > 0.005).slice(0, 4)
+  // Only balances that still owe something, densest first. Three keeps Home
+  // to one screen now that rows can expand into their loans.
+  const topBalances = balances.entries.filter((e) => Math.abs(e.net) > 0.005).slice(0, 3)
+  /** Person sheet for a contact with no split group — no writes, works offline. */
+  const [contactSheet, setContactSheet] = useState<BalanceEntry | null>(null)
+  const loanActions = useLoanActions({
+    loans: loansApi,
+    existingNames: Array.from(new Set(allLoans.map((l) => l.name.trim()))).sort(),
+    afterMutation: loansApi.refetch,
+  })
   const { data: recentTx } = useTransactions()
   const { data: goals } = useGoals()
   const { data: gami, loading: gamiLoading, nextLevelXP, levelProgress } = useGamification()
@@ -818,9 +831,20 @@ export function Resumen() {
                 key={e.key}
                 entry={e}
                 compact
-                onOpen={() =>
-                  navigate(e.groupId ? `/cuentas/prestamos/${e.groupId}` : '/cuentas/prestamos')
-                }
+                maxLoans={2}
+                paymentsByLoan={paymentsByLoan}
+                onOpen={() => {
+                  // A real group has its own screen; a local contact opens their
+                  // sheet instead of landing on the generic list.
+                  if (e.groupId) navigate(`/cuentas/prestamos/${e.groupId}`)
+                  else setContactSheet(e)
+                }}
+                onOpenLoan={loanActions.openDetail}
+                onAbonoLoan={loanActions.openAbono}
+                onMarkPaidLoan={loanActions.openMarkPaid}
+                onEditLoan={loanActions.openEdit}
+                onDeleteLoan={loanActions.openDelete}
+                onUnmarkPaidLoan={loanActions.openDetail}
               />
             ))}
           </section>
@@ -836,7 +860,28 @@ export function Resumen() {
       </section>
 
       {/* Bottom spacer for tab bar */}
-      <div className="h-24" />
+      <div className="h-4" />
+
+      {loanActions.modals}
+
+      {contactSheet && (
+        <ContactLoansModal
+          open
+          onClose={() => setContactSheet(null)}
+          name={contactSheet.name}
+          avatarUrl={contactSheet.avatarUrl}
+          net={contactSheet.net}
+          activeLoans={contactSheet.loans}
+          paidLoans={contactSheet.paidLoans}
+          paymentsByLoan={paymentsByLoan}
+          onOpenLoan={loanActions.openDetail}
+          onAbono={loanActions.openAbono}
+          onMarkPaid={loanActions.openMarkPaid}
+          onEdit={loanActions.openEdit}
+          onDelete={loanActions.openDelete}
+          onUnmarkPaid={loanActions.openDetail}
+        />
+      )}
     </div>
   )
 }

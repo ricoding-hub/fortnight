@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { loanRemaining } from '@/lib/loanFormat'
+
+export { loanRemaining }
 import type { Loan, LoanDirection, LoanPayment } from '@/types'
 
 export interface NewLoan {
@@ -23,18 +26,6 @@ export interface MarkPaidOpts {
 
 const EMPTY: Loan[] = []
 const EMPTY_PAYMENTS: LoanPayment[] = []
-
-/**
- * Remaining balance on a loan after partial payments. Computed in integer
- * centavos (matching the settle/waterfall math in useSplitGroups, which sums
- * `toCents` per payment) so the amount shown never disagrees with the amount
- * actually settled by a centavo.
- */
-export function loanRemaining(loan: Loan, payments: LoanPayment[]): number {
-  const paidCents = payments.reduce((s, p) => s + Math.round(Number(p.amount) * 100), 0)
-  const amountCents = Math.round(Number(loan.amount) * 100)
-  return Math.max(0, (amountCents - paidCents) / 100)
-}
 
 export function useLoans() {
   const { user } = useAuth()

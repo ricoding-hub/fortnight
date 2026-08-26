@@ -26,7 +26,6 @@ import { useSplitGroups, memberIsMe, type NewSettlement } from '@/hooks/useSplit
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -36,9 +35,10 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { ExpenseFormModal } from '@/components/split/ExpenseFormModal'
 import { SettleModal } from '@/components/split/SettleModal'
 import { AddMemberModal } from '@/components/split/AddMemberModal'
-import { AbonoModal, MarkPaidModal } from '@/components/split/LoanActionModals'
 import { SettleAllModal } from '@/components/split/SettleAllModal'
 import { ExpenseDetailModal } from '@/components/split/ExpenseDetailModal'
+import { LoanRow } from '@/components/split/LoanRow'
+import { useLoanActions } from '@/hooks/useLoanActions'
 import { ImageCropModal } from '@/components/ui/ImageCropModal'
 import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { useCategories } from '@/hooks/useCategories'
@@ -87,8 +87,7 @@ export function PrestamoGrupo() {
   const [renameOpen, setRenameOpen] = useState(false)
   const [deletingExpense, setDeletingExpense] = useState<SplitExpense | null>(null)
   const [deletingSettlement, setDeletingSettlement] = useState<SplitSettlement | null>(null)
-  const [abonoLoan, setAbonoLoan] = useState<Loan | null>(null)
-  const [markPaidLoan, setMarkPaidLoan] = useState<Loan | null>(null)
+  const [showPaidLoans, setShowPaidLoans] = useState(false)
   const [settleAllOpen, setSettleAllOpen] = useState(false)
   const [uploadingGroupImage, setUploadingGroupImage] = useState(false)
   const groupImageRef = useRef<HTMLInputElement>(null)
@@ -144,6 +143,33 @@ export function PrestamoGrupo() {
     )
   }, [g, user, loans.data])
   const [syncing, setSyncing] = useState(false)
+
+  /* ── Loan actions: detail, abono, saldar, editar, eliminar, recuperar ── */
+  const loanActions = useLoanActions({
+    loans,
+    existingNames: Array.from(new Set(loans.data.map((l) => l.name.trim()))).sort(),
+    afterMutation: loans.refetch,
+  })
+
+  /**
+   * Loans shown here. A connected group keeps loans out of the SHARED math
+   * (`legacyLoans` is empty then) but they are still mine to see and manage —
+   * hiding the math must not mean hiding the loan.
+   */
+  const groupLoans = useMemo(() => [...(g?.legacyLoans ?? []), ...(g?.privateLoans ?? [])], [g])
+  const visibleLoans = useMemo(() => groupLoans.filter((l) => !l.paid_at), [groupLoans])
+  const paidLoans = useMemo(() => groupLoans.filter((l) => l.paid_at), [groupLoans])
+
+  const loanRowProps = (l: Loan) => ({
+    loan: l,
+    payments: loans.paymentsByLoan[l.id] ?? [],
+    onOpenDetail: () => loanActions.openDetail(l),
+    onAbono: () => loanActions.openAbono(l),
+    onMarkPaid: () => loanActions.openMarkPaid(l),
+    onEdit: () => loanActions.openEdit(l),
+    onDelete: () => loanActions.openDelete(l),
+    onUnmarkPaid: () => loanActions.openDetail(l),
+  })
 
   // File pick → open the square cropper. Upload happens on crop confirm.
   function handleGroupImagePick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -234,7 +260,8 @@ export function PrestamoGrupo() {
     )
   }
 
-  const hasActivity = g.expenses.length > 0 || g.settlements.length > 0 || g.legacyLoans.length > 0
+  const hasActivity =
+    g.expenses.length > 0 || g.settlements.length > 0 || groupLoans.length > 0
   const visibleActivity = showAllActivity ? g.activity : g.activity.slice(0, 8)
   // A 2-person relationship is a direct 1:1 connection, not a "group".
   const isDirect = g.activeMembers.length === 2
@@ -691,45 +718,43 @@ export function PrestamoGrupo() {
                   </li>
                 )
               })}
-              {g.legacyLoans.filter((l) => !l.paid_at).map((l) => {
-                const remaining = loanRemaining(l, loans.paymentsByLoan[l.id] ?? [])
-                return (
-                  <li key={l.id} className="py-2.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
-                        <IconArrowsExchange size={15} stroke={2} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold text-text">
-                          Préstamo · {l.name}
-                        </p>
-                        <p className="text-[11px] text-text-tertiary">
-                          {l.direction === 'owed_to_me' ? 'Te debe' : 'Le debes'} · {formatDateGroupMX(l.created_at)}
-                        </p>
-                      </div>
-                      <Badge variant={l.direction === 'owed_to_me' ? 'info' : 'danger'}>
-                        {formatMXN(remaining)}
-                      </Badge>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-1.5 pl-11">
-                      <button
-                        type="button"
-                        onClick={() => setAbonoLoan(l)}
-                        className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-deep transition-colors hover:bg-primary/20"
-                      >
-                        + Abono
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMarkPaidLoan(l)}
-                        className="flex items-center gap-1 rounded-lg bg-asset/10 px-2.5 py-1.5 text-[11.5px] font-semibold text-asset-deep transition-colors hover:bg-asset/20"
-                      >
-                        <IconCheck size={12} /> Saldado
-                      </button>
-                    </div>
-                  </li>
-                )
-              })}
+              {visibleLoans.length > 0 && g.isConnected && (
+                <li className="pt-2">
+                  <p className="text-[10.5px] font-bold uppercase tracking-wider text-text-tertiary">
+                    Tus préstamos privados
+                  </p>
+                  <p className="mt-0.5 text-[10.5px] leading-snug text-text-tertiary">
+                    Solo tú los ves. No cuentan en el balance del grupo hasta que los sincronices.
+                  </p>
+                </li>
+              )}
+              {visibleLoans.map((l) => (
+                <li key={l.id} className="py-1">
+                  <LoanRow compact {...loanRowProps(l)} />
+                </li>
+              ))}
+              {paidLoans.length > 0 && (
+                <li className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaidLoans((v) => !v)}
+                    className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+                  >
+                    {showPaidLoans
+                      ? 'Ocultar préstamos saldados'
+                      : `Ver préstamos saldados (${paidLoans.length})`}
+                  </button>
+                  {showPaidLoans && (
+                    <ul className="mt-1.5 flex flex-col gap-1.5 animate-[fade-in_200ms_ease-out]">
+                      {paidLoans.map((l) => (
+                        <li key={l.id}>
+                          <LoanRow compact {...loanRowProps(l)} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )}
             </ul>
           </Card>
         )}
@@ -873,35 +898,7 @@ export function PrestamoGrupo() {
         }}
       />
 
-      {abonoLoan && (
-        <AbonoModal
-          open
-          loan={abonoLoan}
-          payments={loans.paymentsByLoan[abonoLoan.id] ?? []}
-          onClose={() => setAbonoLoan(null)}
-          onSubmit={async (amount, opts) => {
-            await loans.addPayment(abonoLoan.id, amount, opts)
-            await loans.refetch()
-            toast.success('Abono registrado', `Abono de ${formatMXN(amount)} guardado`)
-            setAbonoLoan(null)
-          }}
-        />
-      )}
-
-      {markPaidLoan && (
-        <MarkPaidModal
-          open
-          loan={markPaidLoan}
-          payments={loans.paymentsByLoan[markPaidLoan.id] ?? []}
-          onClose={() => setMarkPaidLoan(null)}
-          onSubmit={async (opts) => {
-            await loans.markPaid(markPaidLoan.id, opts)
-            await loans.refetch()
-            toast.success('Préstamo saldado', `El préstamo de ${markPaidLoan.name} está saldado`)
-            setMarkPaidLoan(null)
-          }}
-        />
-      )}
+      {loanActions.modals}
 
       {settleAllOpen && (
         <SettleAllModal
