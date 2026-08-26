@@ -58,6 +58,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (error) throw error
+    // The service worker caches API reads so the app works offline. On a
+    // shared device those are someone's balances: drop them on the way out.
+    if ('caches' in window) {
+      try {
+        await caches.delete('supabase-data-cache')
+      } catch {
+        // Storage denied (private mode): nothing cached to leak either.
+      }
+    }
   }
 
   const value: AuthContextValue = {

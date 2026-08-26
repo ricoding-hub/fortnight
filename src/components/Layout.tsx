@@ -2,6 +2,8 @@ import { Outlet } from 'react-router-dom'
 import { BottomNav } from '@/components/BottomNav'
 import { Sidebar } from '@/components/Sidebar'
 import { PetCompanion } from '@/components/PetCompanion'
+import { PwaBanner } from '@/components/PwaBanner'
+import { InstallPrompt } from '@/components/InstallPrompt'
 import { TransactionFormModal } from '@/components/TransactionFormModal'
 import { useUiStore } from '@/store/uiStore'
 import { useAccounts } from '@/hooks/useAccounts'
@@ -35,6 +37,8 @@ export function Layout() {
         {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col lg:py-4 lg:pr-4">
           <main className="mx-auto w-full max-w-[480px] flex-1 pb-28 lg:max-w-none lg:rounded-2xl lg:bg-bg-elevated/60 lg:shadow-card lg:backdrop-blur-sm lg:pb-6 lg:px-6 lg:pt-2">
+            <PwaBanner />
+            <InstallPrompt />
             <Outlet />
           </main>
         </div>

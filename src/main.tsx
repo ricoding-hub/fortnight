@@ -1,32 +1,51 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { usePwaStore, type BeforeInstallPromptEvent } from '@/store/pwaStore'
 
-// iOS PWA: el navegador no verifica actualizaciones del SW cuando la app
-// vuelve del background. Este listener lo fuerza en cada visita activa,
-// y recarga la página cuando un nuevo SW toma control.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.ready.then((reg) => {
+/**
+ * Service worker: registered in 'prompt' mode. A new version waits instead of
+ * taking over, so the app never reloads out from under someone mid-capture.
+ * The banner asks; `applyUpdate` is what actually swaps and reloads.
+ */
+const updateSW = registerSW({
+  onNeedRefresh() {
+    usePwaStore.getState().setUpdateReady(true)
+  },
+  onRegisteredSW(_url, reg) {
+    if (!reg) return
+    // iOS PWA: Safari doesn't check for a new worker when the app returns from
+    // the background, so we ask on every activation.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        reg.update()
-      }
+      if (document.visibilityState === 'visible') void reg.update()
     })
-  })
+  },
+})
+usePwaStore.getState().setApplyUpdate(() => void updateSW(true))
 
-  // Reload only on genuine SW *updates*. With clientsClaim, controllerchange
-  // also fires on the very first install (previous controller = null), which
-  // used to flash-reload a user's first visit; and without the flag,
-  // back-to-back updates could reload more than once.
-  const hadController = !!navigator.serviceWorker.controller
-  let refreshing = false
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController || refreshing) return
-    refreshing = true
-    window.location.reload()
-  })
-}
+/** Connectivity, surfaced to the user rather than guessed at. */
+window.addEventListener('offline', () => {
+  usePwaStore.getState().setOffline(true)
+})
+window.addEventListener('online', () => {
+  const s = usePwaStore.getState()
+  s.setOffline(false)
+  s.setBackOnline(true)
+})
+
+/**
+ * Install prompt: Chrome fires this once and, if we ignore it, the user can
+ * never get the offer back. Stash it so the app can offer installing itself.
+ */
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  usePwaStore.getState().setInstallEvent(e as BeforeInstallPromptEvent)
+})
+window.addEventListener('appinstalled', () => {
+  usePwaStore.getState().setInstallEvent(null)
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

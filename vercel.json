@@ -7,7 +7,7 @@
     { "path": "/api/cron/payment-alerts", "schedule": "0 15 * * *" }
   ],
   "rewrites": [
-    { "source": "/((?!api|assets|icons|favicon|manifest).*)", "destination": "/index.html" }
+    { "source": "/((?!api|assets|icons|favicon|manifest|sw\\.js|registerSW\\.js|workbox-).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -27,7 +27,7 @@
     {
       "source": "/icons/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        { "key": "Cache-Control", "value": "public, max-age=86400, must-revalidate" }
       ]
     },
     {

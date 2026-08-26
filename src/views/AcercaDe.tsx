@@ -121,9 +121,21 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.3.2"
+            version="1.4.0"
             date="14 jul 2026"
             current
+            notes={[
+              'Ahora puedes instalar Fortnight desde la propia app, con guía paso a paso en iPhone',
+              'Sin conexión ya ves tus últimos datos guardados, no solo la app vacía; y un aviso te dice cuándo estás sin red',
+              'Las versiones nuevas ya no recargan solas a media captura: la app te avisa y tú decides cuándo actualizar',
+              'Se puede volver a hacer zoom en toda la app',
+              'Accesos rápidos a Movimientos, Préstamos y Plan al mantener pulsado el icono',
+              'Al cerrar sesión se borran los datos guardados en el dispositivo',
+            ]}
+          />
+          <VersionRow
+            version="1.3.2"
+            date="14 jul 2026"
             notes={[
               'Al desplegar un saldo ahora ves lo que lo compone: los gastos compartidos y los préstamos activos, no una tarjeta vacía',
               'Los préstamos saldados pasan a ser historial, discretos y al final; ya no son lo único visible',
