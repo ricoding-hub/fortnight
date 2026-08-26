@@ -9,6 +9,7 @@ import {
 import clsx from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { LoanRow } from '@/components/split/LoanRow'
+import { SplitMovementRow } from '@/components/split/SplitMovementRow'
 import { formatMXN } from '@/lib/format'
 import type { BalanceEntry } from '@/hooks/usePeopleBalances'
 import type { Loan, LoanPayment } from '@/types'
@@ -17,8 +18,8 @@ interface BalanceRowProps {
   entry: BalanceEntry
   /** Denser padding for Home. Rows still expand in both modes. */
   compact?: boolean
-  /** How many open loans to list before offering "ver todos". */
-  maxLoans?: number
+  /** How many active items (loans + movements) to list before "ver más". */
+  maxItems?: number
   paymentsByLoan?: Record<string, LoanPayment[]>
   /** Open the person/group detail (button next to the chevron). */
   onOpen?: () => void
@@ -57,7 +58,7 @@ function memberLabel(net: number): string {
 export function BalanceRow({
   entry,
   compact = false,
-  maxLoans,
+  maxItems,
   paymentsByLoan = {},
   onOpen,
   onSettle,
@@ -69,7 +70,7 @@ export function BalanceRow({
   onUnmarkPaidLoan,
 }: BalanceRowProps) {
   const [expanded, setExpanded] = useState(false)
-  const [showAllLoans, setShowAllLoans] = useState(false)
+  const [showAllActive, setShowAllActive] = useState(false)
   const [showPaid, setShowPaid] = useState(false)
   const color = netColor(entry.net)
 
@@ -78,10 +79,15 @@ export function BalanceRow({
   const nameById = new Map((entry.memberBalances ?? []).map((m) => [m.id, m.name]))
   const resolveName = (id: string) => nameById.get(id) ?? entry.name
 
-  const limit = maxLoans ?? entry.loans.length
-  const visibleLoans = showAllLoans ? entry.loans : entry.loans.slice(0, limit)
-  const hiddenCount = entry.loans.length - visibleLoans.length
-  const hasLoanUI = entry.loans.length > 0 || entry.paidLoans.length > 0
+  // Open loans and shared movements share one budget: loans first (they carry
+  // actions), movements fill whatever is left.
+  const limit = maxItems ?? Number.MAX_SAFE_INTEGER
+  const visibleLoans = showAllActive ? entry.loans : entry.loans.slice(0, limit)
+  const movementBudget = Math.max(0, limit - visibleLoans.length)
+  const visibleMovements = showAllActive ? entry.movements : entry.movements.slice(0, movementBudget)
+  const hiddenActive =
+    entry.loans.length - visibleLoans.length + (entry.movements.length - visibleMovements.length)
+  const hasActive = visibleLoans.length > 0 || visibleMovements.length > 0
 
   const loanRowProps = (loan: Loan) => ({
     loan,
@@ -175,35 +181,53 @@ export function BalanceRow({
             </ul>
           )}
 
-          {/* The individual loans behind this balance */}
-          {hasLoanUI && (
+          {/* What the balance is actually made of: open loans first, then the
+              shared movements. A connected contact's loans get synced into the
+              group, so movements are often the ONLY thing behind the number. */}
+          {hasActive ? (
             <div className="mb-2 flex flex-col gap-1.5">
               {visibleLoans.map((l) => (
                 <LoanRow key={l.id} {...loanRowProps(l)} />
               ))}
 
-              {hiddenCount > 0 && (
+              {visibleMovements.map((mv) => (
+                <SplitMovementRow key={`${mv.kind}:${mv.id}`} mv={mv} />
+              ))}
+
+              {hiddenActive > 0 && !showAllActive && (
                 <button
                   type="button"
-                  onClick={() => setShowAllLoans(true)}
+                  onClick={() => setShowAllActive(true)}
                   className="self-start text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
                 >
-                  Ver los {hiddenCount} restantes
+                  Ver {hiddenActive} más
                 </button>
               )}
+            </div>
+          ) : (
+            <p className="mb-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-center text-[11.5px] text-text-tertiary">
+              Sin movimientos activos
+            </p>
+          )}
 
-              {entry.paidLoans.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowPaid((v) => !v)}
-                    className="self-start text-[11px] font-bold text-text-tertiary transition-colors hover:text-text-secondary"
-                  >
-                    {showPaid ? 'Ocultar saldados' : `Ver saldados (${entry.paidLoans.length})`}
-                  </button>
-                  {showPaid &&
-                    entry.paidLoans.map((l) => <LoanRow key={l.id} {...loanRowProps(l)} />)}
-                </>
+          {/* History only — settled loans are not what the user came for. */}
+          {entry.paidLoans.length > 0 && (
+            <div className="mb-2">
+              <button
+                type="button"
+                onClick={() => setShowPaid((v) => !v)}
+                className="text-[10.5px] font-semibold text-text-tertiary underline decoration-dotted underline-offset-2 transition-colors hover:text-text-secondary"
+              >
+                {showPaid
+                  ? 'Ocultar historial'
+                  : `Historial · ${entry.paidLoans.length} saldado${entry.paidLoans.length === 1 ? '' : 's'}`}
+              </button>
+              {showPaid && (
+                <div className="mt-1.5 flex flex-col gap-1.5 animate-[fade-in_200ms_ease-out]">
+                  {entry.paidLoans.map((l) => (
+                    <LoanRow key={l.id} {...loanRowProps(l)} />
+                  ))}
+                </div>
               )}
             </div>
           )}

@@ -1,6 +1,23 @@
 import { loanRemaining, loanActivityKey, memberIsMe } from '@/lib/loanFormat'
 import type { GroupComputed } from '@/hooks/useSplitGroups'
-import type { Loan, LoanPayment, Profile, SplitMember } from '@/types'
+import type { Loan, LoanPayment, Profile, SplitExpense, SplitMember, SplitSettlement } from '@/types'
+
+/**
+ * A shared expense or settlement behind a balance. Structurally identical to
+ * `SplitMovement` so it can be handed straight to `SplitMovementRow`, but
+ * declared here to keep this module free of component imports.
+ */
+export interface BalanceMovement {
+  kind: 'expense' | 'settlement'
+  id: string
+  description: string
+  payerName: string
+  date: string
+  /** Contribution to my net: + they owe me, − I owe. */
+  myEffect: number
+  expense?: SplitExpense
+  settlement?: SplitSettlement
+}
 
 /** One person or group balance, unified across legacy loans + split groups. */
 export interface BalanceEntry {
@@ -23,6 +40,9 @@ export interface BalanceEntry {
   loans: Loan[]
   /** Settled loans with this person, most recently settled first. */
   paidLoans: Loan[]
+  /** Shared expenses/settlements behind the balance, newest first. Often the
+   *  ONLY thing behind it — a connected contact's loans get synced away. */
+  movements: BalanceMovement[]
   /** Per-member balances for a 3+ group (Splitwise "recupera/debe en total"). */
   memberBalances?: Array<{ id: string; name: string; avatarUrl?: string; net: number }>
   /** Suggested pairwise transfers ("A debe X a B") for a group. */
@@ -56,6 +76,7 @@ const EMPTY: PeopleBalances = {
   entries: [], totalCobrar: 0, totalPagar: 0, netoTotal: 0, peopleOwingMe: 0, peopleIOwe: 0,
 }
 const NO_LOANS: Loan[] = []
+const NO_MOVEMENTS: BalanceMovement[] = []
 
 function norm(s: string): string {
   return s.trim().toLowerCase()
@@ -94,6 +115,43 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
     if (contact) directByContact.set(norm(contact.name), g)
   }
 
+  /** Shared expenses + settlements of a group, from my point of view. */
+  function movementsOf(g: GroupComputed | undefined): BalanceMovement[] {
+    if (!g) return NO_MOVEMENTS
+    const meMember = g.activeMembers.find((m) => memberIsMe(m, userId))
+    if (!meMember) return NO_MOVEMENTS
+    const out: BalanceMovement[] = []
+    for (const e of g.expenses) {
+      const myShare = (g.sharesByExpense.get(e.id) ?? [])
+        .filter((sh) => sh.member_id === meMember.id)
+        .reduce((s, sh) => s + Number(sh.amount), 0)
+      const iPaid = e.paid_by_member_id === meMember.id
+      const payer = g.members.find((m) => m.id === e.paid_by_member_id)
+      out.push({
+        kind: 'expense',
+        id: e.id,
+        description: e.description,
+        payerName: payer ? displayName(payer) : '—',
+        date: e.expense_date,
+        myEffect: iPaid ? Number(e.amount) - myShare : -myShare,
+        expense: e,
+      })
+    }
+    for (const st of g.settlements) {
+      const received = st.to_member_id === meMember.id
+      out.push({
+        kind: 'settlement',
+        id: st.id,
+        description: received ? 'Recibiste un pago' : 'Pagaste',
+        payerName: '',
+        date: st.created_at,
+        myEffect: received ? -Number(st.amount) : Number(st.amount),
+        settlement: st,
+      })
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date))
+  }
+
   const entries: BalanceEntry[] = []
   const coveredContactKeys = new Set<string>()
 
@@ -125,6 +183,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
       count: loans.length,
       loans,
       paidLoans,
+      movements: movementsOf(direct),
     })
     coveredContactKeys.add(key)
   }
@@ -147,6 +206,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
       count: 1,
       loans: NO_LOANS,
       paidLoans: NO_LOANS,
+      movements: movementsOf(g),
     })
     coveredContactKeys.add(norm(contact.name))
   }
@@ -166,6 +226,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
       count: g.activeMembers.length,
       loans: NO_LOANS,
       paidLoans: NO_LOANS,
+      movements: movementsOf(g),
       memberBalances: g.activeMembers.map((m) => ({
         id: m.id,
         name: displayName(m),

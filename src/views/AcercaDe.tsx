@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.3.1"
+            version="1.3.2"
             date="14 jul 2026"
             current
+            notes={[
+              'Al desplegar un saldo ahora ves lo que lo compone: los gastos compartidos y los préstamos activos, no una tarjeta vacía',
+              'Los préstamos saldados pasan a ser historial, discretos y al final; ya no son lo único visible',
+            ]}
+          />
+          <VersionRow
+            version="1.3.1"
+            date="14 jul 2026"
             notes={[
               'Vuelve el detalle de cada préstamo: monto y saldo restante, concepto, fechas, historial de abonos y las acciones de abonar, saldar, editar, eliminar y recuperar',
               'Ahora puedes eliminar un abono mal registrado y el saldo se recalcula',

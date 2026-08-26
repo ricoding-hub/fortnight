@@ -831,7 +831,7 @@ export function Resumen() {
                 key={e.key}
                 entry={e}
                 compact
-                maxLoans={2}
+                maxItems={2}
                 paymentsByLoan={paymentsByLoan}
                 onOpen={() => {
                   // A real group has its own screen; a local contact opens their

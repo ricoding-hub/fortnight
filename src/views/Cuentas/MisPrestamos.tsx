@@ -241,6 +241,7 @@ export function MisPrestamos() {
 
   /** Wiring shared by every BalanceRow: per-loan actions. */
   const loanRowHandlers = {
+    maxItems: 6,
     paymentsByLoan,
     onOpenLoan: loanActions.openDetail,
     onAbonoLoan: loanActions.openAbono,
