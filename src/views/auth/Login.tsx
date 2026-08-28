@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { IconMailForward, IconCheck } from '@tabler/icons-react'
 import { useAuth } from '@/hooks/useAuth'
+import { errorMessage } from '@/lib/errorMessage'
+import { isIOS, isStandalone } from '@/lib/platform'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -33,6 +35,8 @@ function GoogleIcon() {
 
 export function Login() {
   const { signInWithEmail, signInWithGoogle } = useAuth()
+  // The magic link opens in Safari, which an installed iOS app can't see.
+  const showIosNote = isIOS() && !isStandalone()
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState('')
@@ -47,7 +51,11 @@ export function Login() {
       setStatus('sent')
     } catch (err) {
       setStatus('error')
-      setError(err instanceof Error ? err.message : 'Algo salió mal')
+      setError(
+        navigator.onLine
+          ? errorMessage(err)
+          : 'Sin conexión. Conéctate a internet para recibir tu enlace de acceso.',
+      )
     }
   }
 
@@ -58,7 +66,11 @@ export function Login() {
       await signInWithGoogle()
     } catch (err) {
       setGoogleLoading(false)
-      setError(err instanceof Error ? err.message : 'No se pudo conectar con Google')
+      setError(
+        navigator.onLine
+          ? errorMessage(err)
+          : 'Sin conexión. Conéctate a internet para entrar con Google.',
+      )
     }
   }
 
@@ -143,6 +155,12 @@ export function Login() {
                   <IconMailForward size={18} />
                   Enviar enlace de acceso
                 </Button>
+                {showIosNote && (
+                  <p className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[11.5px] leading-snug text-text-secondary">
+                    En iPhone el enlace abre en Safari. Si ya instalaste Fortnight,
+                    entra con Google para que la app quede con tu sesión.
+                  </p>
+                )}
               </form>
 
               {/* Google-level error */}

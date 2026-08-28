@@ -19,7 +19,9 @@ const updateSW = registerSW({
     // iOS PWA: Safari doesn't check for a new worker when the app returns from
     // the background, so we ask on every activation.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') void reg.update()
+      // Offline this rejects; `void` wouldn't catch it and every tab focus
+      // would log an unhandled rejection.
+      if (document.visibilityState === 'visible') reg.update().catch(() => {})
     })
   },
 })

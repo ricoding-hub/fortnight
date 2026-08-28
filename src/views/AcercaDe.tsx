@@ -121,9 +121,21 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.4.0"
+            version="1.4.1"
             date="14 jul 2026"
             current
+            notes={[
+              'Corregido un fallo que podía mover dinero en tu cuenta sin registrar el abono si la conexión se cortaba a media operación',
+              'El icono de la app ya no se recorta mal en Android',
+              'Cancelar la instalación ya no hace desaparecer el botón de instalar',
+              'Los errores al entrar se muestran en español, y te avisa si es por falta de conexión',
+              'En iPhone te decimos que entres con Google para que la app instalada quede con tu sesión',
+              'Si la red no responde, las pantallas ya no se quedan cargando para siempre',
+            ]}
+          />
+          <VersionRow
+            version="1.4.0"
+            date="14 jul 2026"
             notes={[
               'Ahora puedes instalar Fortnight desde la propia app, con guía paso a paso en iPhone',
               'Sin conexión ya ves tus últimos datos guardados, no solo la app vacía; y un aviso te dice cuándo estás sin red',

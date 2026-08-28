@@ -161,22 +161,8 @@ export function useLoans() {
     const paidAt = new Date().toISOString()
     const today = paidAt.slice(0, 10)
 
-    // Optionally create an account transaction
-    if (opts?.accountId) {
-      const resolvedAmount = opts.amount ?? loanRemaining(loan, paymentsByLoan[id] ?? [])
-      if (resolvedAmount > 0) {
-        const txAmount = loan.direction === 'owed_to_me' ? resolvedAmount : -resolvedAmount
-        await supabase.from('transactions').insert({
-          user_id: user.id,
-          account_id: opts.accountId,
-          amount: txAmount,
-          type: 'transaction',
-          description: `Saldo préstamo: ${loan.name}`,
-          date: today,
-        })
-      }
-    }
-
+    // Settle the loan first; only then move money in the account. Doing it the
+    // other way round left an orphan transaction whenever the update failed.
     setData((cur) => cur.map((l) => (l.id === id ? { ...l, paid_at: paidAt } : l)))
     const { error: err } = await supabase
       .from('loans')
@@ -185,6 +171,27 @@ export function useLoans() {
     if (err) {
       setData((cur) => cur.map((l) => (l.id === id ? { ...l, paid_at: null } : l)))
       throw err
+    }
+
+    if (opts?.accountId) {
+      const resolvedAmount = opts.amount ?? loanRemaining(loan, paymentsByLoan[id] ?? [])
+      if (resolvedAmount > 0) {
+        const txAmount = loan.direction === 'owed_to_me' ? resolvedAmount : -resolvedAmount
+        const { error: txErr } = await supabase.from('transactions').insert({
+          user_id: user.id,
+          account_id: opts.accountId,
+          amount: txAmount,
+          type: 'transaction',
+          description: `Saldo préstamo: ${loan.name}`,
+          date: today,
+        })
+        if (txErr) {
+          // Reopen the loan so it never reads as settled without the money.
+          await supabase.from('loans').update({ paid_at: null }).eq('id', id)
+          setData((cur) => cur.map((l) => (l.id === id ? { ...l, paid_at: null } : l)))
+          throw txErr
+        }
+      }
     }
   }
 
@@ -233,10 +240,28 @@ export function useLoans() {
     }
     setPayments((prev) => [...prev, optimistic])
 
-    // Optionally create account transaction
+    // Order matters: the payment is the source of truth, so it goes first. The
+    // account transaction used to be written before it and without checking its
+    // error — if the payment then failed, the account had moved money with no
+    // abono behind it.
+    const { data: inserted, error: err } = await supabase
+      .from('loan_payments')
+      .insert({
+        loan_id: loanId,
+        user_id: user.id,
+        amount,
+        note: opts?.note ?? null,
+      })
+      .select('id')
+      .single()
+    if (err || !inserted) {
+      setPayments((prev) => prev.filter((p) => p.id !== tempId))
+      throw err ?? new Error('No se pudo registrar el abono')
+    }
+
     if (opts?.accountId) {
       const txAmount = loan.direction === 'owed_to_me' ? amount : -amount
-      await supabase.from('transactions').insert({
+      const { error: txErr } = await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: opts.accountId,
         amount: txAmount,
@@ -244,17 +269,12 @@ export function useLoans() {
         description: `Abono: ${loan.name}`,
         date: now.slice(0, 10),
       })
-    }
-
-    const { error: err } = await supabase.from('loan_payments').insert({
-      loan_id: loanId,
-      user_id: user.id,
-      amount,
-      note: opts?.note ?? null,
-    })
-    if (err) {
-      setPayments((prev) => prev.filter((p) => p.id !== tempId))
-      throw err
+      if (txErr) {
+        // Undo the payment so the loan balance and the account never disagree.
+        await supabase.from('loan_payments').delete().eq('id', inserted.id)
+        setPayments((prev) => prev.filter((p) => p.id !== tempId))
+        throw txErr
+      }
     }
   }
 

@@ -3,20 +3,9 @@ import { IconDeviceMobilePlus, IconShare2, IconSquarePlus } from '@tabler/icons-
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { usePwaStore } from '@/store/pwaStore'
+import { isIOS, isStandalone } from '@/lib/platform'
 
 const DISMISS_KEY = 'fortnight:install-dismissed'
-
-/** Already running as an installed app? Then there is nothing to offer. */
-function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false
-  const iosStandalone = (window.navigator as { standalone?: boolean }).standalone === true
-  return window.matchMedia('(display-mode: standalone)').matches || iosStandalone
-}
-
-function isIOS(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(navigator.userAgent)
-}
 
 /**
  * Offer to install the app on our own terms.
@@ -58,8 +47,13 @@ export function InstallPrompt() {
     if (!installEvent) return
     await installEvent.prompt()
     const { outcome } = await installEvent.userChoice
-    setInstallEvent(null)
-    if (outcome === 'accepted') dismiss()
+    // Only burn the event when they actually installed. Clearing it on
+    // 'dismissed' too meant cancelling the dialog killed our own offer until
+    // the next reload — the very trap the browser infobar sets.
+    if (outcome === 'accepted') {
+      setInstallEvent(null)
+      dismiss()
+    }
   }
 
   return (
