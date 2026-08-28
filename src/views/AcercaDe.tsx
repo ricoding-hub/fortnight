@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.4.1"
+            version="1.5.0"
             date="14 jul 2026"
             current
+            notes={[
+              'Richeto ya no interrumpe: te saluda la primera vez que entras a cada sección y después solo habla si lo tocas',
+              'En iPhone la app instalada ya arranca con su pantalla de bienvenida en vez de una pantalla en blanco',
+              'La ficha de instalación en Android ahora muestra vistas previas de la app',
+            ]}
+          />
+          <VersionRow
+            version="1.4.1"
+            date="14 jul 2026"
             notes={[
               'Corregido un fallo que podía mover dinero en tu cuenta sin registrar el abono si la conexión se cortaba a media operación',
               'El icono de la app ya no se recorta mal en Android',

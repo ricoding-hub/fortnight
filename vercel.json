@@ -7,7 +7,7 @@
     { "path": "/api/cron/payment-alerts", "schedule": "0 15 * * *" }
   ],
   "rewrites": [
-    { "source": "/((?!api|assets|icons|favicon|manifest|sw\\.js|registerSW\\.js|workbox-).*)", "destination": "/index.html" }
+    { "source": "/((?!api|assets|icons|splash|screenshots|favicon|manifest|sw\\.js|registerSW\\.js|workbox-).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

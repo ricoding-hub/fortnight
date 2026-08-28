@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { IconPlayerPlay } from '@tabler/icons-react'
+import { useAuth } from '@/hooks/useAuth'
 import { useConfig } from '@/hooks/useConfig'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
@@ -8,25 +9,8 @@ import { Richeto } from '@/components/Richeto'
 import { richetoAdvice, type AdviceTip } from '@/lib/advice'
 import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
 import { useUiStore } from '@/store/uiStore'
+import { moduleKey, moduleMessage, markSeen, readSeen } from '@/lib/richetoModules'
 import type { BucketWithSpend } from '@/lib/plan'
-
-/**
- * Static per-route fallback messages — used when no smart advice tips apply
- * (e.g. user without budget data yet).
- */
-const ROUTE_MESSAGES: Record<string, string> = {
-  '/':                     '¿En qué te ayudo hoy?',
-  '/plan':                 'Ajusta los porcentajes a tu vida — el 50/30/20 es solo el punto de partida.',
-  '/cuentas':              'Mantén tus cuentas al día; un par de segundos por aquí evita sorpresas.',
-  '/cuentas/movimientos':  'Cada peso contado es uno controlado.',
-}
-
-function fallbackMessage(pathname: string): string {
-  if (pathname.startsWith('/cuentas/movimientos')) return ROUTE_MESSAGES['/cuentas/movimientos']
-  if (pathname.startsWith('/plan')) return ROUTE_MESSAGES['/plan']
-  if (pathname.startsWith('/cuentas')) return ROUTE_MESSAGES['/cuentas']
-  return ROUTE_MESSAGES[pathname] ?? '¿En qué te ayudo?'
-}
 
 /** Spent=0 stub until a real rollup exists (mirrors the helper from Resumen). */
 function withZeroSpend(
@@ -49,17 +33,23 @@ function withZeroSpend(
  *     (tap pet to cycle through tips).
  *   • Other routes: static route hint.
  *
- * Auto-opens the bubble briefly when the route changes, then collapses; tap
- * toggles it back on (or cycles to next tip on Home).
+ * Speaks up on its OWN the first time you enter each module, then stays quiet:
+ * after that the bubble only opens when you tap Richeto. Popping open on every
+ * route change turned a helpful hint into noise.
  */
 export function PetCompanion() {
   const location = useLocation()
   const { data: config } = useConfig()
   const { data: planData } = useBudgetPlan()
   const { data: goals } = useGoals()
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
-  const [tipIdx, setTipIdx] = useState(0)
+  // The carousel position belongs to a module: derive the reset instead of
+  // writing it from an effect on every navigation.
+  const [tipState, setTipState] = useState<{ mod: string; idx: number }>({ mod: '', idx: 0 })
   const openTour = useUiStore((s) => s.openTour)
+  const mod = moduleKey(location.pathname)
+  const tipIdx = tipState.mod === mod ? tipState.idx : 0
 
   // Smart tips — only computed on home where they make sense.
   const tips = useMemo<AdviceTip[]>(() => {
@@ -71,14 +61,17 @@ export function PetCompanion() {
     return richetoAdvice(withZeroSpend(planData), monthlyIncome, goals)
   }, [location.pathname, config, planData, goals])
 
-  // Auto-show on route change; reset carousel position.
+  // Introduce the module the first time it's visited; otherwise start closed so
+  // navigating never interrupts. Tapping Richeto is what opens it from then on.
   useEffect(() => {
+    const firstVisit = !readSeen(user?.id).has(mod)
+    if (firstVisit) markSeen(user?.id, mod)
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpen(true)
-    setTipIdx(0)
-    const t = window.setTimeout(() => setOpen(false), 4500)
+    setOpen(firstVisit)
+    if (!firstVisit) return
+    const t = window.setTimeout(() => setOpen(false), 5500)
     return () => window.clearTimeout(t)
-  }, [location.pathname])
+  }, [mod, user?.id])
 
   if (location.pathname.startsWith('/perfil')) return null
   if (config && config.pet_floating === false) return null
@@ -92,7 +85,7 @@ export function PetCompanion() {
       return
     }
     if (tip && tips.length > 1) {
-      setTipIdx((i) => i + 1)
+      setTipState({ mod, idx: tipIdx + 1 })
       return
     }
     setOpen(false)
@@ -140,7 +133,7 @@ export function PetCompanion() {
             </>
           ) : (
             <p className="text-[12.5px] font-semibold leading-snug">
-              {fallbackMessage(location.pathname)}
+              {moduleMessage(location.pathname)}
             </p>
           )}
           <button

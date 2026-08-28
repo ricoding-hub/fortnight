@@ -82,6 +82,22 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        screenshots: [
+          {
+            src: '/screenshots/narrow.png',
+            sizes: '1080x1920',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Fortnight en el teléfono',
+          },
+          {
+            src: '/screenshots/wide.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Fortnight en el escritorio',
+          },
+        ],
         shortcuts: [
           { name: 'Movimientos', short_name: 'Movimientos', url: '/cuentas/movimientos' },
           { name: 'Préstamos', short_name: 'Préstamos', url: '/cuentas/prestamos' },
