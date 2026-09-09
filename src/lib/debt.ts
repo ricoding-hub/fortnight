@@ -25,6 +25,10 @@ export interface ColchonPoint {
 // PostgREST. These helpers coerce safely so no computation ever yields NaN.
 
 function safeNum(v: unknown, fallback = 0): number {
+  // `Number(null)` is 0 and passes isFinite, so a null column used to swallow
+  // the fallback. That silently zeroed the 1.5% minimum payment for every card
+  // without an explicit min_payment_pct, under-reporting what's due.
+  if (v == null || v === '') return fallback
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
 }

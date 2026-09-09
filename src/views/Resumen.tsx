@@ -30,6 +30,7 @@ import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { usePeopleBalances, type BalanceEntry } from '@/hooks/usePeopleBalances'
 import { useLoanActions } from '@/hooks/useLoanActions'
 import { BalanceRow } from '@/components/split/BalanceRow'
+import { CalendarSummary } from '@/components/calendar/CalendarSummary'
 import { ContactLoansModal } from '@/components/split/ContactLoansModal'
 
 import { Card } from '@/components/ui/Card'
@@ -101,7 +102,7 @@ export function Resumen() {
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
-  const { active: activeInstallments } = useInstallments()
+  const { data: allInstallments, active: activeInstallments } = useInstallments()
   const openAddModal = useUiStore((s) => s.openAddModal)
 
   /* --------------------------------- derived */
@@ -776,38 +777,33 @@ export function Resumen() {
         </>
       )}
 
-      {/* ── Tu mes grid ── */}
-      <SectionHeader>Tu mes</SectionHeader>
-      <section className="grid grid-cols-2 gap-2.5 px-4 pb-2">
-        <MiniStat
-          icon={IconCash}
-          label="Activos"
-          value={`$${activosShown.toLocaleString()}`}
-          color="#2BB673"
-          softColor="var(--color-asset-soft)"
+      {/* ── Calendario: lo que viene y qué queda hasta el próximo pago ── */}
+      <SectionHeader
+        right={
+          <button
+            type="button"
+            onClick={() => navigate('/plan/proyeccion')}
+            className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+          >
+            Ver calendario
+          </button>
+        }
+      >
+        Tu calendario
+      </SectionHeader>
+      <section className="px-4 pb-2">
+        <CalendarSummary
+          accounts={accounts}
+          installments={allInstallments}
+          subscriptions={subs}
+          transactions={recentTx}
+          goals={goals}
+          config={config}
+          startCash={debitTotal}
+          onOpen={() => navigate('/plan/proyeccion')}
         />
-        <MiniStat
-          icon={IconCreditCard}
-          label="Deuda"
-          value={`$${deudaShown.toLocaleString()}`}
-          color="#FF5A5F"
-          softColor="var(--color-debt-soft)"
-        />
-        <button
-          type="button"
-          onClick={() => navigate('/perfil')}
-          aria-label="Ver logros"
-          className="relative text-left transition-transform active:scale-[0.96]"
-        >
-          <MiniStat
-            icon={IconTrophy}
-            label="Logros"
-            value={`${unlockedAchievements} / 4`}
-            color="#9B7BFF"
-            softColor="var(--color-lavender-soft)"
-          />
-        </button>
       </section>
+
 
       {/* ── Saldos (préstamos) — por persona/grupo, tap para el detalle ── */}
       {topBalances.length > 0 && (
@@ -860,6 +856,39 @@ export function Resumen() {
       </section>
 
       {/* Bottom spacer for tab bar */}
+      {/* ── Tu mes grid ── */}
+      <SectionHeader>Tu mes</SectionHeader>
+      <section className="grid grid-cols-2 gap-2.5 px-4 pb-2">
+        <MiniStat
+          icon={IconCash}
+          label="Activos"
+          value={`$${activosShown.toLocaleString()}`}
+          color="#2BB673"
+          softColor="var(--color-asset-soft)"
+        />
+        <MiniStat
+          icon={IconCreditCard}
+          label="Deuda"
+          value={`$${deudaShown.toLocaleString()}`}
+          color="#FF5A5F"
+          softColor="var(--color-debt-soft)"
+        />
+        <button
+          type="button"
+          onClick={() => navigate('/perfil')}
+          aria-label="Ver logros"
+          className="relative text-left transition-transform active:scale-[0.96]"
+        >
+          <MiniStat
+            icon={IconTrophy}
+            label="Logros"
+            value={`${unlockedAchievements} / 4`}
+            color="#9B7BFF"
+            softColor="var(--color-lavender-soft)"
+          />
+        </button>
+      </section>
+
       <div className="h-4" />
 
       {loanActions.modals}

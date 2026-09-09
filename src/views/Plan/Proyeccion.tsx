@@ -60,6 +60,8 @@ function fmtMoney(n: number): string {
   return `$${Math.round(n).toLocaleString()}`
 }
 
+import { FinanceCalendar } from '@/components/calendar/FinanceCalendar'
+
 export function Proyeccion() {
   const { monthlyIncome } = useOutletContext<PlanContext>()
   const navigate = useNavigate()
@@ -189,6 +191,11 @@ export function Proyeccion() {
 
   // For the "ahead of plan" chip — look at debt-payoff transactions this month.
   const now = new Date()
+  /** Liquid cash today — the starting point of the calendar projection. */
+  const liquidCash = accounts
+    .filter((a) => a.type === 'debit')
+    .reduce((s, a) => s + Number(a.balance ?? 0), 0)
+
   const dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const { data: monthTxs } = useTransactions({ dateFrom })
 
@@ -349,6 +356,26 @@ export function Proyeccion() {
           target={patchedPrimary?.target ?? primary.target}
         />
       </Card>
+
+      {/* Calendario financiero — el "cuándo" que la proyección no responde */}
+      <div>
+        <div className="mb-1.5 flex items-baseline justify-between px-0.5">
+          <span className="text-sm font-extrabold text-text">Calendario</span>
+          <span className="text-[11px] font-semibold text-text-tertiary">
+            toca un día para ver el detalle
+          </span>
+        </div>
+        <FinanceCalendar
+          accounts={accounts}
+          installments={installments}
+          subscriptions={subs}
+          transactions={monthTxs}
+          goals={goals}
+          config={config}
+          startCash={liquidCash}
+          onOpenAccount={() => void navigate('/cuentas/mis')}
+        />
+      </div>
 
       {/* Agresivo toggle — only for unlinked debt goals */}
       {isDebt && primary.linked_account_ids.length === 0 && (

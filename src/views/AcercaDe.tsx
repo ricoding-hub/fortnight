@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.5.2"
+            version="1.6.0"
             date="14 jul 2026"
             current
+            notes={[
+              'Nuevo calendario en Proyección: ves en un mes cuándo te pagan, cuándo corta y cuándo se paga cada tarjeta, tus suscripciones y tus mensualidades',
+              'Toca cualquier día para ver el detalle, con etiquetas y montos, y filtra por tipo desde la leyenda',
+              'Te dice cuánto te queda realmente hasta tu próximo pago, y marca en rojo los días en que no alcanzaría',
+              'En Inicio, el calendario sustituye a "Tu mes", que ahora vive al final',
+              'Corregido: las tarjetas sin porcentaje de pago mínimo mostraban $0 a pagar; ahora aplican el 1.5% como estaba documentado',
+            ]}
+          />
+          <VersionRow
+            version="1.5.2"
+            date="14 jul 2026"
             notes={[
               'La app abre más rápido: las tipografías ya no retrasan el primer texto en pantalla',
             ]}
