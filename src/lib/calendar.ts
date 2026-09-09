@@ -376,20 +376,28 @@ export function projectDailyBalance(
 }
 
 export interface CycleSummary {
-  /** Payday that opens the cycle (or today when there's no reference). */
+  /** Today. */
   from: string
-  /** Day before the next payday. */
+  /** The next payday — the money has to stretch until this date. */
   to: string
-  income: number
+  /** Calendar days from today to that payday. */
+  days: number
+  /** Cash you hold right now. */
+  onHand: number
+  /** Cash already spoken for before the payday arrives. */
   committed: number
-  /** Cash expected to survive to the next payday. */
+  /** What survives: onHand − committed. */
   safeToSpend: number
   events: CalendarEvent[]
 }
 
 /**
- * The current pay cycle — "what's left before they pay me again", which is the
- * question a catorcena-based budget actually revolves around.
+ * How far today's cash has to stretch.
+ *
+ * The window runs from today up to (not including) the next payday, so by
+ * construction no income lands inside it — an earlier version reported
+ * "income: 0" here, which was true but read like a bug. What the user needs is
+ * simpler: what they hold, what is already committed, and what is left.
  */
 export function cycleSummary(
   events: CalendarEvent[],
@@ -417,16 +425,17 @@ export function cycleSummary(
   const fromKeyStr = toKey(noon(t))
   const toKeyStr = toKey(cycleEnd)
   const inCycle = events.filter((e) => e.date >= fromKeyStr && e.date < toKeyStr)
-  const cash = inCycle.filter((e) => e.countsToCash)
-  const income = cash.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0)
-  const committed = cash.filter((e) => e.amount < 0).reduce((s, e) => s - e.amount, 0)
+  const committed = inCycle
+    .filter((e) => e.countsToCash && e.amount < 0)
+    .reduce((s, e) => s - e.amount, 0)
 
   return {
     from: fromKeyStr,
     to: toKeyStr,
-    income,
+    days: Math.max(0, Math.round((cycleEnd.getTime() - noon(t).getTime()) / 86_400_000)),
+    onHand: startCash,
     committed,
-    safeToSpend: startCash + income - committed,
+    safeToSpend: startCash - committed,
     events: inCycle,
   }
 }

@@ -1,9 +1,10 @@
-import { createElement } from 'react'
 import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
 import { EVENT_STYLE, KIND_ORDER } from '@/components/calendar/eventStyle'
+import { AccountBadge } from '@/components/calendar/AccountBadge'
 import type { CalendarEvent } from '@/lib/calendar'
+import type { Account } from '@/types'
 
 interface DayDetailModalProps {
   open: boolean
@@ -13,14 +14,17 @@ interface DayDetailModalProps {
   events: CalendarEvent[]
   /** Projected liquid balance at the end of this day. */
   projected?: number
+  /** Configured accounts, so events can show their bank's logo. */
+  accounts?: Account[]
   onOpenAccount?: (accountId: string) => void
 }
 
 /** Everything happening on one day, and what it leaves you with. */
 export function DayDetailModal({
-  open, onClose, dayKey, events, projected, onOpenAccount,
+  open, onClose, dayKey, events, projected, accounts = [], onOpenAccount,
 }: DayDetailModalProps) {
   if (!dayKey) return null
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
 
   const sorted = [...events].sort(
     (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind),
@@ -60,12 +64,7 @@ export function DayDetailModal({
                       clickable && 'active:scale-[0.99]',
                     )}
                   >
-                    <span
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-md"
-                      style={{ background: `${st.hex}18`, color: st.hex }}
-                    >
-                      {createElement(st.icon, { size: 17, stroke: 2 })}
-                    </span>
+                    <AccountBadge account={accountById.get(e.accountId ?? '')} kind={e.kind} size={36} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-bold text-text">{e.title}</span>
                       <span className="mt-0.5 flex flex-wrap items-center gap-1">

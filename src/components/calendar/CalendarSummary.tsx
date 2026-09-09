@@ -1,8 +1,8 @@
-import { createElement, useMemo } from 'react'
+import { useMemo } from 'react'
 import { IconChevronRight } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
-import { EVENT_STYLE } from '@/components/calendar/eventStyle'
+import { AccountBadge } from '@/components/calendar/AccountBadge'
 import {
   buildCalendarEvents, cycleSummary, fromKey, noon, toKey, type CalendarInput,
 } from '@/lib/calendar'
@@ -16,6 +16,13 @@ interface CalendarSummaryProps extends CalendarInput {
 }
 
 const DAY_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+const MON_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/** "jue 17 sep" — spelled out, so the deadline is never a guess. */
+function fmtDay(key: string): string {
+  const d = fromKey(key)
+  return `${DAY_ES[d.getDay()]} ${d.getDate()} ${MON_ES[d.getMonth()]}`
+}
 
 /**
  * Home's window into the calendar: what's left this pay cycle and the next few
@@ -23,6 +30,7 @@ const DAY_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
  */
 export function CalendarSummary({ startCash, limit = 4, onOpen, ...data }: CalendarSummaryProps) {
   const today = useMemo(() => noon(new Date()), [])
+  const accountById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a])), [data.accounts])
 
   const { upcoming, cycle } = useMemo(() => {
     const to = new Date(today)
@@ -51,7 +59,7 @@ export function CalendarSummary({ startCash, limit = 4, onOpen, ...data }: Calen
           <div className="flex items-center gap-3 px-4 pt-3.5">
             <div className="min-w-0 flex-1">
               <p className="text-[9.5px] font-extrabold uppercase tracking-[0.08em] text-text-tertiary">
-                Hasta tu próximo pago
+                Te queda hasta el {fmtDay(cycle.to)}
               </p>
               <p
                 className={clsx(
@@ -61,9 +69,18 @@ export function CalendarSummary({ startCash, limit = 4, onOpen, ...data }: Calen
               >
                 {formatMXN(cycle.safeToSpend)}
               </p>
-              <p className="mt-1 font-mono text-[10px] font-bold tabular-nums text-text-tertiary">
-                <span className="text-asset-deep">+{formatMXN(cycle.income)}</span> entra ·{' '}
-                <span className="text-debt-deep">−{formatMXN(cycle.committed)}</span> comprometido
+              <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+                {cycle.days} {cycle.days === 1 ? 'día' : 'días'} ·{' '}
+                {cycle.committed > 0 ? (
+                  <>
+                    <span className="font-mono font-bold tabular-nums text-debt-deep">
+                      {formatMXN(cycle.committed)}
+                    </span>{' '}
+                    comprometido
+                  </>
+                ) : (
+                  'sin pagos comprometidos'
+                )}
               </p>
             </div>
             <IconChevronRight size={17} className="shrink-0 text-text-tertiary" />
@@ -73,17 +90,11 @@ export function CalendarSummary({ startCash, limit = 4, onOpen, ...data }: Calen
         {upcoming.length > 0 && (
           <ul className={clsx('flex flex-col gap-1.5 px-3 pb-3', cycle ? 'pt-3' : 'pt-3.5')}>
             {upcoming.map((e) => {
-              const st = EVENT_STYLE[e.kind]
               const d = fromKey(e.date)
               const isToday = e.date === toKey(today)
               return (
                 <li key={e.id} className="flex items-center gap-2.5">
-                  <span
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md"
-                    style={{ background: `${st.hex}18`, color: st.hex }}
-                  >
-                    {createElement(st.icon, { size: 14, stroke: 2.2 })}
-                  </span>
+                  <AccountBadge account={accountById.get(e.accountId ?? '')} kind={e.kind} size={28} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">
                     {e.title}
                   </span>
