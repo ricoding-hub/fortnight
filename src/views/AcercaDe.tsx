@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.5.0"
+            version="1.5.1"
             date="14 jul 2026"
             current
+            notes={[
+              'Si dos cuentas usan el mismo navegador, ya no pueden verse los datos guardados de la otra',
+              'Al cerrar sesión sin conexión, tus datos guardados sí se borran del dispositivo',
+              'Sin conexión ya no te saca al login si tu sesión seguía activa',
+              'La app ya no puede incrustarse en otro sitio, y viaja siempre por HTTPS',
+            ]}
+          />
+          <VersionRow
+            version="1.5.0"
+            date="14 jul 2026"
             notes={[
               'Richeto ya no interrumpe: te saluda la primera vez que entras a cada sección y después solo habla si lo tocas',
               'En iPhone la app instalada ya arranca con su pantalla de bienvenida en vez de una pantalla en blanco',

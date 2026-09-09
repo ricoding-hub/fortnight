@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useAutoSync } from '@/hooks/useAutoSync'
 import { useUiStore } from '@/store/uiStore'
+import { hadSession } from '@/lib/dataCache'
 import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
@@ -51,6 +52,10 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   }, [session, openTour])
 
   if (loading) return <Splash label="Cargando…" />
+  // Offline, getSession() can resolve null because refreshing the token needs
+  // the network. Bouncing a returning user to the login screen would make the
+  // whole offline-read feature pointless, and every query is still RLS-scoped.
+  if (!session && !navigator.onLine && hadSession()) return <>{children}</>
   return session ? <>{children}</> : <Navigate to="/login" replace />
 }
 

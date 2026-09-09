@@ -74,7 +74,7 @@ export function InstallPrompt() {
           type="button"
           onClick={dismiss}
           aria-label="Ahora no"
-          className="shrink-0 px-1 text-[16px] leading-none text-primary-deep opacity-55 transition-opacity hover:opacity-100"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[16px] leading-none text-primary-deep opacity-55 transition-opacity hover:opacity-100"
         >
           ×
         </button>

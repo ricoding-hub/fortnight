@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { ensureCacheOwner, purgeDataCache, rememberHadSession } from '@/lib/dataCache'
 
 interface AuthContextValue {
   session: Session | null
@@ -24,15 +25,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      rememberHadSession(!!data.session)
+      void ensureCacheOwner(data.session?.user.id)
       setLoading(false)
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession)
+      // A different account on the same browser must never inherit the cached
+      // reads of the previous one — they're indexed by URL, not by user.
+      void ensureCacheOwner(nextSession?.user.id)
+      if (nextSession) rememberHadSession(true)
+      else if (event === 'SIGNED_OUT') rememberHadSession(false)
       setLoading(false)
     })
 
@@ -56,17 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    // Purge FIRST. This used to run after `throw error`, so signing out with no
+    // network left every cached balance on the device — the exact case where
+    // wiping matters most.
+    await purgeDataCache()
+    rememberHadSession(false)
     const { error } = await supabase.auth.signOut()
     if (error) throw error
-    // The service worker caches API reads so the app works offline. On a
-    // shared device those are someone's balances: drop them on the way out.
-    if ('caches' in window) {
-      try {
-        await caches.delete('supabase-data-cache')
-      } catch {
-        // Storage denied (private mode): nothing cached to leak either.
-      }
-    }
   }
 
   const value: AuthContextValue = {

@@ -89,7 +89,7 @@ function Bar({
           type="button"
           onClick={onDismiss}
           aria-label="Ocultar aviso"
-          className="shrink-0 px-1 text-[15px] leading-none opacity-60 transition-opacity hover:opacity-100"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[15px] leading-none opacity-60 transition-opacity hover:opacity-100"
         >
           ×
         </button>
