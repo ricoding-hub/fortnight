@@ -38,6 +38,10 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
       ]
     },
@@ -85,5 +89,10 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/cron/payment-alerts.ts": {
+      "maxDuration": 60
+    }
+  }
 }

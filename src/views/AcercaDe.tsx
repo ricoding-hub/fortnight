@@ -121,9 +121,16 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.5.1"
+            version="1.5.2"
             date="14 jul 2026"
             current
+            notes={[
+              'La app abre más rápido: las tipografías ya no retrasan el primer texto en pantalla',
+            ]}
+          />
+          <VersionRow
+            version="1.5.1"
+            date="14 jul 2026"
             notes={[
               'Si dos cuentas usan el mismo navegador, ya no pueden verse los datos guardados de la otra',
               'Al cerrar sesión sin conexión, tus datos guardados sí se borran del dispositivo',
