@@ -4,21 +4,14 @@ import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { DayDetailModal } from '@/components/calendar/DayDetailModal'
 import { EVENT_STYLE, KIND_ORDER } from '@/components/calendar/eventStyle'
+import { DayMarkers } from '@/components/calendar/DayMarkers'
 import {
-  buildCalendarEvents, cycleSummary, eventsByDay, fromKey, monthGrid, noon,
+  buildCalendarEvents, eventsByDay, monthGrid, noon,
   projectDailyBalance, toKey, WEEKDAYS_ES,
   type CalendarEventKind, type CalendarInput,
 } from '@/lib/calendar'
 import { formatMXN, formatMonthMX } from '@/lib/format'
 
-const DAY_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
-const MON_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-
-/** "jue 17 sep" — the date has to be visible, not implied. */
-function fmtDay(key: string): string {
-  const d = fromKey(key)
-  return `${DAY_ES[d.getDay()]} ${d.getDate()} ${MON_ES[d.getMonth()]}`
-}
 
 interface FinanceCalendarProps extends CalendarInput {
   /** Liquid cash today — the starting point of the projection. */
@@ -38,6 +31,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
   const [selected, setSelected] = useState<string | null>(null)
   const [hidden, setHidden] = useState<Set<CalendarEventKind>>(new Set())
 
+  const accountById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a])), [data.accounts])
   const grid = useMemo(() => monthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor])
   const rangeFrom = grid[0]
   const rangeTo = grid[grid.length - 1]
@@ -57,10 +51,6 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
   const balances = useMemo(
     () => projectDailyBalance(allEvents, startCash, rangeFrom, rangeTo, today),
     [allEvents, startCash, rangeFrom, rangeTo, today],
-  )
-  const cycle = useMemo(
-    () => cycleSummary(allEvents, data.config, startCash, today),
-    [allEvents, data.config, startCash, today],
   )
 
   const presentKinds = useMemo(() => {
@@ -147,7 +137,6 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
           const dayEvents = byDay.get(key) ?? []
           const projected = balances.get(key)
           const negative = projected != null && projected < 0 && key >= todayKey
-          const kinds = KIND_ORDER.filter((k) => dayEvents.some((e) => e.kind === k))
 
           return (
             <button
@@ -172,15 +161,13 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
               >
                 {day.getDate()}
               </span>
-              <span className="flex flex-wrap items-center justify-center gap-[2px] px-0.5">
-                {kinds.slice(0, 4).map((k) => (
-                  <i
-                    key={k}
-                    className="block h-[5px] w-[5px] rounded-full"
-                    style={{ background: isToday ? '#FFFFFF' : EVENT_STYLE[k].hex }}
-                  />
-                ))}
-              </span>
+              <DayMarkers
+                events={dayEvents}
+                accountById={accountById}
+                size={13}
+                max={3}
+                onDark={isToday}
+              />
             </button>
           )
         })}
@@ -208,49 +195,6 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
               </button>
             )
           })}
-        </div>
-      )}
-
-      {/* The number the whole calendar exists to produce */}
-      {cycle && (
-        <div className="border-t border-border px-4 py-3">
-          <p className="text-[9.5px] font-extrabold uppercase tracking-[0.08em] text-text-tertiary">
-            Te queda hasta el {fmtDay(cycle.to)}
-          </p>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span
-              className={clsx(
-                'font-display text-[24px] font-extrabold leading-none tabular-nums',
-                cycle.safeToSpend < 0 ? 'text-debt-deep' : 'text-text',
-              )}
-            >
-              {formatMXN(cycle.safeToSpend)}
-            </span>
-            <span className="text-[11px] font-medium text-text-tertiary">
-              en {cycle.days} {cycle.days === 1 ? 'día' : 'días'}
-            </span>
-          </div>
-          <p className="mt-1.5 text-[11px] leading-snug text-text-secondary">
-            Hoy tienes{' '}
-            <span className="font-mono font-bold tabular-nums text-text">{formatMXN(cycle.onHand)}</span>
-            {cycle.committed > 0 ? (
-              <>
-                {' '}y ya está comprometido{' '}
-                <span className="font-mono font-bold tabular-nums text-debt-deep">
-                  {formatMXN(cycle.committed)}
-                </span>{' '}
-                antes de que te paguen.
-              </>
-            ) : (
-              <> y no hay nada comprometido antes de que te paguen.</>
-            )}
-          </p>
-          {cycle.safeToSpend < 0 && (
-            <p className="mt-2 rounded-md bg-debt-soft px-3 py-2 text-[11px] font-semibold leading-snug text-debt-deep">
-              Lo comprometido supera lo que tienes. Adelanta un ingreso o mueve
-              lo que pueda esperar.
-            </p>
-          )}
         </div>
       )}
 

@@ -799,7 +799,6 @@ export function Resumen() {
           transactions={recentTx}
           goals={goals}
           config={config}
-          startCash={debitTotal}
           onOpen={() => navigate('/plan/proyeccion')}
         />
       </section>

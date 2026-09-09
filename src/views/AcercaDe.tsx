@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.6.1"
+            version="1.6.2"
             date="14 jul 2026"
             current
+            notes={[
+              'El calendario ahora muestra el logo de cada tarjeta directamente en el día, en vez de puntos de color',
+              'En Inicio ves la semana actual con sus pagos, además de la lista de próximos pagos',
+              'Quitamos el resumen de "te queda hasta tu próximo pago": ocupaba espacio sin decirte nada útil',
+            ]}
+          />
+          <VersionRow
+            version="1.6.1"
+            date="14 jul 2026"
             notes={[
               'El resumen del calendario ahora dice con claridad hasta qué día te tiene que durar el dinero y cuánto llevas comprometido',
               'Los eventos de tus tarjetas muestran el logo del banco, para reconocerlos sin tener que recordar colores',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildCalendarEvents, cardCutDates, cardDueDates, cycleSummary, dayInMonth,
+  buildCalendarEvents, cardCutDates, cardDueDates, dayInMonth,
   eventsByDay, fromKey, installmentDates, monthGrid, projectDailyBalance,
   subscriptionDates, toKey,
 } from '@/lib/calendar'
@@ -194,46 +194,5 @@ describe('projectDailyBalance', () => {
   it('leaves days before today untouched', () => {
     const bal = projectDailyBalance([], 1234, d('2026-09-01'), d('2026-09-05'), d('2026-09-03'))
     expect(bal.get('2026-09-01')).toBe(1234)
-  })
-})
-
-describe('cycleSummary', () => {
-  it('reports income, commitments and what survives to the next payday', () => {
-    const ev = buildCalendarEvents({
-      accounts: [], installments: [], subscriptions: [sub({ charge_day: 12, amount: 300 })],
-      transactions: [], goals: [], config: config(),
-    }, d('2026-09-01'), d('2026-10-31'))
-    const s = cycleSummary(ev, config(), 2000, d('2026-09-09'))
-    expect(s).not.toBeNull()
-    expect(s!.onHand).toBe(2000)
-    expect(s!.committed).toBe(300)
-    expect(s!.safeToSpend).toBe(1700)
-  })
-
-  // The window stops at the payday, so the payday itself is never inside it.
-  // Reporting "income" here always read as 0 and looked broken.
-  it('ends on the next payday and counts the days to it', () => {
-    const ev = buildCalendarEvents({
-      accounts: [], installments: [], subscriptions: [], transactions: [], goals: [], config: config(),
-    }, d('2026-09-01'), d('2026-10-31'))
-    const s = cycleSummary(ev, config(), 5000, d('2026-09-09'))!
-    expect(s.from).toBe('2026-09-09')
-    expect(s.to).toBe('2026-09-18')
-    expect(s.days).toBe(9)
-    expect(s.events.every((e) => e.date < s.to)).toBe(true)
-  })
-
-  it('flags a shortfall when commitments exceed what is on hand', () => {
-    const ev = buildCalendarEvents({
-      accounts: [], installments: [], subscriptions: [sub({ charge_day: 12, amount: 900 })],
-      transactions: [], goals: [], config: config(),
-    }, d('2026-09-01'), d('2026-10-31'))
-    const s = cycleSummary(ev, config(), 500, d('2026-09-09'))!
-    expect(s.safeToSpend).toBe(-400)
-  })
-
-  it('returns nothing without a pay reference', () => {
-    expect(cycleSummary([], null, 0, d('2026-09-09'))).toBeNull()
-    expect(cycleSummary([], config({ pay_reference: null }), 0, d('2026-09-09'))).toBeNull()
   })
 })
