@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.6.4"
+            version="1.6.5"
             date="10 sep 2026"
             current
+            notes={[
+              'El día de pago manda: si te pagan y además vence una tarjeta, el día se pinta de verde',
+              'Cada día muestra el logo o el icono de lo que pasa, ya no puntitos de color que no decían nada',
+              'Tus movimientos manuales se agrupan en una sola marca gris y discreta: ya sucedieron, no cambian el plan',
+              'En Inicio, la semana usa los mismos colores que el calendario y hoy se marca con un aro, para no tapar su propio evento',
+            ]}
+          />
+          <VersionRow
+            version="1.6.4"
+            date="10 sep 2026"
             notes={[
               'Vincular banco queda marcado como próximamente: seguimos afinando la conexión con los bancos mexicanos y preferimos activarla cuando esté lista de verdad',
               'Mientras tanto, agregar una cuenta a mano sigue tomando menos de 10 segundos',

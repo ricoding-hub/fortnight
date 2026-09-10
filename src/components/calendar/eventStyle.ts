@@ -39,10 +39,14 @@ export const KIND_ORDER: CalendarEventKind[] = [
  * the dates the month is actually planned around; a subscription charge or a
  * past movement is context. Mixing both into one background made a movement
  * look as consequential as a due date.
+ *
+ * Payday leads: it's the anchor the whole catorcena is planned around, and a
+ * day that both pays you and charges you should read as the good news first.
+ * Then the deadline you can miss, then the cut you can't.
  */
-export const PRIMARY_KINDS: CalendarEventKind[] = ['card_due', 'payday', 'card_cut']
+export const PRIMARY_KINDS: CalendarEventKind[] = ['payday', 'card_due', 'card_cut']
 
-/** Ordered by consequence: a deadline can be missed, a cut cannot. */
+/** Ordered by consequence, most important first. */
 export function dominantPrimary(kinds: Iterable<CalendarEventKind>): CalendarEventKind | null {
   const present = new Set(kinds)
   for (const k of PRIMARY_KINDS) if (present.has(k)) return k
@@ -51,6 +55,23 @@ export function dominantPrimary(kinds: Iterable<CalendarEventKind>): CalendarEve
 
 export function isPrimary(kind: CalendarEventKind): boolean {
   return PRIMARY_KINDS.includes(kind)
+}
+
+/**
+ * Three weights of marker, so a day reads at a glance without having to decode
+ * colours. Everything draws an icon — a bare dot said only "something happens
+ * here", which is the one thing the day number already told you.
+ *
+ *  - `primary`   payday / cut / deadline: full-size, the reason to look
+ *  - `secondary` subscriptions, instalments, goals: smaller, still legible
+ *  - `movement`  what you typed in yourself: smallest and neutral, because
+ *                it already happened and changes nothing about the plan
+ */
+export type MarkerTier = 'primary' | 'secondary' | 'movement'
+
+export function tierOf(kind: CalendarEventKind): MarkerTier {
+  if (isPrimary(kind)) return 'primary'
+  return kind === 'transaction' ? 'movement' : 'secondary'
 }
 
 /** Cell treatment per primary kind: soft ground + deep text, as Badge does. */

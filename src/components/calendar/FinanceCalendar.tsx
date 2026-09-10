@@ -21,9 +21,11 @@ interface FinanceCalendarProps extends CalendarInput {
 
 /**
  * Month view of everything the app knows is coming: paydays, card cuts and
- * payments, subscriptions and instalments. Each day shows a dot per kind, and
- * days where the projection dips below zero are called out — the whole reason
- * to look at money on a calendar instead of a list.
+ * payments, subscriptions and instalments. A day is coloured only by what you
+ * plan around — payday, deadline, cut — and marked with the logo or icon of
+ * whatever is happening on it. Days where the projection dips below zero are
+ * called out, which is the whole reason to look at money on a calendar
+ * instead of a list.
  */
 export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCalendarProps) {
   const today = useMemo(() => noon(new Date()), [])
@@ -167,13 +169,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
               >
                 {day.getDate()}
               </span>
-              <DayMarkers
-                events={dayEvents}
-                accountById={accountById}
-                size={13}
-                max={3}
-                demoteSecondary
-              />
+              <DayMarkers events={dayEvents} accountById={accountById} size={14} max={3} />
             </button>
           )
         })}

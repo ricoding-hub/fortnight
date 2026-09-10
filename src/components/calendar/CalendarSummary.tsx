@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { AccountBadge } from '@/components/calendar/AccountBadge'
 import { DayMarkers } from '@/components/calendar/DayMarkers'
+import { PRIMARY_CELL, dominantPrimary } from '@/components/calendar/eventStyle'
 import {
   buildCalendarEvents, eventsByDay, fromKey, noon, toKey, WEEKDAYS_ES,
   type CalendarInput,
@@ -71,18 +72,24 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
             const key = toKey(d)
             const isToday = key === todayKey
             const dayEvents = byDay.get(key) ?? []
+            // Same rule as the full calendar: the day you get paid, the day a
+            // card is due and the day one cuts own the colour. Today is a ring
+            // so it can't paint over its own event.
+            const primary = dominantPrimary(dayEvents.map((e) => e.kind))
+            const cell = primary ? PRIMARY_CELL[primary] : null
             return (
               <span
                 key={key}
                 className={clsx(
                   'flex flex-col items-center gap-0.5 rounded-md py-1.5',
-                  isToday && 'bg-primary text-white shadow-card',
+                  cell && `${cell.bg} ring-1 ${cell.ring}`,
+                  isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-bg-elevated',
                 )}
               >
                 <span
                   className={clsx(
                     'text-[8.5px] font-extrabold uppercase tracking-[0.04em]',
-                    isToday ? 'text-white/70' : 'text-text-tertiary',
+                    cell ? cell.text : 'text-text-tertiary',
                   )}
                 >
                   {WEEKDAYS_ES[d.getDay()]}
@@ -90,18 +97,12 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
                 <span
                   className={clsx(
                     'font-mono text-[12px] font-bold tabular-nums',
-                    isToday ? 'text-white' : 'text-text',
+                    cell ? cell.text : isToday ? 'text-primary-deep' : 'text-text',
                   )}
                 >
                   {d.getDate()}
                 </span>
-                <DayMarkers
-                  events={dayEvents}
-                  accountById={accountById}
-                  size={13}
-                  max={2}
-                  demoteSecondary
-                />
+                <DayMarkers events={dayEvents} accountById={accountById} size={14} max={2} />
               </span>
             )
           })}

@@ -10,6 +10,8 @@ interface AccountBadgeProps {
   account?: Account
   kind: CalendarEventKind
   size?: number
+  /** Dial the mark back to neutral grey — used for past manual movements. */
+  muted?: boolean
 }
 
 function initialsOf(name: string): string {
@@ -28,7 +30,7 @@ function initialsOf(name: string): string {
  * initials, and finally to the event-kind icon for things with no account
  * behind them (a payday, a goal).
  */
-export function AccountBadge({ account, kind, size = 36 }: AccountBadgeProps) {
+export function AccountBadge({ account, kind, size = 36, muted = false }: AccountBadgeProps) {
   const [logoFailed, setLogoFailed] = useState(false)
   const style = EVENT_STYLE[kind]
   const box = { width: size, height: size }
@@ -62,12 +64,13 @@ export function AccountBadge({ account, kind, size = 36 }: AccountBadgeProps) {
     )
   }
 
+  const tint = muted ? '#8E91A4' : style.hex
   return (
     <span
-      style={{ ...box, background: `${style.hex}18`, color: style.hex }}
+      style={{ ...box, background: `${tint}${muted ? '14' : '18'}`, color: tint }}
       className={clsx('grid shrink-0 place-items-center', radius)}
     >
-      {createElement(style.icon, { size: Math.max(9, Math.round(size * 0.6)), stroke: 2.4 })}
+      {createElement(style.icon, { size: Math.max(8, Math.round(size * 0.62)), stroke: 2.4 })}
     </span>
   )
 }
