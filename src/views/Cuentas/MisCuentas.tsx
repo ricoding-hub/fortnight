@@ -20,6 +20,8 @@ import {
 } from '@/components/AccountFormModal'
 import { AddAccountChooserModal } from '@/components/AddAccountChooserModal'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
+import { ComingSoonBadge } from '@/components/ComingSoonBadge'
+import { BANK_LINKING_ENABLED } from '@/lib/features'
 import { InstallmentCard } from '@/components/InstallmentCard'
 import { InstallmentFormModal } from '@/components/InstallmentFormModal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -236,7 +238,7 @@ export function MisCuentas() {
 
             {/* Right-side icon buttons — compact so they never overflow */}
             <div className="flex shrink-0 items-stretch gap-1.5">
-              {syncableCredentials.length > 0 && (
+              {BANK_LINKING_ENABLED && syncableCredentials.length > 0 && (
                 <button
                   type="button"
                   onClick={() => void syncAll()}
@@ -286,16 +288,35 @@ export function MisCuentas() {
         <>
           <Section id="tour-cuentas-debito" title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
           <Section id="tour-cuentas-credito" title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
-          {hasConnectedBanks && !reorderMode && (
+          {!reorderMode && (
             <div className="px-4 pb-2">
-              <Link
-                to="/cuentas/bancos"
-                className="group flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-primary transition-all hover:border-primary/30 hover:bg-primary/8 active:scale-[0.99]"
-              >
-                <IconBuildingBank size={16} className="shrink-0" />
-                <span className="flex-1 text-sm font-semibold">Gestionar bancos conectados</span>
-                <IconChevronRight size={14} className="shrink-0 text-primary/60 transition-transform group-hover:translate-x-0.5" />
-              </Link>
+              {BANK_LINKING_ENABLED && hasConnectedBanks ? (
+                <Link
+                  to="/cuentas/bancos"
+                  className="group flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-primary transition-all hover:border-primary/30 hover:bg-primary/8 active:scale-[0.99]"
+                >
+                  <IconBuildingBank size={16} className="shrink-0" />
+                  <span className="flex-1 text-sm font-semibold">Gestionar bancos conectados</span>
+                  <IconChevronRight size={14} className="shrink-0 text-primary/60 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              ) : !BANK_LINKING_ENABLED ? (
+                // Kept visible on purpose: it's the roadmap, not an error.
+                <div
+                  aria-disabled="true"
+                  className="flex items-center gap-3 rounded-2xl border border-dashed border-lavender/40 bg-lavender-soft/40 px-4 py-3"
+                >
+                  <IconBuildingBank size={16} className="shrink-0 text-lavender-deep" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-semibold text-text">Conecta tu banco</span>
+                      <ComingSoonBadge />
+                    </span>
+                    <span className="mt-0.5 block text-[11.5px] leading-snug text-text-secondary">
+                      Tus cuentas y movimientos se actualizarán solos, sin capturar nada.
+                    </span>
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -382,10 +403,9 @@ export function MisCuentas() {
         onPickManual={pickManual}
       />
 
-      <ConnectBankModal
-        open={bankModalOpen}
-        onClose={() => setBankModalOpen(false)}
-      />
+      {BANK_LINKING_ENABLED && (
+        <ConnectBankModal open={bankModalOpen} onClose={() => setBankModalOpen(false)} />
+      )}
 
       {formMode && (
         <AccountFormModal

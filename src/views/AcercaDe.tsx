@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.6.4"
+            date="10 sep 2026"
+            current
+            notes={[
+              'Vincular banco queda marcado como próximamente: seguimos afinando la conexión con los bancos mexicanos y preferimos activarla cuando esté lista de verdad',
+              'Mientras tanto, agregar una cuenta a mano sigue tomando menos de 10 segundos',
+            ]}
+          />
+          <VersionRow
             version="1.6.3"
             date="14 jul 2026"
-            current
             notes={[
               'Corregido el icono en iPhone: tenía fondo transparente y iOS lo descartaba, mostrando una "F" en vez del logo. Si ya lo tienes así, borra el acceso de tu pantalla de inicio y vuelve a añadirlo',
               'El calendario ahora colorea solo los días que importan: cuándo te pagan, cuándo corta y cuándo vence cada tarjeta',

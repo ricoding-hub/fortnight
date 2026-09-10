@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { syncCredential } from '@/lib/syncfy/api'
+import { BANK_LINKING_ENABLED } from '@/lib/features'
 
 const STALE_HOURS = 6
 const STALE_MS = STALE_HOURS * 60 * 60 * 1000
@@ -20,6 +21,8 @@ export function useAutoSync(): void {
   const firedRef = useRef(false)
 
   useEffect(() => {
+    // No infrastructure behind it yet: don't fire requests nobody can serve.
+    if (!BANK_LINKING_ENABLED) return
     if (!user) {
       firedRef.current = false
       return

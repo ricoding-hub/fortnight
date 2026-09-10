@@ -18,6 +18,8 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { BankStatusPill } from '@/components/syncfy/BankStatusPill'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
 import { bankLogoUrl, presetForInstitutionName } from '@/lib/banks'
+import { ComingSoonBadge } from '@/components/ComingSoonBadge'
+import { BANK_LINKING_ENABLED } from '@/lib/features'
 import type { SyncfyCredential } from '@/types'
 
 /**
@@ -25,6 +27,68 @@ import type { SyncfyCredential } from '@/types'
  * sync/disconnect actions. Lives at /cuentas/bancos.
  */
 export function MisBancos() {
+  // Guards the route itself, not just the buttons that lead here: a deep link
+  // or a stale bookmark must not reach the real screen either.
+  if (!BANK_LINKING_ENABLED) return <BancosProximamente />
+  return <MisBancosConectados />
+}
+
+function BancosProximamente() {
+  return (
+    <div className="flex flex-col px-4 pb-6 pt-2 animate-[fade-in_300ms_ease-out]">
+      <Card className="relative overflow-hidden p-0">
+        <div
+          className="relative px-5 pb-5 pt-6 text-white"
+          style={{ background: 'linear-gradient(135deg, #6F4FE0 0%, #9B7BFF 100%)' }}
+        >
+          <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/10" />
+          <div className="absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-white/[0.07]" />
+          <div className="relative flex flex-col gap-2">
+            <ComingSoonBadge tone="onColor" className="w-fit" />
+            <p className="font-display text-[26px] font-extrabold leading-tight tracking-tight">
+              Conecta tu banco
+            </p>
+            <p className="max-w-[34ch] text-[12.5px] leading-relaxed text-white/85">
+              Tus cuentas y movimientos se van a actualizar solos. Sin capturar
+              saldos, sin recordar cuánto gastaste.
+            </p>
+          </div>
+        </div>
+
+        <ul className="flex flex-col gap-3 px-5 py-4">
+          <Perk title="Saldos al día" body="Cada cuenta se actualiza sola, varias veces al día." />
+          <Perk title="Movimientos automáticos" body="Tus compras llegan categorizadas, sin escribir nada." />
+          <Perk title="Bancos mexicanos" body="Pensado para los que no exponen API pública." />
+        </ul>
+
+        <div className="flex items-start gap-2.5 border-t border-border px-5 py-3.5">
+          <IconShieldLock size={15} className="mt-px shrink-0 text-text-tertiary" />
+          <p className="text-[11px] leading-snug text-text-secondary">
+            Todavía no lo activamos porque la infraestructura no está lista para
+            producción, y con datos bancarios preferimos llegar tarde que llegar mal.
+            Mientras tanto, capturar una cuenta a mano toma menos de 10 segundos.
+          </p>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function Perk({ title, body }: { title: string; body: string }) {
+  return (
+    <li className="flex items-start gap-3">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-lavender-soft text-lavender-deep">
+        <IconBuildingBank size={14} stroke={2.2} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-bold text-text">{title}</span>
+        <span className="mt-0.5 block text-[11.5px] leading-snug text-text-secondary">{body}</span>
+      </span>
+    </li>
+  )
+}
+
+function MisBancosConectados() {
   const { data: credentials, loading, sync, disconnect } = useSyncedCredentials()
   const { data: accounts } = useAccounts()
   const toast = useToast()
