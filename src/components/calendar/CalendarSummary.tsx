@@ -100,7 +100,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
                   accountById={accountById}
                   size={13}
                   max={2}
-                  onDark={isToday}
+                  demoteSecondary
                 />
               </span>
             )

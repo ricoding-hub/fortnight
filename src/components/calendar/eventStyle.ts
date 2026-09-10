@@ -33,3 +33,29 @@ export const EVENT_STYLE: Record<CalendarEventKind, EventStyle> = {
 export const KIND_ORDER: CalendarEventKind[] = [
   'payday', 'card_due', 'card_cut', 'subscription', 'installment', 'goal', 'transaction',
 ]
+
+/**
+ * What earns the cell its colour. A payday, a cut and a payment deadline are
+ * the dates the month is actually planned around; a subscription charge or a
+ * past movement is context. Mixing both into one background made a movement
+ * look as consequential as a due date.
+ */
+export const PRIMARY_KINDS: CalendarEventKind[] = ['card_due', 'payday', 'card_cut']
+
+/** Ordered by consequence: a deadline can be missed, a cut cannot. */
+export function dominantPrimary(kinds: Iterable<CalendarEventKind>): CalendarEventKind | null {
+  const present = new Set(kinds)
+  for (const k of PRIMARY_KINDS) if (present.has(k)) return k
+  return null
+}
+
+export function isPrimary(kind: CalendarEventKind): boolean {
+  return PRIMARY_KINDS.includes(kind)
+}
+
+/** Cell treatment per primary kind: soft ground + deep text, as Badge does. */
+export const PRIMARY_CELL: Record<string, { bg: string; text: string; ring: string }> = {
+  card_due: { bg: 'bg-debt-soft', text: 'text-debt-deep', ring: 'ring-debt/45' },
+  payday: { bg: 'bg-asset-soft', text: 'text-asset-deep', ring: 'ring-asset/45' },
+  card_cut: { bg: 'bg-peach-soft', text: 'text-peach-deep', ring: 'ring-peach/50' },
+}

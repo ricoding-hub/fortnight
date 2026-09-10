@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.6.2"
+            version="1.6.3"
             date="14 jul 2026"
             current
+            notes={[
+              'Corregido el icono en iPhone: tenía fondo transparente y iOS lo descartaba, mostrando una "F" en vez del logo. Si ya lo tienes así, borra el acceso de tu pantalla de inicio y vuelve a añadirlo',
+              'El calendario ahora colorea solo los días que importan: cuándo te pagan, cuándo corta y cuándo vence cada tarjeta',
+              'Los movimientos y suscripciones pasan a ser un punto discreto, ya no tiñen el día',
+              'El día de hoy se marca con un aro, para no tapar el color de su propio evento',
+            ]}
+          />
+          <VersionRow
+            version="1.6.2"
+            date="14 jul 2026"
             notes={[
               'El calendario ahora muestra el logo de cada tarjeta directamente en el día, en vez de puntos de color',
               'En Inicio ves la semana actual con sus pagos, además de la lista de próximos pagos',

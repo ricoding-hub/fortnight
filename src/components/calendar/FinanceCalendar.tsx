@@ -3,7 +3,7 @@ import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { DayDetailModal } from '@/components/calendar/DayDetailModal'
-import { EVENT_STYLE, KIND_ORDER } from '@/components/calendar/eventStyle'
+import { EVENT_STYLE, KIND_ORDER, PRIMARY_CELL, dominantPrimary } from '@/components/calendar/eventStyle'
 import { DayMarkers } from '@/components/calendar/DayMarkers'
 import {
   buildCalendarEvents, eventsByDay, monthGrid, noon,
@@ -137,6 +137,10 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
           const dayEvents = byDay.get(key) ?? []
           const projected = balances.get(key)
           const negative = projected != null && projected < 0 && key >= todayKey
+          // The cell's colour belongs to the dates you plan around; everything
+          // else is context and leaves the background alone.
+          const primary = dominantPrimary(dayEvents.map((e) => e.kind))
+          const cell = primary ? PRIMARY_CELL[primary] : null
 
           return (
             <button
@@ -148,15 +152,17 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
               className={clsx(
                 'relative flex aspect-square flex-col items-center justify-start gap-0.5 rounded-md pt-1 transition-transform active:scale-90',
                 !inMonth && 'opacity-35',
-                isToday && 'bg-primary text-white shadow-card',
-                !isToday && negative && 'bg-debt-soft',
-                !isToday && !negative && dayEvents.length > 0 && 'bg-bg-secondary/60',
+                cell && `${cell.bg} ring-1 ${cell.ring}`,
+                !cell && negative && 'bg-debt-soft/60',
+                // Today is an outline, not a fill: filling it hid the colour of
+                // its own payday or deadline.
+                isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-bg-elevated',
               )}
             >
               <span
                 className={clsx(
                   'font-mono text-[11px] font-bold tabular-nums',
-                  isToday ? 'text-white' : negative ? 'text-debt-deep' : 'text-text',
+                  cell ? cell.text : negative ? 'text-debt-deep' : isToday ? 'text-primary-deep' : 'text-text',
                 )}
               >
                 {day.getDate()}
@@ -166,7 +172,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
                 accountById={accountById}
                 size={13}
                 max={3}
-                onDark={isToday}
+                demoteSecondary
               />
             </button>
           )

@@ -10,8 +10,6 @@ interface AccountBadgeProps {
   account?: Account
   kind: CalendarEventKind
   size?: number
-  /** On the filled "today" cell the fallback icon must invert to stay legible. */
-  onDark?: boolean
 }
 
 function initialsOf(name: string): string {
@@ -30,7 +28,7 @@ function initialsOf(name: string): string {
  * initials, and finally to the event-kind icon for things with no account
  * behind them (a payday, a goal).
  */
-export function AccountBadge({ account, kind, size = 36, onDark = false }: AccountBadgeProps) {
+export function AccountBadge({ account, kind, size = 36 }: AccountBadgeProps) {
   const [logoFailed, setLogoFailed] = useState(false)
   const style = EVENT_STYLE[kind]
   const box = { width: size, height: size }
@@ -66,11 +64,7 @@ export function AccountBadge({ account, kind, size = 36, onDark = false }: Accou
 
   return (
     <span
-      style={
-        onDark
-          ? { ...box, background: 'rgba(255,255,255,0.22)', color: '#FFFFFF' }
-          : { ...box, background: `${style.hex}18`, color: style.hex }
-      }
+      style={{ ...box, background: `${style.hex}18`, color: style.hex }}
       className={clsx('grid shrink-0 place-items-center', radius)}
     >
       {createElement(style.icon, { size: Math.max(9, Math.round(size * 0.6)), stroke: 2.4 })}
