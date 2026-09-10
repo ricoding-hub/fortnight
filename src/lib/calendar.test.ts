@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCalendarEvents, cardCutDates, cardDueDates, dayInMonth,
   eventsByDay, fromKey, installmentDates, monthGrid, projectDailyBalance,
-  subscriptionDates, toKey,
+  startOfWeekMx, subscriptionDates, toKey, weekdayIndex,
 } from '@/lib/calendar'
 import type { Account, Installment, Subscription, UserConfig } from '@/types'
 
@@ -51,12 +51,55 @@ describe('date helpers', () => {
     expect(toKey(dayInMonth(2026, 1, 31))).toBe('2026-02-28')  // febrero 2026
   })
 
-  it('lays out six weeks starting on Sunday', () => {
+  it('lays out six weeks starting on Monday', () => {
     const g = monthGrid(2026, 8) // septiembre 2026
     expect(g).toHaveLength(42)
-    expect(g[0].getDay()).toBe(0)
+    expect(g[0].getDay()).toBe(1)
     expect(g.some((x) => toKey(x) === '2026-09-01')).toBe(true)
     expect(g.some((x) => toKey(x) === '2026-09-30')).toBe(true)
+  })
+
+  // Noviembre 2026 empieza en domingo, el desfase máximo con semana de lunes.
+  it('still fits a whole month when the offset is the widest possible', () => {
+    const g = monthGrid(2026, 10)
+    expect(g[0].getDay()).toBe(1)
+    expect(toKey(g[0])).toBe('2026-10-26')
+    expect(g.some((x) => toKey(x) === '2026-11-01')).toBe(true)
+    expect(g.some((x) => toKey(x) === '2026-11-30')).toBe(true)
+  })
+})
+
+describe('week start', () => {
+  it('counts Monday as the first day', () => {
+    expect(weekdayIndex(fromKey('2026-09-07'))).toBe(0) // lunes
+    expect(weekdayIndex(fromKey('2026-09-09'))).toBe(2) // miércoles
+    expect(weekdayIndex(fromKey('2026-09-12'))).toBe(5) // sábado
+    expect(weekdayIndex(fromKey('2026-09-13'))).toBe(6) // domingo
+  })
+
+  it('walks back to the Monday of the same week', () => {
+    expect(toKey(startOfWeekMx(fromKey('2026-09-09')))).toBe('2026-09-07')
+    expect(toKey(startOfWeekMx(fromKey('2026-09-07')))).toBe('2026-09-07')
+  })
+
+  // El error clásico del `% 7` mal puesto: mandar el domingo a la semana que
+  // empieza al día siguiente en vez de a la que está cerrando.
+  it('leaves Sunday in the week that is ending, not the one starting', () => {
+    expect(toKey(startOfWeekMx(fromKey('2026-09-13')))).toBe('2026-09-07')
+    expect(toKey(startOfWeekMx(fromKey('2026-09-14')))).toBe('2026-09-14')
+  })
+
+  it('crosses a month boundary', () => {
+    expect(toKey(startOfWeekMx(fromKey('2026-10-01')))).toBe('2026-09-28')
+  })
+
+  it('keeps local noon, so a DST shift cannot move the day', () => {
+    expect(startOfWeekMx(fromKey('2026-09-09')).getHours()).toBe(12)
+  })
+
+  it('labels the columns in the order the grid draws them', () => {
+    const g = monthGrid(2026, 8)
+    for (let i = 0; i < 7; i++) expect(weekdayIndex(g[i])).toBe(i)
   })
 })
 

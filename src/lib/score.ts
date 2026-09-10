@@ -1,4 +1,4 @@
-import type { Account } from '@/types'
+import type { Account, ScoreSnapshot } from '@/types'
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max)
@@ -133,4 +133,33 @@ export function calculateScoreV2(input: ScoreInput): ScoreResult {
 export function calculateScore(accounts: Account[]): number {
   const { score } = calculateScoreV2({ accounts })
   return Math.round(score)
+}
+
+/**
+ * How much the score actually moved inside the current week: today's value
+ * against the last snapshot taken before Monday.
+ *
+ * Home used to subtract the two ends of the sparkline, which spans 30 days, and
+ * label the result "esta semana" — so a month of drift was reported as a week
+ * of it. Returns null when there is nothing to compare against, so the UI can
+ * drop the number instead of printing a "+0.0" that looks measured.
+ *
+ * `snapshots` arrives newest-first, the order `useScoreHistory` reads it in.
+ */
+export function weeklyScoreDelta(
+  snapshots: ScoreSnapshot[],
+  currentScore: number,
+  weekStartKey: string,
+): number | null {
+  // Closest snapshot before the week opened: that is where the week started.
+  let baseline = snapshots.find((s) => s.day < weekStartKey)
+
+  // A brand-new user has no history before Monday. Fall back to the oldest
+  // reading inside the week — less of a week, but honestly within it.
+  if (!baseline) {
+    for (const s of snapshots) if (s.day >= weekStartKey) baseline = s
+  }
+  if (!baseline) return null
+
+  return Math.round((currentScore - Number(baseline.score)) * 10) / 10
 }

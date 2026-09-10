@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.6.5"
+            version="1.6.6"
             date="10 sep 2026"
             current
+            notes={[
+              'La semana ahora va de lunes a domingo, como se usa en México: el fin de semana queda junto al final de la fila y ya no partido entre las dos orillas',
+              'Las misiones semanales cuentan tu avance sobre esa misma semana. Antes contaban los últimos 7 días, así que un miércoles todavía te sumaban gastos de la semana pasada',
+              'El "esta semana" del score ya mide la semana: antes comparaba contra el inicio del historial de 30 días',
+            ]}
+          />
+          <VersionRow
+            version="1.6.5"
+            date="10 sep 2026"
             notes={[
               'El día de pago manda: si te pagan y además vence una tarjeta, el día se pinta de verde',
               'Cada día muestra el logo o el icono de lo que pasa, ya no puntitos de color que no decían nada',

@@ -45,7 +45,8 @@ import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
 import { getInstallmentRemaining } from '@/lib/debt'
-import { calculateScoreV2 } from '@/lib/score'
+import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
+import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
 import { monthsToGoal } from '@/lib/goals'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -184,8 +185,10 @@ export function Resumen() {
   const scoreInt = Math.round(score)
   const scoreTier = scoreInt >= 8 ? 'Top' : scoreInt >= 5 ? 'Mejorando' : 'En reto'
   const scoreColor = scoreInt >= 8 ? '#2BB673' : scoreInt >= 5 ? '#9B7BFF' : '#FF5A5F'
-  const scoreDelta =
-    Math.round((scoreHistory[scoreHistory.length - 1] - scoreHistory[0]) * 10) / 10
+  const scoreDelta = useMemo(
+    () => weeklyScoreDelta(scoreSnapshots, score, toKey(startOfWeekMx(new Date()))),
+    [scoreSnapshots, score],
+  )
 
   const unlockedAchievements = [
     recentTx.length >= 1,
@@ -225,9 +228,11 @@ export function Resumen() {
   // Missions — driven by useMissions, which fetches this week's claims and
   // auto-awards XP the moment a mission hits 100%.
   const missionCtx = useMemo(() => {
-    const cutoff7 = new Date()
-    cutoff7.setDate(cutoff7.getDate() - 7)
-    const cutoffISO = cutoff7.toISOString().slice(0, 10)
+    // The claim key is an ISO week (`isoWeek`), so the progress has to be
+    // counted over that same week. A rolling 7-day window meant that on a
+    // Wednesday the counters still included last week's expenses, which had
+    // already been claimed.
+    const cutoffISO = toKey(startOfWeekMx(new Date()))
     const weekTx = recentTx.filter((t) => t.date >= cutoffISO && t.type === 'transaction')
     const weekDebtPayments = weekTx
       .filter((t) => {
@@ -545,10 +550,15 @@ export function Resumen() {
                   <IconInfoCircle size={13} className="ml-auto text-text-tertiary" />
                 </div>
                 <p className="mb-2 text-[11.5px] font-semibold text-text-secondary">
-                  <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
-                    {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
-                  </span>{' '}
-                  esta semana · meta <b className="text-text">7</b>
+                  {scoreDelta != null && (
+                    <>
+                      <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
+                        {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
+                      </span>{' '}
+                      esta semana ·{' '}
+                    </>
+                  )}
+                  meta <b className="text-text">7</b>
                 </p>
                 <ScoreSparkline data={scoreHistory} />
               </div>

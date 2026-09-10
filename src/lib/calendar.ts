@@ -83,11 +83,33 @@ export function dayInMonth(year: number, month: number, day: number): Date {
   return new Date(year, month, Math.min(day, lastDayOfMonth(year, month)), 12, 0, 0, 0)
 }
 
-/** Six weeks of local-noon days covering `month`, weeks starting Sunday (es-MX). */
+/**
+ * 0 = lunes … 6 = domingo. `Date.getDay()` counts from Sunday, which is the US
+ * week; in Mexico the weekend belongs at the end of the row, not split across
+ * both edges.
+ */
+export function weekdayIndex(d: Date): number {
+  return (d.getDay() + 6) % 7
+}
+
+/**
+ * The local-noon Monday that opens the week containing `d`. The one place that
+ * decides where a week begins — the month grid, Home's week strip, the mission
+ * counters and the weekly score delta all read it from here, so "esta semana"
+ * can only ever mean one thing.
+ */
+export function startOfWeekMx(d: Date): Date {
+  const start = noon(new Date(d))
+  start.setDate(d.getDate() - weekdayIndex(d))
+  return start
+}
+
+/**
+ * Six weeks of local-noon days covering `month`, weeks starting Monday (es-MX).
+ * 42 cells always suffice: the widest offset is 6 and the longest month is 31.
+ */
 export function monthGrid(year: number, month: number): Date[] {
-  const first = new Date(year, month, 1, 12, 0, 0, 0)
-  const start = new Date(first)
-  start.setDate(first.getDate() - first.getDay())
+  const start = startOfWeekMx(new Date(year, month, 1, 12, 0, 0, 0))
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start)
     d.setDate(start.getDate() + i)
@@ -95,7 +117,8 @@ export function monthGrid(year: number, month: number): Date[] {
   })
 }
 
-export const WEEKDAYS_ES = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'] as const
+/** Column order of the grid. Index with `weekdayIndex`, never with `getDay()`. */
+export const WEEKDAYS_ES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'] as const
 
 /* ── per-source date projections ──────────────────────────────────────────── */
 

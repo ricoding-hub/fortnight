@@ -6,8 +6,8 @@ import { AccountBadge } from '@/components/calendar/AccountBadge'
 import { DayMarkers } from '@/components/calendar/DayMarkers'
 import { PRIMARY_CELL, dominantPrimary } from '@/components/calendar/eventStyle'
 import {
-  buildCalendarEvents, eventsByDay, fromKey, noon, toKey, WEEKDAYS_ES,
-  type CalendarInput,
+  buildCalendarEvents, eventsByDay, fromKey, noon, startOfWeekMx, toKey,
+  weekdayIndex, WEEKDAYS_ES, type CalendarInput,
 } from '@/lib/calendar'
 import { formatMXN } from '@/lib/format'
 
@@ -24,18 +24,17 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
   const accountById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a])), [data.accounts])
 
   const { week, byDay, upcoming } = useMemo(() => {
-    // Sunday of the current week through the next 45 days, so the strip and the
+    // Monday of the current week through the next 45 days, so the strip and the
     // upcoming list come from one pass over the same events.
-    const sunday = noon(new Date(today))
-    sunday.setDate(today.getDate() - today.getDay())
+    const monday = startOfWeekMx(today)
     const to = noon(new Date(today))
     to.setDate(today.getDate() + 45)
 
-    const all = buildCalendarEvents(data, sunday, to)
+    const all = buildCalendarEvents(data, monday, to)
     const todayKey = toKey(today)
     const days = Array.from({ length: 7 }, (_, i) => {
-      const d = noon(new Date(sunday))
-      d.setDate(sunday.getDate() + i)
+      const d = noon(new Date(monday))
+      d.setDate(monday.getDate() + i)
       return d
     })
     return {
@@ -92,7 +91,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
                     cell ? cell.text : 'text-text-tertiary',
                   )}
                 >
-                  {WEEKDAYS_ES[d.getDay()]}
+                  {WEEKDAYS_ES[weekdayIndex(d)]}
                 </span>
                 <span
                   className={clsx(
