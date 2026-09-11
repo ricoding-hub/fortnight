@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.4"
+            version="1.7.6"
             date="11 sep 2026"
             current
+            notes={[
+              'Si algo falla al dibujar una pantalla, la app ahora te lo dice y te ofrece recargar, en vez de quedarse en blanco',
+              'El aviso incluye el error exacto para que puedas copiarlo y mandárnoslo desde el teléfono',
+              'Añadida una salida para limpiar la caché cuando el problema es una actualización a medias',
+            ]}
+          />
+          <VersionRow
+            version="1.7.4"
+            date="11 sep 2026"
             notes={[
               'Corregida la barra de navegación en iPhone: se despegaba y aparecía a media pantalla, y subía más cuanto más bajabas',
               'La app ya no desplaza la página entera, sólo el contenido, que es lo que impedía que la barra se quedara en su sitio',

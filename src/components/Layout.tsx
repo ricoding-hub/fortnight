@@ -11,6 +11,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { useTransactions } from '@/hooks/useTransactions'
 import { APP_SCROLL_ID } from '@/lib/appScroll'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 /**
  * App shell for protected routes.
@@ -48,7 +49,10 @@ export function Layout() {
   return (
     // `relative` so the nav and the pet can anchor to the shell instead of to
     // the viewport, and `overflow-hidden` so nothing can scroll the document.
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-bg gradient-mesh pt-safe">
+    // `h-viewport` rather than `h-dvh`: the Tailwind class compiles to a lone
+    // `100dvh`, so where the unit isn't understood the shell gets no height at
+    // all and, being overflow-hidden, shows nothing but its background.
+    <div className="relative flex h-viewport flex-col overflow-hidden bg-bg gradient-mesh pt-safe">
       <div className="mx-auto flex w-full min-h-0 max-w-[1280px] flex-1">
         {/* Desktop sidebar */}
         <Sidebar />
@@ -63,7 +67,11 @@ export function Layout() {
           >
             <PwaBanner />
             <InstallPrompt />
-            <Outlet />
+            {/* Por vista: si Inicio revienta, la barra y el resto siguen
+                usables y el usuario puede irse a otra pestaña. */}
+            <ErrorBoundary scope={pathname} key={pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </div>
       </div>

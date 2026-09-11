@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useAutoSync } from '@/hooks/useAutoSync'
 import { useUiStore } from '@/store/uiStore'
@@ -67,8 +68,9 @@ function PublicOnlyRoute({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ErrorBoundary scope="app">
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route
             path="/login"
@@ -120,8 +122,9 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <AppTour />
-      </BrowserRouter>
-      <ToastContainer />
-    </AuthProvider>
+        </BrowserRouter>
+        <ToastContainer />
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

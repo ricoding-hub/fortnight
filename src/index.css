@@ -240,6 +240,24 @@ body {
   padding-top: env(safe-area-inset-top);
 }
 
+/* Alto del armazón, con respaldo real.
+   `h-dvh` de Tailwind compila a `height:100dvh` y nada más: donde el navegador
+   no entienda la unidad, descarta la línea y el armazón se queda sin alto —
+   y al ser overflow-hidden, no se ve nada. Aquí la segunda línea pisa a la
+   primera sólo si el navegador la entiende, que es el respaldo que faltaba. */
+@utility h-viewport {
+  height: 100svh;
+}
+
+/* El respaldo va en @supports y no como declaración repetida: el minificador
+   deduplica dos `height` seguidos y se lleva por delante justo la línea que
+   protege a los navegadores sin `dvh`. Condicionado no lo puede borrar. */
+@supports (height: 100dvh) {
+  .h-viewport {
+    height: 100dvh;
+  }
+}
+
 /* Glass-morphism cards (warm cream tint) */
 @utility glass {
   background: var(--color-bg-glass);
