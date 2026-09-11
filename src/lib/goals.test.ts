@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expectedToday, monthsBetween, monthsToGoal, projectGoal } from './goals'
+import { debtFreeMonth, expectedToday, monthsBetween, monthsToGoal, projectGoal, resolveDebtGoal } from './goals'
 import type { Goal } from '@/types'
 
 function goal(overrides: Partial<Goal> = {}): Goal {
@@ -72,5 +72,93 @@ describe('monthsToGoal', () => {
 
   it('returns Infinity when monthly is 0', () => {
     expect(monthsToGoal(goal({ monthly: 0 }))).toBe(Infinity)
+  })
+})
+
+/* ── Mes libre de deuda ───────────────────────────────────────────────────── */
+
+/** La meta que la app siembra sola: monthly = deuda x 1.05 / 6. */
+const sembrada = (creditDebt: number): Goal =>
+  goal({
+    is_debt: true,
+    name: 'Liberar tarjetas',
+    target: creditDebt,
+    saved: 0,
+    monthly: Math.round((creditDebt * 1.05) / 6),
+    linked_account_ids: [],
+  })
+
+const HOY = new Date(2026, 8, 11) // 11 sep 2026, la fecha del reporte
+
+describe('resolveDebtGoal — el caso del reporte', () => {
+  it('la fórmula sembrada da 6 meses para cualquiera, que es el defecto', () => {
+    // ceil(deuda / (deuda * 1.05 / 6)) = ceil(6/1.05) = 6, y la deuda se cancela.
+    expect(monthsToGoal(sembrada(60012))).toBe(6)
+    expect(monthsToGoal(sembrada(9000))).toBe(6)
+    expect(monthsToGoal(sembrada(500000))).toBe(6)
+  })
+
+  it('con la derivación, dos deudas distintas dan meses distintos', () => {
+    const plan = { disposable: 8317 }
+    const a = resolveDebtGoal(sembrada(60012), { creditDebt: 60012, ...plan })
+    const b = resolveDebtGoal(sembrada(9000), { creditDebt: 9000, ...plan })
+    expect(monthsToGoal(a!)).not.toBe(monthsToGoal(b!))
+    expect(monthsToGoal(a!)).toBe(Math.ceil(60012 / 8317)) // 8
+    expect(monthsToGoal(b!)).toBe(Math.ceil(9000 / 8317))  // 2
+  })
+
+  it('usa la deuda viva, no la del día que se sembró la meta', () => {
+    // La meta se sembró con 60,012 y desde entonces bajó a 58,219. El objetivo
+    // guardado se queda quieto; lo que manda es lo que se debe hoy.
+    const g = resolveDebtGoal(sembrada(60012), { creditDebt: 58219, disposable: 8317 })!
+    expect(g.saved).toBe(60012 - 58219)
+    expect(monthsToGoal(g)).toBe(7)   // ceil(58219 / 8317)
+    const m = debtFreeMonth(g, HOY)!
+    expect(m.getMonth()).toBe(3)      // abr 2027, lo que ya mostraba Proyección
+    expect(m.getFullYear()).toBe(2027)
+  })
+
+  it('no inventa una fecha cuando no hay aporte real', () => {
+    expect(resolveDebtGoal(sembrada(60012), { creditDebt: 60012, disposable: 0 })).toBeNull()
+    expect(resolveDebtGoal(sembrada(60012), { creditDebt: 60012, disposable: -500 })).toBeNull()
+    expect(debtFreeMonth(null, HOY)).toBeNull()
+  })
+
+  it('respeta al usuario que ligó cuentas y eligió su aporte', () => {
+    const propia = goal({ is_debt: true, target: 30000, saved: 10000, monthly: 4000, linked_account_ids: ['a1'] })
+    const r = resolveDebtGoal(propia, { creditDebt: 99999, disposable: 8317 })
+    expect(r).toEqual(propia)          // ni saved ni monthly se pisan
+    expect(monthsToGoal(r!)).toBe(5)
+  })
+
+  it('descarta una meta sin aporte alguno en vez de dividir entre cero', () => {
+    const sinAporte = goal({ is_debt: true, monthly: 0, linked_account_ids: ['a1'] })
+    expect(resolveDebtGoal(sinAporte, { creditDebt: 1000, disposable: 500 })).toBeNull()
+  })
+})
+
+describe('debtFreeMonth', () => {
+  it('nombra el mes aunque la serie de la gráfica se corte en 8 puntos', () => {
+    // 24 meses de pago: projectGoal sólo devuelve 8 puntos y ninguno llega a 0.
+    const largo = goal({ is_debt: true, target: 240000, saved: 0, monthly: 10000, linked_account_ids: [] })
+    expect(projectGoal(largo, HOY)).toHaveLength(8)
+    expect(projectGoal(largo, HOY).some((p) => p.value === 0)).toBe(false)
+    const m = debtFreeMonth(largo, HOY)!
+    expect(m.getMonth()).toBe(8)       // sep
+    expect(m.getFullYear()).toBe(2028) // 24 meses después
+  })
+
+  it('cruza el fin de año sin perderse', () => {
+    const g = goal({ is_debt: true, target: 8000, saved: 0, monthly: 2000, linked_account_ids: [] })
+    const m = debtFreeMonth(g, new Date(2026, 10, 15))! // nov 2026 + 4
+    expect(m.getMonth()).toBe(2)
+    expect(m.getFullYear()).toBe(2027)
+  })
+
+  it('no se corre de mes por el día 31', () => {
+    // Con setMonth sobre un día 31, "31 ene + 1 mes" salta a marzo.
+    const g = goal({ is_debt: true, target: 1000, saved: 0, monthly: 1000, linked_account_ids: [] })
+    const m = debtFreeMonth(g, new Date(2026, 0, 31))!
+    expect(m.getMonth()).toBe(1)       // febrero, no marzo
   })
 })

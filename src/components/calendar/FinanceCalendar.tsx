@@ -131,7 +131,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
       </div>
 
       {/* Day grid — re-keyed per month so the stagger replays on navigation */}
-      <div key={monthKey} className="grid grid-cols-7 gap-0.5 px-2 pb-2">
+      <div key={monthKey} className="grid grid-cols-7 gap-1 px-2 pb-2">
         {grid.map((day, i) => {
           const key = toKey(day)
           const inMonth = day.getMonth() === cursor.getMonth()
@@ -158,7 +158,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
                 !cell && negative && 'bg-debt-soft/60',
                 // Today is an outline, not a fill: filling it hid the colour of
                 // its own payday or deadline.
-                isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-bg-elevated',
+                isToday && 'ring-1 ring-primary ring-offset-1 ring-offset-bg-elevated',
               )}
             >
               <span

@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.4"
+            version="1.7.5"
             date="11 sep 2026"
             current
+            notes={[
+              'Corregido el mes libre de deuda: Inicio decía marzo y Proyección abril. Ahora los dos salen del mismo cálculo, con tu deuda y tu disponible reales',
+              'Antes ese mes no salía de tus números: la meta que la app siembra sola hacía que el resultado fuera siempre 6 meses, para cualquiera y con cualquier deuda. Por eso a dos personas distintas les salía la misma fecha',
+              'Si no hay ingreso o plan configurado ya no inventamos una fecha: se muestra un guion y qué falta por configurar',
+              'Los días del calendario ya no se tocan entre sí, y el aro del día de hoy no se encima con el día siguiente',
+            ]}
+          />
+          <VersionRow
+            version="1.7.4"
+            date="11 sep 2026"
             notes={[
               'Corregida la barra de navegación en iPhone: se despegaba y aparecía a media pantalla, y subía más cuanto más bajabas',
               'La app ya no desplaza la página entera, sólo el contenido, que es lo que impedía que la barra se quedara en su sitio',
