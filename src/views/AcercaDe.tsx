@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.2"
+            version="1.7.3"
             date="11 sep 2026"
             current
+            notes={[
+              'El aviso de instalar ya sólo aparece donde de verdad se puede instalar: en Firefox de escritorio y en Safari viejo ya no dice nada',
+              'Las instrucciones ahora coinciden con tu navegador: iPhone, iPad, Mac (Añadir al Dock), Android y Firefox tienen cada uno las suyas',
+              'En Chrome de iPhone o dentro de WhatsApp te decimos que la abras en Safari, en vez de describirte un menú que ahí no existe',
+              'Los iPad ya se reconocen: se declaran como Mac y antes se quedaban sin el aviso',
+            ]}
+          />
+          <VersionRow
+            version="1.7.2"
+            date="11 sep 2026"
             notes={[
               'Los montos ya aceptan centavos: escribir 574.5 daba "valor inválido, los más cercanos son 574 y 575"',
               'También aceptan coma decimal, separador de miles y el signo de pesos: 574,5 · 1,234.50 · $1,326.00',

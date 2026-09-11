@@ -10,8 +10,15 @@ export function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || iosStandalone
 }
 
-/** iPhone or iPad, where there is no beforeinstallprompt and no shared session. */
+/**
+ * iPhone or iPad, where there is no beforeinstallprompt and no shared session.
+ *
+ * iPadOS 13+ reports a desktop "Macintosh" user agent, so a plain UA test
+ * missed every modern iPad; touch points are what tell the two apart.
+ */
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const ua = navigator.userAgent
+  if (/iphone|ipad|ipod/i.test(ua)) return true
+  return /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1
 }
