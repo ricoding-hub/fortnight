@@ -46,9 +46,9 @@ import { useUiStore } from '@/store/uiStore'
 import { formatMXN } from '@/lib/format'
 import { getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
-import { useDebtFreeMonth } from '@/hooks/useDebtFreeMonth'
 import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
+import { monthsToGoal } from '@/lib/goals'
 import { useNotifications } from '@/hooks/useNotifications'
 import { computePaydays, fmtPayday } from '@/lib/paydays'
 import type { PayFreq } from '@/lib/paydays'
@@ -199,10 +199,18 @@ export function Resumen() {
 
   // Mes libre de deuda — projected month/year from the primary goal (falling
   // back to any debt goal so existing users see something on day one).
-  // Shared with Proyección so the two screens can't disagree, and so the month
-  // stops coming from the seeded goal's `monthly`, which cancels the debt out
-  // and hands every user the same six months.
-  const { month: mesLibre, reason: mesLibreReason } = useDebtFreeMonth()
+  const primaryGoal = useMemo(
+    () => goals.find((g) => g.is_primary) ?? goals.find((g) => g.is_debt) ?? null,
+    [goals],
+  )
+  const mesLibre = useMemo(() => {
+    if (!primaryGoal) return null
+    const m = monthsToGoal(primaryGoal)
+    if (!Number.isFinite(m)) return null
+    const d = new Date()
+    d.setMonth(d.getMonth() + m)
+    return d
+  }, [primaryGoal])
 
   const urgent = creditAccounts
     .map((a) => ({ account: a, days: daysUntilPayment(a) }))
@@ -721,12 +729,7 @@ export function Resumen() {
               {mesLibre ? shortMonth(mesLibre) : '—'}
             </p>
             <p className="mt-1 text-[10.5px] font-semibold text-text-tertiary">
-              {/* Better an honest dash with a way forward than a date we made up. */}
-              {mesLibre
-                ? 'libre de deuda'
-                : mesLibreReason === 'no-disposable'
-                  ? 'configura tu plan'
-                  : 'libre de deuda'}
+              libre de deuda
             </p>
           </div>
         </Card>

@@ -32,7 +32,7 @@ import { CommitmentsChart } from '@/components/CommitmentsChart'
 import { ColchonChart } from '@/components/ColchonChart'
 import { Richeto } from '@/components/Richeto'
 import { iconFor } from '@/lib/icons'
-import { MONTHS_ES, debtFreeMonth, monthsToGoal, projectGoal, resolveDebtGoal, expectedToday } from '@/lib/goals'
+import { monthsToGoal, projectGoal, expectedToday } from '@/lib/goals'
 import { subMonthlyAmount } from '@/lib/projections'
 import {
   getMensualidadesComprometidas,
@@ -158,18 +158,18 @@ export function Proyeccion() {
     [accounts, installments],
   )
 
-  // Same resolution Home uses — shared so the two screens cannot drift apart
-  // again. The debt figure is the one difference: only this screen has the
-  // "toda la deuda / sólo con costo" toggle, so it picks which total to send.
   const patchedPrimary = useMemo(() => {
     if (!primary) return null
-    const totalCreditDebt = accounts
-      .filter((a) => a.type === 'credit')
-      .reduce((s, a) => s + Number(a.balance), 0)
-    return resolveDebtGoal(primary, {
-      creditDebt: debtMode === 'con_costo' ? conCostoRevolving : totalCreditDebt,
-      disposable,
-    })
+    if (primary.is_debt && primary.linked_account_ids.length === 0) {
+      const totalCreditDebt = accounts
+        .filter((a) => a.type === 'credit')
+        .reduce((s, a) => s + Number(a.balance), 0)
+      const targetDebt = debtMode === 'con_costo' ? conCostoRevolving : totalCreditDebt
+      const derivedSaved = Math.max(0, primary.target - targetDebt)
+      const derivedMonthly = disposable > 0 ? disposable : primary.monthly
+      return { ...primary, saved: derivedSaved, monthly: derivedMonthly }
+    }
+    return primary
   }, [primary, accounts, disposable, debtMode, conCostoRevolving])
 
   const committedData = useMemo(
@@ -234,13 +234,16 @@ export function Proyeccion() {
   }
 
   const isDebt = primary.is_debt
+  const finishIdx = isDebt
+    ? series.findIndex((p) => p.value === 0)
+    : series.findIndex((p) => p.value >= (patchedPrimary?.target ?? primary.target))
   const monthsLeft = patchedPrimary ? monthsToGoal(patchedPrimary) : Infinity
   const color = primary.color ?? '#2A4BFF'
-  // The month no longer comes from the chart series. projectGoal caps that
-  // series at eight points, so a payoff further out than seven months had no
-  // zero bar to find and the headline printed a dash. debtFreeMonth divides
-  // instead of searching, so it always has an answer.
-  const finishDate = debtFreeMonth(isDebt ? patchedPrimary : primary)
+  const finishYear = (() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + (finishIdx >= 0 ? finishIdx : monthsLeft))
+    return d.getFullYear()
+  })()
 
   const linkedAccounts = accounts.filter((a) => primary.linked_account_ids.includes(a.id))
   const linkedBalance = linkedAccounts.reduce((s, a) => s + Number(a.balance), 0)
@@ -314,27 +317,18 @@ export function Proyeccion() {
           )}
         </div>
         <p className="relative font-display text-[32px] font-extrabold leading-none">
-          {finishDate ? `${MONTHS_ES[finishDate.getMonth()]} ${finishDate.getFullYear()}` : '—'}
+          {finishIdx >= 0 ? series[finishIdx].month : '—'}{' '}
+          {finishYear}
         </p>
         <div className="relative mt-1.5 flex items-baseline gap-2">
-          {finishDate ? (
-            <>
-              <p className="text-[12.5px] font-medium opacity-85">
-                Aportando{' '}
-                <b className="font-mono">{fmtMoney(displayMonthly)}/mes</b>
-              </p>
-              {monthlyIsDerived && (
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9.5px] font-extrabold tracking-wide opacity-90">
-                  = tu disponible
-                </span>
-              )}
-            </>
-          ) : (
-            // Sin disponible no hay con qué dividir. Decirlo, en vez de dar una
-            // fecha que no sale de sus números.
-            <p className="text-[12.5px] font-medium opacity-85">
-              Configura tu ingreso y tu plan para proyectarlo.
-            </p>
+          <p className="text-[12.5px] font-medium opacity-85">
+            Aportando{' '}
+            <b className="font-mono">{fmtMoney(displayMonthly)}/mes</b>
+          </p>
+          {monthlyIsDerived && (
+            <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9.5px] font-extrabold tracking-wide opacity-90">
+              = tu disponible
+            </span>
           )}
         </div>
         {linkedAccounts.length > 0 && (

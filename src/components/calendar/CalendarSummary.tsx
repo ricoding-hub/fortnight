@@ -66,7 +66,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
           </p>
           <IconChevronRight size={15} className="shrink-0 text-text-tertiary" />
         </div>
-        <div className="grid grid-cols-7 gap-1 px-2 pb-1 pt-1.5">
+        <div className="grid grid-cols-7 gap-0.5 px-2 pb-1 pt-1.5">
           {week.map((d) => {
             const key = toKey(d)
             const isToday = key === todayKey
@@ -82,7 +82,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
                 className={clsx(
                   'flex flex-col items-center gap-0.5 rounded-md py-1.5',
                   cell && `${cell.bg} ring-1 ${cell.ring}`,
-                  isToday && 'ring-1 ring-primary ring-offset-1 ring-offset-bg-elevated',
+                  isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-bg-elevated',
                 )}
               >
                 <span
