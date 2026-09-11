@@ -9,10 +9,11 @@ import { BrandLogo } from '@/components/BrandLogo'
 import { SUBSCRIPTION_BRANDS, BRANDS, type Brand } from '@/lib/brands'
 import { useToast } from '@/hooks/useToast'
 import { useAccounts } from '@/hooks/useAccounts'
+import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import type { Subscription, NewSubscription, SubscriptionFrequency } from '@/types'
 
-const isDay = (v: string) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 31 }
-const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0
+const isDay = (v: string) => isCountInput(v, 1, 31)
+const isMoney = (v: string) => isMoneyInput(v)
 
 const schema = z.object({
   name:       z.string().trim().min(1, 'Escribe un nombre'),
@@ -73,9 +74,9 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
   async function onSubmit(values: FormValues) {
     const payload: NewSubscription = {
       name:       values.name.trim(),
-      amount:     Number(values.amount),
+      amount:     moneyOr(values.amount, 0),
       frequency:  freq,
-      charge_day: Number(values.charge_day),
+      charge_day: parseCountInput(values.charge_day) ?? 1,
       account_id: values.account_id || null,
       brand_id:   selectedBrand?.id ?? null,
       color:      selectedBrand?.color ?? null,

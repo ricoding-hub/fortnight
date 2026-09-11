@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { IconCheck, IconLink, IconStarFilled, IconTrash } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
+import { isMoneyInput, moneyOr } from '@/lib/money'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAccounts } from '@/hooks/useAccounts'
@@ -13,9 +14,7 @@ interface Props {
   onClose: () => void
 }
 
-function isMoney(v: string) {
-  return v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0
-}
+const isMoney = (v: string) => isMoneyInput(v)
 
 export function GoalEditModal({ goal, onClose }: Props) {
   const toast = useToast()
@@ -55,8 +54,8 @@ export function GoalEditModal({ goal, onClose }: Props) {
     try {
       await update(goal.id, {
         name: name.trim(),
-        target: Number(target),
-        monthly: Number(monthly),
+        target: moneyOr(target, 0),
+        monthly: moneyOr(monthly, 0),
         deadline: deadline || null,
       })
       const currentSet = new Set(goal.linked_account_ids)
@@ -91,8 +90,8 @@ export function GoalEditModal({ goal, onClose }: Props) {
     }
   }
 
-  const targetNum = Number(target) || 0
-  const monthlyNum = Number(monthly) || 0
+  const targetNum = moneyOr(target, 0)
+  const monthlyNum = moneyOr(monthly, 0)
   const remaining = Math.max(targetNum - goal.saved, 0)
   const monthsLeft = monthlyNum > 0 ? Math.ceil(remaining / monthlyNum) : Infinity
 

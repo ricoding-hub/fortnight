@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { IconCheck, IconLink, IconRocket, IconX } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
+import { moneyOr } from '@/lib/money'
 import { Button } from '@/components/ui/Button'
 import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
@@ -58,7 +59,7 @@ export function GoalWizard({ onClose }: Props) {
     ? calcMonthlyDisposable(config, subs)
     : 0
 
-  const targetNum = Number(target.replace(/,/g, '')) || 0
+  const targetNum = moneyOr(target, 0)
   const suggestedMonthly = months > 0 && targetNum > 0
     ? Math.ceil(targetNum / months)
     : 0

@@ -9,6 +9,7 @@ import {
   IconPlus,
   IconX,
 } from '@tabler/icons-react'
+import { moneyNum } from '@/lib/money'
 import clsx from 'clsx'
 import { iconFor } from '@/lib/icons'
 import { bucketStats, type BucketWithSpend } from '@/lib/plan'
@@ -58,7 +59,7 @@ export function BucketCard({
 
   function saveManual() {
     if (!editingRealId) return
-    const amount = Number(realDraft.replace(/[^0-9.]/g, ''))
+    const amount = moneyNum(realDraft)
     if (Number.isFinite(amount) && amount >= 0) {
       onSetManualSpend?.(editingRealId, amount)
     }

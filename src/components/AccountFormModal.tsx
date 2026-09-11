@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/hooks/useToast'
 import { BANK_PRESETS, bankLogoUrl } from '@/lib/banks'
+import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import type { Account, AccountType } from '@/types'
 import type { NewAccount, AccountPatch } from '@/hooks/useAccounts'
 
@@ -28,17 +29,12 @@ interface AccountFormModalProps {
   onDelete: (id: string) => Promise<void>
 }
 
-const isDay = (v: string) => {
-  const n = Number(v)
-  return Number.isInteger(n) && n >= 1 && n <= 31
-}
+const isDay = (v: string) => isCountInput(v, 1, 31)
 
-const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) >= 0
+/** A balance of zero is legitimate: a card you just finished paying. */
+const isMoney = (v: string) => isMoneyInput(v, { allowZero: true })
 
-const isGraceDays = (v: string) => {
-  const n = Number(v)
-  return Number.isInteger(n) && n >= 1 && n <= 365
-}
+const isGraceDays = (v: string) => isCountInput(v, 1, 365)
 
 // The form holds raw strings; values are coerced to the schema's types on submit.
 const accountSchema = z.object({
@@ -135,7 +131,7 @@ export function AccountFormModal({
           },
   })
 
-  const num = (s: string) => (s.trim() === '' ? null : Number(s))
+  const num = (s: string) => (s.trim() === '' ? null : parseCountInput(s))
 
   async function onSubmit(values: AccountFormValues) {
     setSubmitError(false)
@@ -150,7 +146,7 @@ export function AccountFormModal({
         await onCreate({
           name: values.name.trim(),
           type,
-          balance: Number(values.balance),
+          balance: moneyOr(values.balance, 0),
           color,
           logo_domain: logoDomain,
           ...creditFields,

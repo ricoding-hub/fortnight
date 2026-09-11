@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.1"
+            version="1.7.2"
             date="11 sep 2026"
             current
+            notes={[
+              'Los montos ya aceptan centavos: escribir 574.5 daba "valor inválido, los más cercanos son 574 y 575"',
+              'También aceptan coma decimal, separador de miles y el signo de pesos: 574,5 · 1,234.50 · $1,326.00',
+              'El monto por catorcena sólo admitía múltiplos de 100. Ya acepta cualquier cifra',
+              'Ya no puedes registrar más pagos hechos que meses del plan, que dejaba la deuda en negativo',
+              'Una compra de $574.50 a 4 meses se carga por $574.50 exactos, no por $574.52 de redondeo',
+            ]}
+          />
+          <VersionRow
+            version="1.7.1"
+            date="11 sep 2026"
             notes={[
               'Arreglado en computadora: los cuadros de diálogo se quedaban pegados al borde de abajo y no dejaban llegar al botón de guardar',
               'Ahora se centran en pantalla, y la rueda del ratón funciona en cualquier parte, no sólo dentro del cuadro',

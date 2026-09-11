@@ -117,7 +117,11 @@ export function useInstallments() {
     }
 
     if (chargeToCard && row.account_id) {
-      const amount = getInstallmentRemaining(optimistic)
+      // With nothing paid yet, the card took the sticker price. Deriving it
+      // from the rounded monthly instead would charge 574.52 for a 574.50
+      // purchase (143.63 × 4), and those cents never wash out.
+      const amount =
+        startMonthsPaid === 0 ? row.total_amount : getInstallmentRemaining(optimistic)
       if (amount > 0) {
         const { error: chargeErr } = await supabase.from('transactions').insert({
           user_id: user.id,

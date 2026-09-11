@@ -38,13 +38,15 @@ import { Confetti } from '@/components/Confetti'
 import { supabase } from '@/lib/supabase'
 import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
 import { calculateScore } from '@/lib/score'
+import { moneyOr } from '@/lib/money'
 import type { PayFreq, UserConfig } from '@/types'
 
 const APP_VERSION = __APP_VERSION__
 
 interface ProfileForm {
   pay_freq: PayFreq
-  pay_amount: number
+  /** Raw text, as typed. Parsed with `moneyOr` when saving. */
+  pay_amount: string
   pay_reference: string
   notif_payday: boolean
   notif_due_card: boolean
@@ -56,7 +58,7 @@ interface ProfileForm {
 
 const DEFAULTS: ProfileForm = {
   pay_freq: 'catorcenal',
-  pay_amount: 0,
+  pay_amount: '',
   pay_reference: '',
   notif_payday: true,
   notif_due_card: true,
@@ -212,7 +214,7 @@ export function Profile() {
     void update({
       ...values,
       pay_reference: values.pay_reference || null,
-      pay_amount: Number(values.pay_amount) || 0,
+      pay_amount: moneyOr(values.pay_amount, 0),
     }).catch(() => {
       lastSavedRef.current = ''
       const now = Date.now()
@@ -253,7 +255,7 @@ export function Profile() {
 
   const live = watch()
   const freq = (live.pay_freq ?? 'catorcenal') as PayFreq
-  const amount = Number(live.pay_amount ?? 0)
+  const amount = moneyOr(live.pay_amount, 0)
   const refDate = live.pay_reference ?? ''
 
   const handleFreqChange = useCallback(
@@ -511,11 +513,13 @@ export function Profile() {
             <div className="flex items-center gap-2 rounded-md bg-bg-secondary px-3.5 py-3">
               <span className="font-mono text-sm font-bold text-text-tertiary">$</span>
               <input
-                type="number"
+                // step={100} only admitted multiples of a hundred: a pay of
+                // 12,206.50 was "invalid" to the browser. Amounts are free text
+                // so a decimal comma survives too.
+                type="text"
                 inputMode="decimal"
-                min={0}
-                step={100}
-                {...register('pay_amount', { valueAsNumber: true })}
+                autoComplete="off"
+                {...register('pay_amount')}
                 className="min-w-0 flex-1 bg-transparent font-mono text-base font-semibold text-text outline-none placeholder:text-text-tertiary"
                 placeholder="0"
               />
@@ -756,7 +760,7 @@ export function Profile() {
 function toForm(c: UserConfig): ProfileForm {
   return {
     pay_freq: c.pay_freq ?? 'catorcenal',
-    pay_amount: c.pay_amount ?? 0,
+    pay_amount: c.pay_amount != null ? String(c.pay_amount) : '',
     pay_reference: c.pay_reference ?? '',
     notif_payday: c.notif_payday ?? true,
     notif_due_card: c.notif_due_card ?? true,

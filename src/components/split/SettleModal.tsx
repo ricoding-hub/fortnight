@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
+import { moneyNum } from '@/lib/money'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -47,7 +48,7 @@ export function SettleModal({ open, onClose, from, to, suggestedAmount, onSubmit
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const num = Number(amount)
+    const num = moneyNum(amount)
     if (!amount || Number.isNaN(num) || num <= 0) {
       setFormError('Escribe un monto válido')
       return
@@ -81,13 +82,12 @@ export function SettleModal({ open, onClose, from, to, suggestedAmount, onSubmit
 
         <Input
           label="Monto"
-          type="number"
+          type="text"
           inputMode="decimal"
           placeholder="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           min="0.01"
-          step="any"
         />
 
         <Input

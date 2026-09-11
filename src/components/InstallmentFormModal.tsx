@@ -9,28 +9,31 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
 import type { NewInstallment, InstallmentPatch } from '@/hooks/useInstallments'
+import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import type { Installment } from '@/types'
 
-const isMoney = (v: string) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0
-const isMonths = (v: string) => {
-  const n = Number(v)
-  return Number.isInteger(n) && n >= 1 && n <= 120
-}
-const isPaidMonths = (v: string) => {
-  const n = Number(v)
-  return v === '' || (Number.isInteger(n) && n >= 0 && n <= 120)
-}
-
-const schema = z.object({
-  name: z.string().min(1, 'Nombre requerido'),
-  total_amount: z.string().refine(isMoney, 'Monto inválido'),
-  months_total: z.string().refine(isMonths, 'Entre 1 y 120 meses'),
-  months_paid: z.string().refine(isPaidMonths, 'Número inválido'),
-  is_zero_interest: z.boolean(),
-  charge_to_card: z.boolean(),
-  account_id: z.string().optional(),
-  start_date: z.string().optional(),
-})
+const schema = z
+  .object({
+    name: z.string().min(1, 'Nombre requerido'),
+    total_amount: z.string().refine((v) => isMoneyInput(v), 'Escribe un monto, por ejemplo 574.50'),
+    months_total: z.string().refine((v) => isCountInput(v, 1, 120), 'Entre 1 y 120 meses'),
+    months_paid: z.string().refine((v) => v === '' || isCountInput(v, 0, 120), 'Número inválido'),
+    is_zero_interest: z.boolean(),
+    charge_to_card: z.boolean(),
+    account_id: z.string().optional(),
+    start_date: z.string().optional(),
+  })
+  // Nothing stopped "20 de 12 pagados". It made getInstallmentRemaining
+  // negative, and since v1.7.0 that negative is what gets charged to the
+  // card — the balance would go DOWN when registering a purchase.
+  .refine(
+    (v) => {
+      const paid = parseCountInput(v.months_paid === '' ? '0' : v.months_paid)
+      const total = parseCountInput(v.months_total)
+      return paid == null || total == null || paid <= total
+    },
+    { message: 'No puedes llevar más pagos que meses', path: ['months_paid'] },
+  )
 
 type FormValues = z.infer<typeof schema>
 
@@ -89,9 +92,11 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
   const isZeroInterest = watch('is_zero_interest')
   const chargeToCard = watch('charge_to_card')
   const accountId = watch('account_id')
-  const totalAmount = Number(totalAmountStr)
-  const monthsTotal = Number(monthsTotalStr)
-  const monthsPaid = Number(monthsPaidStr) || 0
+  // Bare Number() turns "574,5" into NaN, which silently emptied the live
+  // preview and would have written NaN to the row on submit.
+  const totalAmount = moneyOr(totalAmountStr, 0)
+  const monthsTotal = parseCountInput(monthsTotalStr ?? '') ?? 0
+  const monthsPaid = parseCountInput(monthsPaidStr ?? '') ?? 0
   const monthlyAmount =
     totalAmount > 0 && monthsTotal > 0
       ? Math.round((totalAmount / monthsTotal) * 100) / 100
@@ -106,13 +111,13 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
 
   async function handleFormSubmit(values: FormValues) {
     setSaveError(null)
-    const monthsPaid = Number(values.months_paid) || 0
-    const mTotal = Number(values.months_total)
+    const monthsPaid = parseCountInput(values.months_paid) ?? 0
+    const mTotal = parseCountInput(values.months_total) ?? 0
     try {
       if (isEditing && onUpdate && editingInstallment) {
         await onUpdate(editingInstallment.id, {
           name: values.name,
-          total_amount: Number(values.total_amount),
+          total_amount: moneyOr(values.total_amount, 0),
           monthly_amount: monthlyAmount,
           months_total: mTotal,
           months_paid: monthsPaid,
@@ -125,7 +130,7 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
       } else {
         await onSubmit({
           name: values.name,
-          total_amount: Number(values.total_amount),
+          total_amount: moneyOr(values.total_amount, 0),
           monthly_amount: monthlyAmount,
           months_total: mTotal,
           months_paid: monthsPaid,
@@ -173,9 +178,13 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
             </label>
             <input
               {...register('total_amount')}
-              type="number"
+              // Deliberately not type="number": its default step of 1 rejects
+              // "574.5" outright, and it drops a decimal comma before we ever
+              // see it. Validation lives in the schema instead.
+              type="text"
               inputMode="decimal"
-              placeholder="0"
+              autoComplete="off"
+              placeholder="0.00"
               className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             {errors.total_amount && (
@@ -190,6 +199,9 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
               {...register('months_total')}
               type="number"
               inputMode="numeric"
+              min={1}
+              max={120}
+              step={1}
               placeholder="12"
               className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
@@ -208,6 +220,9 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
             {...register('months_paid')}
             type="number"
             inputMode="numeric"
+            min={0}
+            max={120}
+            step={1}
             placeholder="0"
             className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
           />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { loanRemaining } from '@/hooks/useLoans'
+import { moneyNum } from '@/lib/money'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -49,7 +50,7 @@ export function AbonoModal({
     }
   }, [open])
 
-  const amountNum = Number(amount)
+  const amountNum = moneyNum(amount)
   const afterAbono = Math.max(0, remaining - (amountNum > 0 ? amountNum : 0))
 
   async function handleSubmit(e: React.FormEvent) {
@@ -84,14 +85,13 @@ export function AbonoModal({
 
         <Input
           label="Monto del abono"
-          type="number"
+          type="text"
           inputMode="decimal"
           placeholder="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           autoFocus
           min="0.01"
-          step="any"
         />
 
         {amountNum > 0 && amountNum <= remaining && (
@@ -162,7 +162,7 @@ export function MarkPaidModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const num = Number(amount)
+    const num = moneyNum(amount)
     if (linkAccount && (!amount || Number.isNaN(num) || num <= 0)) {
       setFormError('Escribe un monto válido')
       return
@@ -198,12 +198,11 @@ export function MarkPaidModal({
         {linkAccount && (
           <Input
             label="Monto a registrar"
-            type="number"
+            type="text"
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             min="0.01"
-            step="any"
           />
         )}
 

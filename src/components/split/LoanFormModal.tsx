@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
+import { moneyNum } from '@/lib/money'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import type { NewLoan } from '@/hooks/useLoans'
@@ -51,7 +52,7 @@ export function LoanFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const num = Number(amount)
+    const num = moneyNum(amount)
     if (!name.trim()) { setFormError('Escribe un nombre'); return }
     if (!amount || Number.isNaN(num) || num <= 0) { setFormError('Escribe un monto válido'); return }
     setSubmitting(true)
@@ -131,13 +132,12 @@ export function LoanFormModal({
 
         <Input
           label="Monto"
-          type="number"
+          type="text"
           inputMode="decimal"
           placeholder="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           min="0.01"
-          step="any"
         />
 
         <Input
