@@ -31,6 +31,7 @@ const TYPE_LABEL: Record<Transaction['type'], string> = {
   transaction: 'Movimiento',
   adjustment: 'Ajuste de saldo',
   sync: 'Sincronización',
+  installment: 'Compra a meses',
 }
 
 const SOURCE_LABEL: Record<Transaction['source'], string> = {

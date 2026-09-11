@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getExigibleEsteCiclo, getRevolvingBalance } from '@/lib/debt'
+import { getExigibleEsteCiclo, getMsiUncovered, getRevolvingBalance } from '@/lib/debt'
 import type { Account, Installment } from '@/types'
 
 function card(over: Partial<Account> = {}): Account {
@@ -68,5 +68,52 @@ describe('getRevolvingBalance', () => {
 
   it('ignora MSI de otra tarjeta', () => {
     expect(getRevolvingBalance(card({ balance: 5000 }), [msi({ account_id: 'otra' })])).toBe(5000)
+  })
+})
+
+describe('getMsiUncovered', () => {
+  // El caso de Juan: NU CREDITO en $0.00 con $2,976.19 a 7 meses vivos.
+  // getRevolvingBalance lo aplastaba a 0 y la contradicción no se veía.
+  it('expone el hueco que el clamp escondía', () => {
+    const plan = msi({ monthly_amount: 425.17, months_total: 18, months_paid: 11 })
+    expect(getRevolvingBalance(card({ balance: 0 }), [plan])).toBe(0)
+    expect(getMsiUncovered(card({ balance: 0 }), [plan])).toBeCloseTo(2976.19, 2)
+  })
+
+  it('es cero cuando el saldo sí cubre el plan', () => {
+    expect(getMsiUncovered(card({ balance: 15000 }), [msi()])).toBe(0)
+  })
+
+  it('es cero justo en el límite', () => {
+    expect(getMsiUncovered(card({ balance: 12000 }), [msi()])).toBe(0)
+  })
+
+  it('ignora planes de otra tarjeta', () => {
+    expect(getMsiUncovered(card({ balance: 0 }), [msi({ account_id: 'otra' })])).toBe(0)
+  })
+
+  it('ignora planes ya saldados', () => {
+    expect(getMsiUncovered(card({ balance: 0 }), [msi({ status: 'paid' })])).toBe(0)
+  })
+
+  it('suma varios planes de la misma tarjeta', () => {
+    const dos = [msi({ id: 'a' }), msi({ id: 'b', monthly_amount: 500, months_total: 6 })]
+    expect(getMsiUncovered(card({ balance: 5000 }), dos)).toBe(10000)
+  })
+
+  it('no aplica a débito', () => {
+    expect(getMsiUncovered(card({ type: 'debit', balance: 0 }), [msi()])).toBe(0)
+  })
+
+  // Complemento exacto: o el saldo sobra (revolving) o falta (uncovered),
+  // nunca las dos cosas.
+  it('es el complemento de getRevolvingBalance', () => {
+    for (const balance of [0, 5000, 12000, 20000]) {
+      const c = card({ balance })
+      const rev = getRevolvingBalance(c, [msi()])
+      const gap = getMsiUncovered(c, [msi()])
+      expect(rev - gap).toBeCloseTo(balance - 12000, 5)
+      expect(Math.min(rev, gap)).toBe(0)
+    }
   })
 })

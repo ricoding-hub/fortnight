@@ -63,6 +63,23 @@ export function getRevolvingBalance(account: Account, installments: Installment[
 }
 
 /**
+ * MSI principal that does NOT fit inside the card's balance.
+ *
+ * `getRevolvingBalance` assumes the principal is already part of
+ * `accounts.balance` and subtracts it, flattening anything left over with
+ * `Math.max(0, …)`. When that leftover is positive the two figures contradict
+ * each other — a plan saying $2,976 is owed on a card saying $0 — and the
+ * clamp was hiding it. This exposes the gap so the UI can say so out loud.
+ */
+export function getMsiUncovered(account: Account, installments: Installment[]): number {
+  if (account.type !== 'credit') return 0
+  const msiPrincipal = installments
+    .filter((i) => i.account_id === account.id && i.status === 'active')
+    .reduce((s, i) => s + getInstallmentRemaining(i), 0)
+  return Math.max(0, msiPrincipal - safeNum(account.balance))
+}
+
+/**
  * Minimum payment due this cycle for a single credit account.
  * = min-revolving-payment + Σ MSI monthly amounts − prepay buffer used.
  * Result is clamped to ≥ 0 (buffer can make it $0).

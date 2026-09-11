@@ -2,7 +2,7 @@
 // Mirrors the Supabase schema (CLAUDE.md / supabase/migrations/001_initial.sql).
 
 export type AccountType = 'debit' | 'credit'
-export type TransactionType = 'transaction' | 'adjustment' | 'sync'
+export type TransactionType = 'transaction' | 'adjustment' | 'sync' | 'installment'
 export type CategoryKind = 'fixed' | 'variable' | 'income'
 export type DataSource = 'manual' | 'syncfy'
 export type SyncfyStatus =
@@ -73,6 +73,12 @@ export interface Transaction {
   source: DataSource
   /** Syncfy's id_transaction when source='syncfy'; null for manual entries. */
   external_id: string | null
+  /**
+   * Set on the single `type='installment'` row that charges a plan to its card.
+   * It is what makes `accounts.balance` actually contain the MSI principal
+   * that `getRevolvingBalance` has always assumed was in there.
+   */
+  installment_id: string | null
 }
 
 export interface SyncfyCredential {

@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.7.0"
+            date="11 sep 2026"
+            current
+            notes={[
+              'Al registrar un gasto a meses ahora decides si se carga a la tarjeta. Por defecto sí: tu deuda sube, como pasó de verdad al comprar',
+              'Si el saldo que capturaste ya salió del app del banco y ya incluye esa compra, elige "Sí, ya está" y no tocamos nada',
+              'Antes ninguna de las dos cosas ocurría: el plan a meses quedaba suelto y tu tarjeta podía decir $0 mientras debías miles a meses',
+              'Y si tus cifras no cuadran, la app te lo dice: te avisa cuánto falta en el saldo de esa tarjeta para cubrir lo que llevas a meses',
+            ]}
+          />
+          <VersionRow
             version="1.6.6"
             date="10 sep 2026"
-            current
             notes={[
               'La semana ahora va de lunes a domingo, como se usa en México: el fin de semana queda junto al final de la fila y ya no partido entre las dos orillas',
               'Las misiones semanales cuentan tu avance sobre esa misma semana. Antes contaban los últimos 7 días, así que un miércoles todavía te sumaban gastos de la semana pasada',

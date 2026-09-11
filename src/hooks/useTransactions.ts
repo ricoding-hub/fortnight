@@ -18,6 +18,8 @@ export interface NewTransaction {
   description?: string | null
   date?: string
   type?: TransactionType
+  /** Only for the `type='installment'` charge that links a plan to its card. */
+  installment_id?: string | null
 }
 
 const EMPTY: Transaction[] = []
@@ -93,6 +95,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       created_at: now,
       source: 'manual',
       external_id: null,
+      installment_id: tx.installment_id ?? null,
     }
     setData((prev) => [row, ...prev])
     const { error: err } = await supabase.from('transactions').insert({
@@ -103,6 +106,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       description: tx.description ?? null,
       type: tx.type ?? 'transaction',
       date: tx.date ?? now.slice(0, 10),
+      installment_id: tx.installment_id ?? null,
     })
     if (err) {
       setData((prev) => prev.filter((t) => t.id !== tempId))

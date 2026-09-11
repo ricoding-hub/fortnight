@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  IconAlertTriangle,
   IconCalendarEvent,
   IconPlus,
   IconWallet,
@@ -29,7 +30,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
-import { getInstallmentRemaining } from '@/lib/debt'
+import { getInstallmentRemaining, getMsiUncovered } from '@/lib/debt'
 import type { Account, AccountType } from '@/types'
 
 interface SectionProps {
@@ -364,6 +365,32 @@ export function MisCuentas() {
                     </div>
                   )
                 })()}
+
+                {/* Cards whose balance can't possibly contain the MSI principal
+                    the plans claim. Not a preference — arithmetic: a plan owing
+                    $2,976 on a card reading $0 means one of the two is wrong.
+                    getRevolvingBalance used to flatten this with Math.max(0,…). */}
+                {credit
+                  .map((a) => ({ account: a, gap: getMsiUncovered(a, installments) }))
+                  .filter(({ gap }) => gap > 0.005)
+                  .map(({ account, gap }) => (
+                    <div
+                      key={account.id}
+                      className="flex items-start gap-2.5 rounded-xl border border-peach/40 bg-peach-soft/50 px-3.5 py-3"
+                    >
+                      <IconAlertTriangle size={15} className="mt-px shrink-0 text-peach-deep" />
+                      <p className="text-[11.5px] leading-snug text-text-secondary">
+                        <b className="text-text">{account.name}</b> tiene{' '}
+                        <b className="font-mono text-text">{formatMXN(gap)}</b> a meses que
+                        su saldo no alcanza a cubrir. Si esas compras ya están en tu
+                        tarjeta, actualiza el saldo a{' '}
+                        <b className="font-mono text-text">
+                          {formatMXN(Number(account.balance) + gap)}
+                        </b>{' '}
+                        o más.
+                      </p>
+                    </div>
+                  ))}
                 {installments.map((inst) => (
                   <InstallmentCard
                     key={inst.id}

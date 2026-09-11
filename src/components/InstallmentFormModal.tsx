@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useToast } from '@/hooks/useToast'
+import { formatMXN } from '@/lib/format'
 import type { NewInstallment, InstallmentPatch } from '@/hooks/useInstallments'
 import type { Installment } from '@/types'
 
@@ -26,6 +27,7 @@ const schema = z.object({
   months_total: z.string().refine(isMonths, 'Entre 1 y 120 meses'),
   months_paid: z.string().refine(isPaidMonths, 'Número inválido'),
   is_zero_interest: z.boolean(),
+  charge_to_card: z.boolean(),
   account_id: z.string().optional(),
   start_date: z.string().optional(),
 })
@@ -56,7 +58,9 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { months_total: '12', months_paid: '0', is_zero_interest: true },
+    // Charging is the default: registering a purchase you just made should
+    // raise the card's debt, which is what actually happened.
+    defaultValues: { months_total: '12', months_paid: '0', is_zero_interest: true, charge_to_card: true },
   })
 
   useEffect(() => {
@@ -71,9 +75,10 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
           is_zero_interest: editingInstallment.is_zero_interest,
           account_id: editingInstallment.account_id ?? '',
           start_date: editingInstallment.start_date,
+          charge_to_card: false,
         })
       } else {
-        reset({ months_total: '12', months_paid: '0', is_zero_interest: true })
+        reset({ months_total: '12', months_paid: '0', is_zero_interest: true, charge_to_card: true })
       }
     }
   }, [open, editingInstallment, reset])
@@ -82,6 +87,8 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
   const monthsTotalStr = watch('months_total')
   const monthsPaidStr = watch('months_paid')
   const isZeroInterest = watch('is_zero_interest')
+  const chargeToCard = watch('charge_to_card')
+  const accountId = watch('account_id')
   const totalAmount = Number(totalAmountStr)
   const monthsTotal = Number(monthsTotalStr)
   const monthsPaid = Number(monthsPaidStr) || 0
@@ -89,6 +96,13 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
     totalAmount > 0 && monthsTotal > 0
       ? Math.round((totalAmount / monthsTotal) * 100) / 100
       : 0
+
+  // What the charge would put on the card: the months still owed, not the
+  // sticker price. Registering a plan with 11 of 18 already paid should move
+  // the seven that are left.
+  const selectedCard = creditAccounts.find((a) => a.id === accountId)
+  const pendingPrincipal = Math.max(0, monthsTotal - monthsPaid) * monthlyAmount
+  const balanceAfter = selectedCard ? Number(selectedCard.balance) + pendingPrincipal : 0
 
   async function handleFormSubmit(values: FormValues) {
     setSaveError(null)
@@ -118,6 +132,7 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
           is_zero_interest: values.is_zero_interest,
           account_id: values.account_id || null,
           start_date: values.start_date || undefined,
+          charge_to_card: values.charge_to_card,
         })
         toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
       }
@@ -269,6 +284,67 @@ export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallme
               ))}
             </select>
           </div>
+        )}
+
+        {/* Does this amount already sit inside the card's balance?
+            Asking it outright is the whole fix: the app always assumed it did,
+            and nothing ever put it there. Only on create — flipping it after
+            the fact is the ambiguous case, so it isn't offered. */}
+        {!isEditing && selectedCard && (
+          <Controller
+            control={control}
+            name="charge_to_card"
+            render={({ field }) => (
+              <div>
+                <p className="mb-1.5 text-[12.5px] font-semibold text-text-secondary">
+                  ¿Ya está en el saldo de la tarjeta?
+                </p>
+                <div className="flex overflow-hidden rounded-xl border border-border">
+                  <button
+                    type="button"
+                    onClick={() => field.onChange(true)}
+                    className={clsx(
+                      'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
+                      chargeToCard
+                        ? 'bg-primary text-white'
+                        : 'bg-bg text-text-secondary hover:bg-primary/5',
+                    )}
+                  >
+                    No, cárgalo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => field.onChange(false)}
+                    className={clsx(
+                      'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
+                      !chargeToCard
+                        ? 'bg-primary text-white'
+                        : 'bg-bg text-text-secondary hover:bg-primary/5',
+                    )}
+                  >
+                    Sí, ya está
+                  </button>
+                </div>
+
+                {pendingPrincipal > 0 && (
+                  <p className="mt-1.5 text-[11.5px] leading-snug text-text-secondary">
+                    {chargeToCard ? (
+                      <>
+                        El saldo de <b className="text-text">{selectedCard.name}</b> pasa de{' '}
+                        <b className="font-mono text-text">{formatMXN(Number(selectedCard.balance))}</b> a{' '}
+                        <b className="font-mono text-text">{formatMXN(balanceAfter)}</b>.
+                      </>
+                    ) : (
+                      <>
+                        No tocamos tu saldo. Úsalo si el saldo que capturaste ya salió
+                        del app del banco y ya incluye esta compra.
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+          />
         )}
 
         {/* Start date */}
