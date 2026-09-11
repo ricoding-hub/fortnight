@@ -197,20 +197,28 @@ export function TransactionFormModal({
     <div
       className={clsx(
         'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300',
+        // Same desktop treatment as ui/Modal: the overlay scrolls, so the wheel
+        // works over the whole screen instead of only inside the 480px column.
+        'lg:block lg:overflow-y-auto',
         entered ? 'opacity-100' : 'opacity-0',
       )}
       onClick={onClose}
     >
-      <div className="absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
+      {/* Inert: a fixed backdrop scrolls with the document, not the overlay,
+          so leaving it clickable froze the wheel anywhere outside the panel. */}
+      <div className="pointer-events-none fixed inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
+      <div className="contents lg:flex lg:min-h-full lg:items-center lg:justify-center lg:p-6">
       {/* Panel: flex column with max height so it never extends off-screen */}
       <div
         className={clsx(
           'relative w-full max-w-[480px] bg-bg shadow-lift outline-none',
           'rounded-t-[28px] flex flex-col overflow-hidden',
           'max-h-[88svh]',
+          // No inner cap on desktop: the panel grows, the overlay scrolls.
+          'lg:max-h-none lg:rounded-[28px]',
           'transition-transform duration-300 ease-[cubic-bezier(0.4,1.6,0.5,1)]',
-          entered ? 'translate-y-0' : 'translate-y-full',
+          entered ? 'translate-y-0' : 'translate-y-full lg:translate-y-3',
         )}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -236,7 +244,7 @@ export function TransactionFormModal({
         {step === 0 ? (
           <>
             {/* ── Scrollable body ── */}
-            <div className="flex-1 overflow-y-auto px-[18px] flex flex-col gap-3 pb-2 min-h-0">
+            <div className="flex-1 overflow-y-auto px-[18px] flex flex-col gap-3 pb-2 min-h-0 lg:overflow-visible">
               {/* Direction toggle */}
               <div className="grid grid-cols-2 rounded-full bg-bg-secondary p-1">
                 {(['spend', 'receive'] as Direction[]).map((d) => {
@@ -396,7 +404,7 @@ export function TransactionFormModal({
           </>
         ) : (
           <div
-            className="flex-1 overflow-y-auto px-[18px]"
+            className="min-h-0 flex-1 overflow-y-auto px-[18px] lg:overflow-visible"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
           >
             <Step1Success
@@ -406,6 +414,7 @@ export function TransactionFormModal({
             />
           </div>
         )}
+      </div>
       </div>
     </div>
   )

@@ -10,9 +10,16 @@ interface ModalProps {
 }
 
 /**
- * Bottom-sheet modal with glass-morphism backdrop, slide-up animation,
- * and a drag handle for mobile affordance. Constrained to the app column
- * on desktop. Closes on backdrop click, Escape, or swipe-down (visual only).
+ * Bottom sheet on phones, centred dialog from `lg` up.
+ *
+ * The sheet used to stay glued to the bottom edge at every width. On a laptop
+ * that reads as a panel cut off by the screen, and the only way to reach the
+ * submit button was to notice that the inner 480px column scrolls — the rest
+ * of the screen is backdrop, where the wheel does nothing. Centring it leaves
+ * visible backdrop above and below, so the panel is obviously a dialog with
+ * its own scroll, and the action is never hidden behind the viewport edge.
+ *
+ * Closes on backdrop click, Escape, or swipe-down (visual only).
  */
 export function Modal({ open, onClose, title, children }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -84,45 +91,58 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     <div
       className={clsx(
         'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300',
+        // From lg the overlay itself scrolls, so the wheel works anywhere on
+        // screen. Scrolling only inside the 480px column left the rest of a
+        // desktop screen inert, which is what "no deja bajar" meant.
+        'lg:block lg:overflow-y-auto',
         entered ? 'opacity-100' : 'opacity-0',
       )}
       onClick={onClose}
     >
-      {/* Backdrop with blur */}
-      <div className="absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
+      {/* Backdrop with blur. Fixed so it still covers a scrolled overlay, and
+          inert so it doesn't swallow the wheel: a fixed element's scroll parent
+          is the document, not the overlay, so hovering it froze the page. The
+          overlay's own onClick keeps click-to-close working. */}
+      <div className="pointer-events-none fixed inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={clsx(
-          'relative flex w-full max-w-[480px] max-h-[90dvh] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
-          entered ? 'translate-y-0' : 'translate-y-full',
-        )}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        {/* Drag handle */}
-        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-text-tertiary/40" />
+      {/* Centring track: only real from lg, where the overlay scrolls */}
+      <div className="contents lg:flex lg:min-h-full lg:items-center lg:justify-center lg:p-6">
+        {/* Panel */}
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className={clsx(
+            'relative flex w-full max-w-[480px] max-h-[90dvh] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+            // No inner cap on desktop: the panel grows and the overlay scrolls.
+            'lg:max-h-none lg:rounded-2xl',
+            // A full slide-up is a sheet gesture; on desktop the dialog rises.
+            entered ? 'translate-y-0' : 'translate-y-full lg:translate-y-3',
+          )}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          {/* Drag handle — a touch affordance, meaningless with a mouse */}
+          <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-text-tertiary/40 lg:hidden" />
 
-        {/* Fixed header — always visible above the fold */}
-        <div className="flex shrink-0 items-center justify-between px-5 pb-3 pt-3">
-          <h2 className="text-lg font-semibold text-text">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:bg-border-strong hover:text-text"
-          >
-            <IconX size={18} />
-          </button>
-        </div>
+          {/* Header — sticks to the top of the sheet on mobile */}
+          <div className="flex shrink-0 items-center justify-between px-5 pb-3 pt-3 lg:pt-4">
+            <h2 className="text-lg font-semibold text-text">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:bg-border-strong hover:text-text"
+            >
+              <IconX size={18} />
+            </button>
+          </div>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
-          {children}
+          {/* Body. Scrolls itself on mobile; from lg the overlay does it. */}
+          <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:overflow-visible lg:pb-5">
+            {children}
+          </div>
         </div>
       </div>
     </div>

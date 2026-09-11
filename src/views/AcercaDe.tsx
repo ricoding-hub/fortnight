@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.0"
+            version="1.7.1"
             date="11 sep 2026"
             current
+            notes={[
+              'Arreglado en computadora: los cuadros de diálogo se quedaban pegados al borde de abajo y no dejaban llegar al botón de guardar',
+              'Ahora se centran en pantalla, y la rueda del ratón funciona en cualquier parte, no sólo dentro del cuadro',
+              'Alcanza a los 27 diálogos de la app, no sólo al de agregar gastos a meses',
+              'Los avisos ya no flotan en el vacío en pantallas grandes',
+            ]}
+          />
+          <VersionRow
+            version="1.7.0"
+            date="11 sep 2026"
             notes={[
               'Al registrar un gasto a meses ahora decides si se carga a la tarjeta. Por defecto sí: tu deuda sube, como pasó de verdad al comprar',
               'Si el saldo que capturaste ya salió del app del banco y ya incluye esa compra, elige "Sí, ya está" y no tocamos nada',
