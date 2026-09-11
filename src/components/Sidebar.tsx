@@ -22,7 +22,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav items */}
-      <nav aria-label="Navegación principal">
+      <nav aria-label="Navegación lateral">
         <ul className="flex flex-col gap-1">
           {NAV_TABS.map(({ to, label, icon: Icon }) => {
             const isActive =

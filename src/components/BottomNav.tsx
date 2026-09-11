@@ -22,7 +22,10 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 z-40 px-4 lg:hidden"
+      // `absolute` inside the shell, not `fixed`: with a document that never
+      // scrolls the two are pixel-identical, but this one cannot be re-anchored
+      // to the wrong box by the browser.
+      className="absolute inset-x-0 z-40 px-4 lg:hidden"
       style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       aria-label="Navegación principal"
     >

@@ -190,7 +190,11 @@
 }
 
 html {
-  height: 100%;
+  /* No height here on purpose. With `height: 100%` on html and body the body
+     box stayed exactly one viewport tall while the content overflowed it, and
+     WebKit then anchors a bottom-positioned `fixed` element to that box instead
+     of to the viewport — which floated the bottom nav into mid-screen. The
+     shell in Layout.tsx owns its own height now. */
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   touch-action: manipulation;
@@ -199,7 +203,6 @@ html {
 }
 
 body {
-  height: 100%;
   margin: 0;
   background-color: var(--color-bg);
   color: var(--color-text);

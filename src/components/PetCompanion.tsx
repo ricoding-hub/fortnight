@@ -94,7 +94,9 @@ export function PetCompanion() {
   return (
     <div
       id="tour-pet"
-      className="pointer-events-none fixed z-40 flex flex-col items-end gap-1.5 lg:bottom-6 lg:right-6"
+      // Anchored to the shell like the nav. The old `lg:bottom-6 lg:right-6` was
+      // dead code: the inline offsets below outrank any class.
+      className="pointer-events-none absolute z-40 flex flex-col items-end gap-1.5"
       style={{
         bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))',
         right: '0.875rem',

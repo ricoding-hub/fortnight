@@ -6,6 +6,7 @@ import {
   type Icon,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { lockAppScroll } from '@/lib/appScroll'
 import { Confetti } from '@/components/Confetti'
 import { Richeto } from '@/components/Richeto'
 import { useToast } from '@/hooks/useToast'
@@ -108,21 +109,15 @@ export function TransactionFormModal({
 
   useEffect(() => {
     if (!mounted) return
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
-    const prevOverflow = document.body.style.overflow
-    const prevPadding = document.body.style.paddingRight
-    document.body.style.overflow = 'hidden'
-    if (scrollbarWidth > 0) {
-      const current = parseInt(window.getComputedStyle(document.body).paddingRight, 10) || 0
-      document.body.style.paddingRight = `${current + scrollbarWidth}px`
-    }
+    // Locking `body` froze nothing once the document stopped scrolling: the
+    // app's scroller is `<main>`.
+    const unlock = lockAppScroll()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = prevOverflow
-      document.body.style.paddingRight = prevPadding
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [mounted, onClose])

@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.7.3"
+            version="1.7.4"
             date="11 sep 2026"
             current
+            notes={[
+              'Corregida la barra de navegación en iPhone: se despegaba y aparecía a media pantalla, y subía más cuanto más bajabas',
+              'La app ya no desplaza la página entera, sólo el contenido, que es lo que impedía que la barra se quedara en su sitio',
+              'Abrir un cuadro de diálogo ya no manda el fondo al principio: al cerrarlo sigues donde estabas',
+              'Al cambiar de pestaña vuelves arriba, en vez de aparecer a media pantalla',
+            ]}
+          />
+          <VersionRow
+            version="1.7.3"
+            date="11 sep 2026"
             notes={[
               'El aviso de instalar ya sólo aparece donde de verdad se puede instalar: en Firefox de escritorio y en Safari viejo ya no dice nada',
               'Las instrucciones ahora coinciden con tu navegador: iPhone, iPad, Mac (Añadir al Dock), Android y Firefox tienen cada uno las suyas',

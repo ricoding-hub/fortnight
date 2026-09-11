@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { IconX } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { lockAppScroll } from '@/lib/appScroll'
 
 interface ModalProps {
   open: boolean
@@ -49,40 +50,31 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     }
   }, [open, mounted])
 
-  // Handle scroll lock and scrollbar width compensation to prevent layout shift
+  // Freeze what's behind, and close on Escape.
   useEffect(() => {
     if (!mounted) return
 
-    // Calculate scrollbar width
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
-    
-    // Save previous styles
-    const prevOverflow = document.body.style.overflow
-    const prevPadding = document.body.style.paddingRight
-
-    // Apply scroll lock and padding
-    document.body.style.overflow = 'hidden'
-    if (scrollbarWidth > 0) {
-      // Get current padding to add to it if it exists
-      const currentPadding = parseInt(window.getComputedStyle(document.body).paddingRight, 10) || 0
-      document.body.style.paddingRight = `${currentPadding + scrollbarWidth}px`
-    }
+    // The document no longer scrolls, so locking `body` would freeze nothing:
+    // the app's scroller is `<main>`. lockAppScroll knows where to look.
+    const unlock = lockAppScroll()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
-    
+
     return () => {
-      document.body.style.overflow = prevOverflow
-      document.body.style.paddingRight = prevPadding
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [mounted, onClose])
 
-  // Focus trap: focus panel on open
+  // Focus trap: focus panel on open.
+  // `preventScroll` matters: focusing scrolls every scrollable ancestor to
+  // bring the target into view, and the app's scroller is one of them — so
+  // opening a modal yanked the page behind it back to the top.
   useEffect(() => {
-    if (open && panelRef.current) panelRef.current.focus()
+    if (open && panelRef.current) panelRef.current.focus({ preventScroll: true })
   }, [open])
 
   if (!mounted) return null
