@@ -172,8 +172,12 @@ dev-dist/
 .gemini/
 .claude/
 
-# Dev-only scripts (icon generation, one-off utilities)
-scripts/
+# Dev-only scripts (icon generation, one-off utilities).
+# `scripts/*` y no `scripts/`: git no puede reincluir un archivo si el
+# directorio entero está excluido, porque ni siquiera desciende a mirarlo.
+scripts/*
+# check-bundle sí viaja: forma parte de `npm run build` y sin él Vercel falla.
+!scripts/check-bundle.mjs
 
 # Supabase local dev
 supabase/.branches/
