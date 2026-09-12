@@ -95,10 +95,18 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-async function montar(tablas: Filas, errores: Record<string, { message: string; code?: string }> = {}) {
+async function montar(
+  tablas: Filas,
+  errores: Record<string, { message: string; code?: string }> = {},
+  ruta: '/' | '/plan/proyeccion' = '/',
+) {
   doble = crearSupabaseDoble({ tablas, errores })
   const { Layout } = await import('@/components/Layout')
   const { Resumen } = await import('@/views/Resumen')
+  const { Proyeccion } = await import('@/views/Plan/Proyeccion')
+  // Proyección lee su contexto del layout de Plan, así que hay que montar el
+  // anidamiento de verdad y no la vista suelta.
+  const { PlanLayout } = await import('@/views/Plan')
   const { AuthProvider } = await import('@/hooks/useAuth')
   const { GoalsProvider } = await import('@/hooks/useGoals')
   const { BudgetPlanProvider } = await import('@/hooks/useBudgetPlan')
@@ -107,10 +115,13 @@ async function montar(tablas: Filas, errores: Record<string, { message: string; 
     <AuthProvider>
       <GoalsProvider>
         <BudgetPlanProvider>
-          <MemoryRouter initialEntries={['/']}>
+          <MemoryRouter initialEntries={[ruta]}>
             <Routes>
               <Route element={<Layout />}>
                 <Route path="/" element={<Resumen />} />
+                <Route path="/plan" element={<PlanLayout />}>
+                  <Route path="proyeccion" element={<Proyeccion />} />
+                </Route>
               </Route>
             </Routes>
           </MemoryRouter>
@@ -121,7 +132,7 @@ async function montar(tablas: Filas, errores: Record<string, { message: string; 
   // Esperar a que la vista pinte su contenido y no sólo el armazón: si el test
   // mirara demasiado pronto vería la barra de navegación, daría por bueno el
   // render y se perdería justo el throw que ocurre cuando llegan los datos.
-  await esperarA(/Balance neto|Algo se rompió/)
+  await esperarA(ruta === '/' ? /Balance neto|Algo se rompió/ : /Proyección|proyecc|Algo se rompió/i)
   // El armazón pinta con ceros antes de que llegue nada: si se comprobara aquí,
   // la prueba estaría afirmando que un esqueleto vacío no revienta, que es
   // justo lo que no falla nunca. Hay que dejar que caigan los datos.
@@ -226,6 +237,24 @@ describe('Inicio se dibuja', () => {
       ...COMPLETO,
       accounts: [{ ...CUENTAS[0], credit_limit: null, cut_day: null, payment_due_day: null }],
     })
+    expect(seCayo()).toBe(false)
+  })
+})
+
+describe('Proyección se dibuja', () => {
+  afterEach(cleanup)
+
+  it('con datos completos', { timeout: 20_000 }, async () => {
+    // Proyección tenía el mismo doble consumidor que Inicio: useSubscriptions
+    // directo en la vista y otro por dentro de useDebtFreeMonth. Con el canal
+    // nombrado `subs:${user.id}`, el segundo recibía el canal ya suscrito del
+    // primero y `.on()` lanzaba. Las dos pantallas caían, no sólo Inicio.
+    await montar(COMPLETO, {}, '/plan/proyeccion')
+    expect(seCayo()).toBe(false)
+  })
+
+  it('sin nada configurado', async () => {
+    await montar({}, {}, '/plan/proyeccion')
     expect(seCayo()).toBe(false)
   })
 })

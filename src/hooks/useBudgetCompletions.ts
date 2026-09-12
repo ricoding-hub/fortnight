@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useTableChannel } from '@/hooks/useTableChannel'
 import { useAuth } from '@/hooks/useAuth'
 
 /**
@@ -27,18 +28,11 @@ export function useBudgetCompletions() {
 
   useEffect(() => { void fetch() }, [fetch])
 
-  // Realtime
-  useEffect(() => {
-    if (!user) return
-    const ch = supabase
-      .channel(`completions:${user.id}`)
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'budget_item_completions',
-        filter: `user_id=eq.${user.id}`,
-      }, () => void fetch())
-      .subscribe()
-    return () => { void supabase.removeChannel(ch) }
-  }, [user, fetch])
+  useTableChannel(
+    'completions',
+    user ? [{ table: 'budget_item_completions', filter: `user_id=eq.${user.id}` }] : null,
+    () => void fetch(),
+  )
 
   const toggle = useCallback(async (itemId: string) => {
     if (!user) return

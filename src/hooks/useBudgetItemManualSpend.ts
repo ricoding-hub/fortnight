@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useTableChannel } from '@/hooks/useTableChannel'
 import { useAuth } from '@/hooks/useAuth'
 
 /**
@@ -33,25 +34,11 @@ export function useBudgetItemManualSpend() {
     void fetchAll()
   }, [fetchAll])
 
-  useEffect(() => {
-    if (!user) return
-    const ch = supabase
-      .channel(`manual_spend:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'budget_item_manual_spend',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => void fetchAll(),
-      )
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(ch)
-    }
-  }, [user, fetchAll])
+  useTableChannel(
+    'manual_spend',
+    user ? [{ table: 'budget_item_manual_spend', filter: `user_id=eq.${user.id}` }] : null,
+    () => void fetchAll(),
+  )
 
   const setManual = useCallback(
     async (itemId: string, amount: number) => {

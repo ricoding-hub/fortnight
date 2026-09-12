@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useTableChannel } from '@/hooks/useTableChannel'
 import { useAuth } from '@/hooks/useAuth'
 import { useGamification } from '@/hooks/useGamification'
 import { useToast } from '@/hooks/useToast'
@@ -58,23 +59,13 @@ export function useMissions(ctx: MissionContext, opts: UseMissionsOptions = {}) 
     if (!user) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchClaimed()
-    const ch = supabase
-      .channel(`missions:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'mission_completions',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => void fetchClaimed(),
-      )
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(ch)
-    }
   }, [user, fetchClaimed])
+
+  useTableChannel(
+    'missions',
+    user ? [{ table: 'mission_completions', filter: `user_id=eq.${user.id}` }] : null,
+    () => void fetchClaimed(),
+  )
 
   const claim = useCallback(
     async (mission: { id: string; reward: number; title: string }) => {

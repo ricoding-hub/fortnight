@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.8.1"
+            version="1.8.2"
             date="12 sep 2026"
             current
+            notes={[
+              'Arreglada la caída de Inicio y Proyección: dos partes de la misma pantalla se peleaban por la misma conexión de tiempo real y tiraban la vista entera',
+              'Ese era también el fallo de la versión de ayer. Ya no se puede repetir: el nombre de cada conexión lo pone la app, no quien la usa',
+              'Si el tiempo real falla, la pantalla sigue funcionando: los datos ya llegaron, sólo dejan de refrescarse solos',
+            ]}
+          />
+          <VersionRow
+            version="1.8.1"
+            date="12 sep 2026"
             notes={[
               'Arreglada la pantalla en blanco al actualizar: si la app se queda sin poder cargarse, ahora se limpia y vuelve sola en vez de dejarte mirando un hueco',
               'El mes libre de deuda vuelve, y esta vez sale de tus números: antes daba siempre seis meses, con cualquier deuda y para cualquiera',

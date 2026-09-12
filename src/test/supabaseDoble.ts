@@ -15,6 +15,13 @@ import { vi } from 'vitest'
 
 export type Filas = Record<string, unknown[]>
 
+interface CanalDoble {
+  topic: string
+  on: (evento: string, ...resto: unknown[]) => CanalDoble
+  subscribe: () => CanalDoble
+  unsubscribe: () => Promise<string>
+}
+
 interface Opciones {
   /** Filas por tabla. Lo que no esté aquí devuelve []. */
   tablas?: Filas
@@ -58,10 +65,46 @@ export function crearSupabaseDoble({ tablas = {}, errores = {}, userId = 'u-1' }
     return proxy
   }
 
-  const canal = {
-    on: vi.fn(() => canal),
-    subscribe: vi.fn(() => canal),
-    unsubscribe: vi.fn(() => Promise.resolve('ok')),
+  /**
+   * Canales con el mismo comportamiento que el cliente real, que es donde este
+   * doble mentía y por eso dejó pasar la caída de Inicio dos veces:
+   *
+   * - `channel(nombre)` devuelve el canal YA REGISTRADO si ese nombre existe
+   *   (`RealtimeClient.channel` hace exactamente esto);
+   * - y `.on()` lanza si el canal ya está suscrito, con el mismo mensaje.
+   *
+   * Un doble más permisivo que el original no prueba nada: deja pasar justo los
+   * fallos que sólo aparecen cuando dos componentes hacen lo mismo a la vez.
+   */
+  const registro = new Map<string, CanalDoble>()
+
+  function crearCanal(nombre: string): CanalDoble {
+    const existente = registro.get(nombre)
+    if (existente) return existente
+
+    let suscrito = false
+    const canal: CanalDoble = {
+      topic: nombre,
+      on: (evento: string) => {
+        if (suscrito && (evento === 'postgres_changes' || evento === 'presence')) {
+          throw new Error(
+            `cannot add \`${evento}\` callbacks for ${nombre} after \`subscribe()\`.`,
+          )
+        }
+        return canal
+      },
+      subscribe: () => {
+        suscrito = true
+        return canal
+      },
+      unsubscribe: () => {
+        suscrito = false
+        registro.delete(nombre)
+        return Promise.resolve('ok')
+      },
+    }
+    registro.set(nombre, canal)
+    return canal
   }
 
   const sesion = userId
@@ -76,11 +119,15 @@ export function crearSupabaseDoble({ tablas = {}, errores = {}, userId = 'u-1' }
 
   return {
     consultas,
+    canales: registro,
     cliente: {
       from: vi.fn((tabla: string) => cadena(tabla)),
       rpc: vi.fn(() => Promise.resolve({ data: null, error: SIN_ERROR })),
-      channel: vi.fn(() => canal),
-      removeChannel: vi.fn(() => Promise.resolve('ok')),
+      channel: vi.fn((nombre: string) => crearCanal(nombre)),
+      removeChannel: vi.fn((c: CanalDoble) => {
+        registro.delete(c?.topic)
+        return Promise.resolve('ok')
+      }),
       storage: { from: vi.fn(() => ({ upload: vi.fn(), getPublicUrl: vi.fn(() => ({ data: { publicUrl: '' } })) })) },
       auth: {
         getSession: vi.fn(() => Promise.resolve({ data: { session: sesion }, error: SIN_ERROR })),

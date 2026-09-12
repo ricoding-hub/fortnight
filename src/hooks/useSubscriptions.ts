@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useTableChannel } from '@/hooks/useTableChannel'
 import { useAuth } from '@/hooks/useAuth'
 import type { Subscription, NewSubscription, SubscriptionPatch } from '@/types'
 
@@ -21,18 +22,11 @@ export function useSubscriptions() {
 
   useEffect(() => { void fetch() }, [fetch])
 
-  // Realtime
-  useEffect(() => {
-    if (!user) return
-    const ch = supabase
-      .channel(`subs:${user.id}`)
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'subscriptions',
-        filter: `user_id=eq.${user.id}`,
-      }, () => void fetch())
-      .subscribe()
-    return () => { void supabase.removeChannel(ch) }
-  }, [user, fetch])
+  useTableChannel(
+    'subs',
+    user ? [{ table: 'subscriptions', filter: `user_id=eq.${user.id}` }] : null,
+    () => void fetch(),
+  )
 
   const create = useCallback(async (sub: NewSubscription) => {
     if (!user) return
