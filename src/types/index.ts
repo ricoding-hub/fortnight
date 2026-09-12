@@ -391,10 +391,21 @@ export interface UserGamification {
 
 export type SubscriptionFrequency = 'mensual' | 'trimestral' | 'anual'
 
+/**
+ * Un cargo recurrente: una suscripción o un gasto fijo.
+ *
+ * Son la misma cosa con distinto nombre — monto, periodicidad y día de cobro —
+ * así que comparten tabla y comparten todo lo que se deriva de ellos: eventos
+ * de calendario, egresos del mes y disponible. `kind` sólo cambia cómo se
+ * agrupan y se etiquetan.
+ */
+export type RecurringKind = 'suscripcion' | 'fijo'
+
 export interface Subscription {
   id: string
   user_id: string
   account_id: string | null
+  kind: RecurringKind
   name: string
   amount: number
   frequency: SubscriptionFrequency

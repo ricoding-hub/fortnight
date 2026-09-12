@@ -6,7 +6,7 @@ import { DayDetailModal } from '@/components/calendar/DayDetailModal'
 import { EVENT_STYLE, KIND_ORDER, PRIMARY_CELL, dominantPrimary } from '@/components/calendar/eventStyle'
 import { DayMarkers } from '@/components/calendar/DayMarkers'
 import {
-  buildCalendarEvents, eventsByDay, monthGrid, noon,
+  buildCalendarEvents, eventsByDay, eventsInMonth, monthGrid, monthTotals, noon,
   projectDailyBalance, toKey, WEEKDAYS_ES,
   type CalendarEventKind, type CalendarInput,
 } from '@/lib/calendar'
@@ -55,24 +55,22 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
     [allEvents, startCash, rangeFrom, rangeTo, today],
   )
 
-  const presentKinds = useMemo(() => {
-    const s = new Set(allEvents.map((e) => e.kind))
-    return KIND_ORDER.filter((k) => s.has(k))
-  }, [allEvents])
-
   const monthKey = `${cursor.getFullYear()}-${cursor.getMonth()}`
   const todayKey = toKey(today)
-  const monthTotals = useMemo(() => {
-    let inflow = 0
-    let outflow = 0
-    for (const e of allEvents) {
-      if (!e.countsToCash) continue
-      if (e.date.slice(0, 7) !== toKey(cursor).slice(0, 7)) continue
-      if (e.amount > 0) inflow += e.amount
-      else outflow -= e.amount
-    }
-    return { inflow, outflow }
-  }, [allEvents, cursor])
+  const eventosDelMes = useMemo(
+    () => eventsInMonth(allEvents, cursor.getFullYear(), cursor.getMonth()),
+    [allEvents, cursor],
+  )
+
+  const presentKinds = useMemo(() => {
+    const s = new Set(eventosDelMes.map((e) => e.kind))
+    return KIND_ORDER.filter((k) => s.has(k))
+  }, [eventosDelMes])
+
+  const totals = useMemo(
+    () => monthTotals(allEvents, cursor.getFullYear(), cursor.getMonth()),
+    [allEvents, cursor],
+  )
 
   function shiftMonth(delta: number) {
     setCursor((c) => new Date(c.getFullYear(), c.getMonth() + delta, 1, 12))
@@ -103,10 +101,17 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
         <div className="text-center">
           <p className="text-[13px] font-extrabold capitalize text-text">{formatMonthMX(cursor)}</p>
           <p className="mt-px font-mono text-[10px] font-bold tabular-nums text-text-tertiary">
-            <span className="text-asset-deep">+{formatMXN(monthTotals.inflow)}</span>
+            <span className="text-asset-deep">+{formatMXN(totals.inflow)}</span>
             {'  '}
-            <span className="text-debt-deep">−{formatMXN(monthTotals.outflow)}</span>
+            <span className="text-debt-deep">−{formatMXN(totals.outflow)}</span>
           </p>
+          {/* Explícito, para no tener que deducirlo contando celdas — que es
+              como salían tres pagos donde hay dos. */}
+          {totals.paydays > 0 && (
+            <p className="mt-0.5 text-[9.5px] font-bold text-text-tertiary">
+              {totals.paydays} pago{totals.paydays !== 1 ? 's' : ''} este mes
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -142,20 +147,36 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
           // The cell's colour belongs to the dates you plan around; everything
           // else is context and leaves the background alone.
           const primary = dominantPrimary(dayEvents.map((e) => e.kind))
-          const cell = primary ? PRIMARY_CELL[primary] : null
+          // Un día de otro mes nunca se pinta como evento de este. El relleno y
+          // el aro son justo lo que hace que una celda se lea como "algo pasa
+          // aquí en este mes", y ahí es donde nacía el conteo de más.
+          const cell = inMonth && primary ? PRIMARY_CELL[primary] : null
 
           return (
             <button
               key={key}
               type="button"
-              onClick={() => setSelected(key)}
-              aria-label={`${day.getDate()} — ${dayEvents.length} eventos`}
+              // Tocar un día de otro mes lleva a ese mes, que es donde ese
+              // evento sí cuenta.
+              onClick={() => {
+                if (!inMonth) {
+                  setCursor(new Date(day.getFullYear(), day.getMonth(), 1, 12))
+                }
+                setSelected(key)
+              }}
+              aria-label={
+                inMonth
+                  ? `${day.getDate()} — ${dayEvents.length} eventos`
+                  : `${day.getDate()} de otro mes — ${dayEvents.length} eventos`
+              }
               style={{ animation: `fade-in 220ms ease-out ${Math.min(i * 6, 220)}ms both` }}
               className={clsx(
                 'relative flex aspect-square flex-col items-center justify-start gap-0.5 rounded-md pt-1 transition-transform active:scale-90',
-                !inMonth && 'opacity-35',
+                // Más apagado que antes: a 35 % los puntos de colores seguían
+                // leyéndose como eventos de este mes.
+                !inMonth && 'opacity-25',
                 cell && `${cell.bg} ring-1 ${cell.ring}`,
-                !cell && negative && 'bg-debt-soft/60',
+                !cell && negative && inMonth && 'bg-debt-soft/60',
                 // Today is an outline, not a fill: filling it hid the colour of
                 // its own payday or deadline.
                 isToday && 'ring-1 ring-primary ring-offset-1 ring-offset-bg-elevated',
@@ -164,7 +185,11 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
               <span
                 className={clsx(
                   'font-mono text-[11px] font-bold tabular-nums',
-                  cell ? cell.text : negative ? 'text-debt-deep' : isToday ? 'text-primary-deep' : 'text-text',
+                  cell ? cell.text
+                    : !inMonth ? 'font-medium text-text-tertiary'
+                    : negative ? 'text-debt-deep'
+                    : isToday ? 'text-primary-deep'
+                    : 'text-text',
                 )}
               >
                 {day.getDate()}

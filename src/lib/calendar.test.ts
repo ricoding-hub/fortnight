@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCalendarEvents, cardCutDates, cardDueDates, dayInMonth,
-  eventsByDay, fromKey, installmentDates, monthGrid, projectDailyBalance,
-  startOfWeekMx, subscriptionDates, toKey, weekdayIndex,
+  eventsByDay, fromKey, installmentDates, monthGrid, monthTotals, projectDailyBalance,
+  startOfWeekMx, subscriptionDates, toKey, weekdayIndex, type CalendarEvent,
 } from '@/lib/calendar'
 import type { Account, Installment, Subscription, UserConfig } from '@/types'
 
@@ -237,5 +237,102 @@ describe('projectDailyBalance', () => {
   it('leaves days before today untouched', () => {
     const bal = projectDailyBalance([], 1234, d('2026-09-01'), d('2026-09-05'), d('2026-09-03'))
     expect(bal.get('2026-09-01')).toBe(1234)
+  })
+})
+
+/* ── Gastos fijos con fecha ───────────────────────────────────────────────── */
+
+describe('gastos fijos', () => {
+  const renta: Subscription = {
+    id: 'f1', user_id: 'u', account_id: null, kind: 'fijo', name: 'Renta',
+    amount: 9500, frequency: 'mensual', charge_day: 5, category_id: 'c-renta',
+    brand_id: null, color: null, notes: null, active: true,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  }
+  const netflix: Subscription = { ...renta, id: 's1', kind: 'suscripcion', name: 'Netflix', amount: 299, charge_day: 12, category_id: null }
+
+  const vacio = { accounts: [], installments: [], transactions: [], goals: [], config: null }
+
+  it('salen en el calendario el día que toca, y como gasto fijo', () => {
+    const ev = buildCalendarEvents(
+      { ...vacio, subscriptions: [renta] },
+      new Date(2026, 8, 1, 12),
+      new Date(2026, 8, 30, 12),
+    )
+    const e = ev.find((x) => x.title === 'Renta')!
+    expect(e).toBeTruthy()
+    expect(e.date).toBe('2026-09-05')
+    expect(e.kind).toBe('fixed')
+    expect(e.amount).toBe(-9500)
+    expect(e.tags).toContain('Gasto fijo')
+  })
+
+  it('se distinguen de una suscripción', () => {
+    // Por dentro son la misma fila; al leerlos no deben pesar igual, porque la
+    // renta es una fecha que no se mueve y Netflix se puede cancelar.
+    const ev = buildCalendarEvents(
+      { ...vacio, subscriptions: [renta, netflix] },
+      new Date(2026, 8, 1, 12),
+      new Date(2026, 8, 30, 12),
+    )
+    expect(ev.find((x) => x.title === 'Renta')!.kind).toBe('fixed')
+    expect(ev.find((x) => x.title === 'Netflix')!.kind).toBe('subscription')
+  })
+
+  it('suman a los egresos del mes cuando no van a una tarjeta', () => {
+    const ev = buildCalendarEvents(
+      { ...vacio, subscriptions: [renta] },
+      new Date(2026, 8, 1, 12),
+      new Date(2026, 8, 30, 12),
+    )
+    expect(monthTotals(ev, 2026, 8).outflow).toBe(9500)
+  })
+})
+
+/* ── El mes es el mes ─────────────────────────────────────────────────────── */
+
+describe('monthTotals', () => {
+  const pago = (fecha: string): CalendarEvent => ({
+    id: `p:${fecha}`, kind: 'payday', date: fecha, title: 'Te pagan',
+    amount: 9800, countsToCash: true, tags: [],
+  })
+
+  it('no cuenta los días de otros meses que la rejilla arrastra', () => {
+    // El fallo reportado, en una línea: la cuadrícula de septiembre llega hasta
+    // el 4 de octubre, así que un pago del 1 de octubre aparecía dentro y
+    // septiembre decía tres pagos donde hay dos.
+    const eventos = [pago('2026-09-04'), pago('2026-09-18'), pago('2026-10-02')]
+    expect(monthTotals(eventos, 2026, 8).paydays).toBe(2)
+    expect(monthTotals(eventos, 2026, 8).inflow).toBe(19600)
+  })
+
+  it('ese mismo pago sí cuenta en su mes, y una sola vez', () => {
+    const eventos = [pago('2026-09-04'), pago('2026-09-18'), pago('2026-10-02')]
+    expect(monthTotals(eventos, 2026, 9).paydays).toBe(1)
+    expect(monthTotals(eventos, 2026, 9).inflow).toBe(9800)
+  })
+
+  it('tampoco cuenta los días del mes anterior', () => {
+    const eventos = [pago('2026-08-31'), pago('2026-09-11')]
+    expect(monthTotals(eventos, 2026, 8).paydays).toBe(1)
+  })
+
+  it('tres pagos en un mes sí son tres cuando de verdad caen ahí', () => {
+    // Con catorcena pasa de verdad y no hay que "arreglarlo": 14 días de paso
+    // caben tres veces en un mes de 31. Lo que no vale es que sean tres porque
+    // uno se coló de la rejilla.
+    const eventos = [pago('2026-09-04'), pago('2026-09-18'), pago('2026-09-30')]
+    expect(monthTotals(eventos, 2026, 8).paydays).toBe(3)
+  })
+
+  it('lo que no mueve efectivo no suma, pero un pago sí se cuenta', () => {
+    const corte: CalendarEvent = {
+      id: 'c', kind: 'card_cut', date: '2026-09-12', title: 'Corte',
+      amount: 0, countsToCash: false, tags: [],
+    }
+    const t = monthTotals([pago('2026-09-04'), corte], 2026, 8)
+    expect(t.inflow).toBe(9800)
+    expect(t.outflow).toBe(0)
+    expect(t.paydays).toBe(1)
   })
 })

@@ -1,6 +1,6 @@
 import {
   IconCash, IconCreditCard, IconScissors, IconRepeat, IconStack2, IconTarget,
-  IconArrowsExchange, type Icon,
+  IconArrowsExchange, IconHomeBolt, type Icon,
 } from '@tabler/icons-react'
 import type { CalendarEventKind } from '@/lib/calendar'
 
@@ -24,6 +24,11 @@ export const EVENT_STYLE: Record<CalendarEventKind, EventStyle> = {
   card_due: { label: 'Pago de tarjeta', icon: IconCreditCard, hex: '#FF5A5F', chip: 'bg-debt-soft text-debt-deep' },
   card_cut: { label: 'Corte', icon: IconScissors, hex: '#FFB59E', chip: 'bg-peach-soft text-peach-deep' },
   subscription: { label: 'Suscripción', icon: IconRepeat, hex: '#2A4BFF', chip: 'bg-primary-soft text-primary-deep' },
+  // Misma familia que el corte — los dos son fechas que no se pueden mover —
+  // y se distinguen por el icono, que es lo que de verdad se lee de un vistazo
+  // en una celda de 31px. `--color-warning` no sirve aquí: está remapeado a
+  // peach, así que un token "naranja" habría pintado exactamente lo mismo.
+  fixed: { label: 'Gasto fijo', icon: IconHomeBolt, hex: '#E68E73', chip: 'bg-peach-soft text-peach-deep' },
   installment: { label: 'Mensualidad', icon: IconStack2, hex: '#9B7BFF', chip: 'bg-lavender-soft text-lavender-deep' },
   goal: { label: 'Meta', icon: IconTarget, hex: '#9B7BFF', chip: 'bg-lavender-soft text-lavender-deep' },
   transaction: { label: 'Movimiento', icon: IconArrowsExchange, hex: '#8E91A4', chip: 'bg-bg-secondary text-text-secondary' },
@@ -31,7 +36,7 @@ export const EVENT_STYLE: Record<CalendarEventKind, EventStyle> = {
 
 /** Order used wherever events are listed, most consequential first. */
 export const KIND_ORDER: CalendarEventKind[] = [
-  'payday', 'card_due', 'card_cut', 'subscription', 'installment', 'goal', 'transaction',
+  'payday', 'card_due', 'fixed', 'card_cut', 'subscription', 'installment', 'goal', 'transaction',
 ]
 
 /**
@@ -44,7 +49,12 @@ export const KIND_ORDER: CalendarEventKind[] = [
  * day that both pays you and charges you should read as the good news first.
  * Then the deadline you can miss, then the cut you can't.
  */
-export const PRIMARY_KINDS: CalendarEventKind[] = ['payday', 'card_due', 'card_cut']
+/**
+ * Un gasto fijo entra aquí y una suscripción no, a propósito: la renta es una
+ * fecha alrededor de la cual se planea el mes y que no se puede mover; Netflix
+ * es un cobro que se puede cancelar. Al pintar la celda pesan distinto.
+ */
+export const PRIMARY_KINDS: CalendarEventKind[] = ['payday', 'card_due', 'fixed', 'card_cut']
 
 /** Ordered by consequence, most important first. */
 export function dominantPrimary(kinds: Iterable<CalendarEventKind>): CalendarEventKind | null {
@@ -78,5 +88,6 @@ export function tierOf(kind: CalendarEventKind): MarkerTier {
 export const PRIMARY_CELL: Record<string, { bg: string; text: string; ring: string }> = {
   card_due: { bg: 'bg-debt-soft', text: 'text-debt-deep', ring: 'ring-debt/45' },
   payday: { bg: 'bg-asset-soft', text: 'text-asset-deep', ring: 'ring-asset/45' },
+  fixed: { bg: 'bg-peach-soft', text: 'text-peach-deep', ring: 'ring-peach/50' },
   card_cut: { bg: 'bg-peach-soft', text: 'text-peach-deep', ring: 'ring-peach/50' },
 }

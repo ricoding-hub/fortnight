@@ -31,6 +31,8 @@ export type CalendarEventKind =
   | 'card_due'
   | 'card_cut'
   | 'subscription'
+  /** Gasto fijo con fecha: renta, luz, colegiatura. */
+  | 'fixed'
   | 'installment'
   | 'goal'
   | 'transaction'
@@ -294,16 +296,22 @@ export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date):
     // On a card it raises the balance and is settled on the card's due date.
     const cash = !acc || acc.type === 'debit'
     for (const d of subscriptionDates(s, start, end)) {
+      const esFijo = s.kind === 'fijo'
       out.push({
         id: `sub:${s.id}:${toKey(d)}`,
-        kind: 'subscription',
+        // Mismo dato por dentro, distinto peso al leerlo: la renta es una fecha
+        // que no se puede mover y Netflix es un cobro que se puede cancelar.
+        kind: esFijo ? 'fixed' : 'subscription',
         date: toKey(d),
         title: s.name,
         amount: -Number(s.amount ?? 0),
         countsToCash: cash,
         estimated: s.frequency !== 'mensual',
         accountId: s.account_id ?? undefined,
-        tags: ['Suscripción', s.frequency === 'mensual' ? 'Mensual' : s.frequency === 'trimestral' ? 'Trimestral' : 'Anual'],
+        tags: [
+          esFijo ? 'Gasto fijo' : 'Suscripción',
+          s.frequency === 'mensual' ? 'Mensual' : s.frequency === 'trimestral' ? 'Trimestral' : 'Anual',
+        ],
       })
     }
   }
@@ -396,4 +404,53 @@ export function projectDailyBalance(
     cur.setDate(cur.getDate() + 1)
   }
   return out
+}
+
+/* ── Totales del mes ──────────────────────────────────────────────────────── */
+
+/** Prefijo `YYYY-MM` a partir de año y mes (0-11), sin pasar por Date. */
+export function monthPrefix(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}`
+}
+
+/**
+ * Los eventos que caen DENTRO del mes.
+ *
+ * La rejilla arrastra días del mes anterior y del siguiente para completar las
+ * semanas. Verlos está bien; contarlos no. Un pago que cae el 1 de octubre sale
+ * en la cuadrícula de septiembre y vuelve a salir en la de octubre: quien mira
+ * septiembre cuenta tres pagos donde hay dos, y el mes siguiente cuenta el
+ * mismo otra vez.
+ */
+export function eventsInMonth(events: CalendarEvent[], year: number, month: number): CalendarEvent[] {
+  const p = monthPrefix(year, month)
+  return events.filter((e) => e.date.slice(0, 7) === p)
+}
+
+export interface MonthTotals {
+  /** Entradas de efectivo del mes. */
+  inflow: number
+  /** Salidas de efectivo del mes, en positivo. */
+  outflow: number
+  /** Cuántas veces te pagan este mes. Con catorcena pueden ser 2 o 3. */
+  paydays: number
+}
+
+/**
+ * Lo que entra, lo que sale y cuántos pagos hay, contando sólo el mes pedido.
+ *
+ * Vive aquí y no en el componente para poder probarlo: el fallo que arregla es
+ * exactamente un error de conteo, y un error de conteo sin prueba vuelve.
+ */
+export function monthTotals(events: CalendarEvent[], year: number, month: number): MonthTotals {
+  let inflow = 0
+  let outflow = 0
+  let paydays = 0
+  for (const e of eventsInMonth(events, year, month)) {
+    if (e.kind === 'payday') paydays++
+    if (!e.countsToCash) continue
+    if (e.amount > 0) inflow += e.amount
+    else outflow -= e.amount
+  }
+  return { inflow, outflow, paydays }
 }

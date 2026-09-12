@@ -11,7 +11,10 @@ export interface MonthlyDisposable {
   monthlyIncome: number
   fixedMonthly: number
   variableMonthly: number
+  /** Suscripciones activas (Netflix, gimnasio…). */
   subsMonthly: number
+  /** Gastos fijos con fecha (renta, luz, colegiatura…). */
+  fijosMonthly: number
   installmentsMonthly: number
   /** Income minus everything already committed. Can be negative. */
   disposable: number
@@ -39,20 +42,44 @@ export function useMonthlyDisposable(): MonthlyDisposable {
     return Math.round((config?.pay_amount ?? 0) * PAY_FREQS[freq].cyclesPerMonth)
   }, [config])
 
-  const subsMonthly = useMemo(
-    () => subs.filter((s) => s.active).reduce((sum, s) => sum + subMonthlyAmount(s.amount, s.frequency), 0),
-    [subs],
-  )
+  // Separados porque el usuario los piensa distinto — la renta no se cancela —
+  // aunque por dentro sean la misma fila y se resten igual del disponible.
+  const { subsMonthly, fijosMonthly } = useMemo(() => {
+    let suscripciones = 0
+    let fijos = 0
+    for (const s of subs) {
+      if (!s.active) continue
+      const mensual = subMonthlyAmount(s.amount, s.frequency)
+      if (s.kind === 'fijo') fijos += mensual
+      else suscripciones += mensual
+    }
+    return { subsMonthly: suscripciones, fijosMonthly: fijos }
+  }, [subs])
 
   const installmentsMonthly = useMemo(
     () => activeInstallments.reduce((sum, i) => sum + Number(i.monthly_amount), 0),
     [activeInstallments],
   )
 
-  const subsCategoryId = useMemo(
-    () => categories.find((c) => c.name.toLowerCase() === 'suscripciones')?.id ?? null,
-    [categories],
-  )
+  /**
+   * Categorías que ya tienen un cargo recurrente registrado con su monto real.
+   *
+   * Lo presupuestado para ellas hay que descontarlo del sobre, o el mismo dinero
+   * se resta dos veces: una como porcentaje del plan y otra como el cargo de
+   * verdad. Antes esto existía sólo para "Suscripciones", a mano; al entrar los
+   * gastos fijos con fecha — la renta, la luz — el caso dejó de ser uno.
+   */
+  const categoriasConCargo = useMemo(() => {
+    const ids = new Set<string>()
+    for (const s of subs) {
+      if (s.active && s.category_id) ids.add(s.category_id)
+    }
+    // La categoría "Suscripciones" cuenta aunque ninguna suscripción la lleve
+    // asignada: el formulario de suscripciones no pide categoría.
+    const susc = categories.find((c) => c.name.toLowerCase() === 'suscripciones')
+    if (susc && subs.some((s) => s.active && s.kind !== 'fijo')) ids.add(susc.id)
+    return ids
+  }, [subs, categories])
 
   return useMemo(() => {
     // Source of truth = the live budget plan (needs/wants/save buckets), NOT
@@ -66,29 +93,34 @@ export function useMonthlyDisposable(): MonthlyDisposable {
         fixedMonthly: fixed,
         variableMonthly: variable,
         subsMonthly,
+        fijosMonthly,
         installmentsMonthly,
-        disposable: monthlyIncome - fixed - variable - subsMonthly - installmentsMonthly,
+        disposable: monthlyIncome - fixed - variable - subsMonthly - fijosMonthly - installmentsMonthly,
         fromPlan: false,
       }
     }
     const needs = plan.buckets.find((b) => b.slug === 'needs')
     const wants = plan.buckets.find((b) => b.slug === 'wants')
-    const subsItem = wants?.items.find(
-      (it) => subsCategoryId !== null && it.category_id === subsCategoryId,
-    )
-    // Subscriptions budgeted inside "wants" are already counted as subsMonthly;
-    // subtracting them here keeps them from being charged twice.
-    const subsItemPlanned = ((subsItem?.pct ?? 0) * monthlyIncome) / 100
-    const fixed = ((needs?.pct ?? 0) * monthlyIncome) / 100
-    const variable = Math.max(((wants?.pct ?? 0) * monthlyIncome) / 100 - subsItemPlanned, 0)
+
+    /** Lo presupuestado para categorías que ya se cobran de verdad. */
+    const yaCobrado = (bucket: typeof needs) =>
+      (bucket?.items ?? [])
+        .filter((it) => it.category_id && categoriasConCargo.has(it.category_id))
+        .reduce((n, it) => n + (it.pct * monthlyIncome) / 100, 0)
+
+    // El sobre menos lo que ya está contado como cargo real. Sin esto, dar de
+    // alta la renta con su fecha la restaría dos veces del disponible.
+    const fixed = Math.max(((needs?.pct ?? 0) * monthlyIncome) / 100 - yaCobrado(needs), 0)
+    const variable = Math.max(((wants?.pct ?? 0) * monthlyIncome) / 100 - yaCobrado(wants), 0)
     return {
       monthlyIncome,
       fixedMonthly: fixed,
       variableMonthly: variable,
       subsMonthly,
+      fijosMonthly,
       installmentsMonthly,
-      disposable: monthlyIncome - fixed - variable - subsMonthly - installmentsMonthly,
+      disposable: monthlyIncome - fixed - variable - subsMonthly - fijosMonthly - installmentsMonthly,
       fromPlan: true,
     }
-  }, [plan, monthlyIncome, config, subsMonthly, installmentsMonthly, subsCategoryId])
+  }, [plan, monthlyIncome, config, subsMonthly, fijosMonthly, installmentsMonthly, categoriasConCargo])
 }

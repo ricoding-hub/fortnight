@@ -21,11 +21,11 @@ import clsx from 'clsx'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
 import { useConfig } from '@/hooks/useConfig'
-import { useCategories } from '@/hooks/useCategories'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useInstallments } from '@/hooks/useInstallments'
+import { useMonthlyDisposable } from '@/hooks/useMonthlyDisposable'
 import { Card } from '@/components/ui/Card'
 import { PlanChart } from '@/components/PlanChart'
 import { CommitmentsChart } from '@/components/CommitmentsChart'
@@ -33,7 +33,6 @@ import { ColchonChart } from '@/components/ColchonChart'
 import { Richeto } from '@/components/Richeto'
 import { iconFor } from '@/lib/icons'
 import { MONTHS_ES, debtFreeMonth, monthsToGoal, projectGoal, resolveDebtGoal, expectedToday } from '@/lib/goals'
-import { subMonthlyAmount } from '@/lib/projections'
 import {
   getMensualidadesComprometidas,
   getColchonReal,
@@ -68,57 +67,27 @@ export function Proyeccion() {
   const { data: plan } = useBudgetPlan()
   const { data: goals, loading } = useGoals()
   const { data: config } = useConfig()
-  const { data: categories } = useCategories()
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
   const { data: installments, active: activeInstallments } = useInstallments()
   const [debtMode, setDebtMode] = useState<'all' | 'con_costo'>('all')
 
-  const subsMonthly = useMemo(
-    () => subs.filter((s) => s.active).reduce((sum, s) => sum + subMonthlyAmount(s.amount, s.frequency), 0),
-    [subs],
-  )
-
-  const installmentsMonthly = useMemo(
-    () => activeInstallments.reduce((sum, i) => sum + Number(i.monthly_amount), 0),
-    [activeInstallments],
-  )
-
-  // Plan-derived fixed/variable/disposable. Source of truth = the live budget
-  // plan (needs/wants/save buckets) — NOT the static user_config estimates,
-  // which only get set during onboarding and don't reflect user customisations.
-  const subsCategoryId = useMemo(
-    () => categories.find((c) => c.name.toLowerCase() === 'suscripciones')?.id ?? null,
-    [categories],
-  )
-  const { fixedFromPlan, variableFromPlan, disposable } = useMemo(() => {
-    if (!plan || monthlyIncome <= 0) {
-      const fallbackFixed = config?.fixed_monthly ?? 0
-      const fallbackVariable = config?.variable_monthly ?? 0
-      return {
-        fixedFromPlan: fallbackFixed,
-        variableFromPlan: fallbackVariable,
-        disposable: monthlyIncome - fallbackFixed - fallbackVariable - subsMonthly - installmentsMonthly,
-      }
-    }
-    const needs = plan.buckets.find((b) => b.slug === 'needs')
-    const wants = plan.buckets.find((b) => b.slug === 'wants')
-    const subsItem = wants?.items.find(
-      (it) => subsCategoryId !== null && it.category_id === subsCategoryId,
-    )
-    const subsItemPlanned = ((subsItem?.pct ?? 0) * monthlyIncome) / 100
-    const fixed = ((needs?.pct ?? 0) * monthlyIncome) / 100
-    const variable = Math.max(((wants?.pct ?? 0) * monthlyIncome) / 100 - subsItemPlanned, 0)
-    return {
-      fixedFromPlan: fixed,
-      variableFromPlan: variable,
-      disposable: monthlyIncome - fixed - variable - subsMonthly - installmentsMonthly,
-    }
-  }, [plan, monthlyIncome, config, subsMonthly, installmentsMonthly, subsCategoryId])
-
-  const fixedMonthly = fixedFromPlan
-  const variableMonthly = variableFromPlan
+  /**
+   * Un solo cálculo del disponible, compartido con Inicio.
+   *
+   * Esta vista tenía su propia copia, y es exactamente la duplicación que hizo
+   * que las dos pantallas dieran meses distintos para lo mismo. Al entrar los
+   * gastos fijos con fecha habrían vuelto a divergir: esta copia no los conocía.
+   */
+  const {
+    fixedMonthly,
+    variableMonthly,
+    subsMonthly,
+    fijosMonthly,
+    installmentsMonthly,
+    disposable,
+  } = useMonthlyDisposable()
 
   const [primaryId, setPrimaryId] = useState<string | null>(null)
 
@@ -437,17 +406,27 @@ export function Proyeccion() {
           <BreakdownRow
             icon={IconBolt}
             color="#2A4BFF"
-            label="Fijos"
-            sub="del presupuesto de necesidades"
+            label="Necesidades (plan)"
+            sub="lo presupuestado que aún no tiene un cargo con fecha"
             value={`−${fmtMoney(fixedMonthly)}`}
             onClick={() => navigate('/plan/presupuesto')}
           />
+          {fijosMonthly > 0 && (
+            <BreakdownRow
+              icon={IconTags}
+              color="#E68E73"
+              label="Gastos fijos"
+              value={`−${fmtMoney(fijosMonthly)}`}
+              sub={`${subs.filter((s) => s.active && s.kind === 'fijo').length} con fecha · ya excluidos del sobre`}
+              onClick={() => navigate('/cuentas/suscripciones')}
+            />
+          )}
           <BreakdownRow
             icon={IconTags}
             color="#9B7BFF"
             label="Suscripciones"
             value={`−${fmtMoney(subsMonthly)}`}
-            sub={`${subs.filter((s) => s.active).length} activa${subs.filter((s) => s.active).length === 1 ? '' : 's'} · ya excluidas de variables`}
+            sub={`${subs.filter((s) => s.active && s.kind !== 'fijo').length} activa${subs.filter((s) => s.active && s.kind !== 'fijo').length === 1 ? '' : 's'} · ya excluidas de variables`}
             onClick={() => navigate('/cuentas/suscripciones')}
           />
           {installmentsMonthly > 0 && (
@@ -733,7 +712,9 @@ function HowCalcSection() {
             <b className="text-text">Variables (plan)</b> = % deseos × ingreso − suscripciones planeadas.
           </p>
           <p className="mt-1">
-            Las <b className="text-text">suscripciones</b> se listan por separado para no contarse dos veces con las variables.
+            Los <b className="text-text">cargos recurrentes</b> — gastos fijos y suscripciones — se
+            listan aparte con su monto real, y lo que el plan les presupuestaba se descuenta del
+            sobre para no restar el mismo dinero dos veces.
           </p>
           <p className="mt-1">
             Los <b className="text-text">meses sin intereses</b> se restan del disponible porque son compromisos fijos mensuales.

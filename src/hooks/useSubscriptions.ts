@@ -1,8 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { subMonthlyAmount } from '@/lib/projections'
 import { useTableChannel } from '@/hooks/useTableChannel'
 import { useAuth } from '@/hooks/useAuth'
 import type { Subscription, NewSubscription, SubscriptionPatch } from '@/types'
+
+/**
+ * `numeric` de Postgres llega como CADENA por PostgREST.
+ *
+ * Sin esto `suma + sub.amount` concatena en vez de sumar, y dos suscripciones
+ * de 299 y 199 daban "0299199". Pasaba sólo en el caso mensual, que es el
+ * común: anual y trimestral se salvaban porque dividir sí convierte. Los demás
+ * hooks ya normalizaban al traer; este no.
+ */
+function normalizar(row: unknown): Subscription {
+  const r = row as Subscription
+  return {
+    ...r,
+    amount: Number(r.amount),
+    charge_day: Number(r.charge_day),
+    kind: r.kind ?? 'suscripcion',
+  }
+}
 
 export function useSubscriptions() {
   const { user } = useAuth()
@@ -16,7 +35,7 @@ export function useSubscriptions() {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
-    setData((rows ?? []) as Subscription[])
+    setData((rows ?? []).map(normalizar))
     setLoading(false)
   }, [user])
 
@@ -44,7 +63,7 @@ export function useSubscriptions() {
       .select()
       .single()
     if (error) { setData((prev) => prev.filter((s) => s.id !== optimistic.id)); return }
-    setData((prev) => prev.map((s) => (s.id === optimistic.id ? (row as Subscription) : s)))
+    setData((prev) => prev.map((s) => (s.id === optimistic.id ? normalizar(row) : s)))
   }, [user])
 
   const update = useCallback(async (id: string, patch: SubscriptionPatch) => {
@@ -57,11 +76,9 @@ export function useSubscriptions() {
     await supabase.from('subscriptions').delete().eq('id', id)
   }, [])
 
-  /** Normalize any subscription amount to monthly equivalent */
+  /** Equivalente mensual. Una sola implementación, en lib/projections. */
   function toMonthly(sub: Subscription): number {
-    if (sub.frequency === 'anual') return sub.amount / 12
-    if (sub.frequency === 'trimestral') return sub.amount / 3
-    return sub.amount
+    return subMonthlyAmount(sub.amount, sub.frequency)
   }
 
   const totalMonthly = data.filter((s) => s.active).reduce((sum, s) => sum + toMonthly(s), 0)

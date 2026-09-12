@@ -10,7 +10,8 @@ import { SUBSCRIPTION_BRANDS, BRANDS, type Brand } from '@/lib/brands'
 import { useToast } from '@/hooks/useToast'
 import { useAccounts } from '@/hooks/useAccounts'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
-import type { Subscription, NewSubscription, SubscriptionFrequency } from '@/types'
+import { useCategories } from '@/hooks/useCategories'
+import type { Subscription, NewSubscription, SubscriptionFrequency, RecurringKind } from '@/types'
 
 const isDay = (v: string) => isCountInput(v, 1, 31)
 const isMoney = (v: string) => isMoneyInput(v)
@@ -27,8 +28,43 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export type SubFormMode =
-  | { kind: 'create' }
+  | { kind: 'create'; recurring: RecurringKind }
   | { kind: 'edit'; sub: Subscription }
+
+/**
+ * El mismo formulario sirve para una suscripción y para un gasto fijo: los dos
+ * son un monto que se cobra cada tanto en un día del mes. Lo que cambia es el
+ * vocabulario y qué se pregunta — a la renta no se le elige logo, se le elige
+ * categoría, que es lo que evita contarla dos veces contra el presupuesto.
+ */
+const TEXTOS: Record<RecurringKind, {
+  titulo: string
+  tituloEditar: string
+  nombre: string
+  ejemplo: string
+  dia: string
+  guardado: string
+  actualizado: string
+}> = {
+  suscripcion: {
+    titulo: 'Nueva suscripción',
+    tituloEditar: 'Editar suscripción',
+    nombre: 'Nombre',
+    ejemplo: 'Netflix, Gimnasio…',
+    dia: 'Día de cobro',
+    guardado: 'Suscripción guardada',
+    actualizado: 'Suscripción actualizada',
+  },
+  fijo: {
+    titulo: 'Nuevo gasto fijo',
+    tituloEditar: 'Editar gasto fijo',
+    nombre: '¿Qué pagas?',
+    ejemplo: 'Renta, Luz, Internet…',
+    dia: 'Día de pago',
+    guardado: 'Gasto fijo guardado',
+    actualizado: 'Gasto fijo actualizado',
+  },
+}
 
 interface Props {
   mode: SubFormMode
@@ -40,9 +76,15 @@ interface Props {
 export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Props) {
   const toast = useToast()
   const { data: accounts } = useAccounts()
+  const { data: categories } = useCategories()
   const isCreate = mode.kind === 'create'
 
   const existing = mode.kind === 'edit' ? mode.sub : null
+  const recurring: RecurringKind = mode.kind === 'create' ? mode.recurring : mode.sub.kind
+  const esFijo = recurring === 'fijo'
+  const t = TEXTOS[recurring]
+  const categoriasFijas = categories.filter((c) => c.kind === 'fixed')
+  const [categoriaId, setCategoriaId] = useState<string | null>(existing?.category_id ?? null)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(
     existing?.brand_id ? (BRANDS.find((b) => b.id === existing.brand_id) ?? null) : null
   )
@@ -80,17 +122,20 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
       account_id: values.account_id || null,
       brand_id:   selectedBrand?.id ?? null,
       color:      selectedBrand?.color ?? null,
-      category_id: null,
+      // La categoría es lo que permite descontar este gasto del presupuesto en
+      // vez de sumarlo encima de lo ya presupuestado.
+      category_id: esFijo ? categoriaId : null,
+      kind:       recurring,
       notes:      values.notes?.trim() || null,
       active:     true,
     }
     try {
       if (isCreate) {
         await onCreate(payload)
-        toast.success('Suscripción guardada', payload.name)
+        toast.success(t.guardado, payload.name)
       } else {
         await onUpdate(existing!.id, payload)
-        toast.success('Suscripción actualizada', payload.name)
+        toast.success(t.actualizado, payload.name)
       }
       onClose()
     } catch {
@@ -109,10 +154,11 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
   ]
 
   return (
-    <Modal open title={isCreate ? 'Nueva suscripción' : 'Editar suscripción'} onClose={onClose}>
+    <Modal open title={isCreate ? t.titulo : t.tituloEditar} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
 
-        {/* Brand picker */}
+        {/* Brand picker — a la renta no se le elige logo. */}
+        {!esFijo && (
         <div>
           <p className="mb-2 text-[12px] font-semibold text-text-secondary">Servicio</p>
           <input
@@ -144,10 +190,37 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
             })}
           </div>
         </div>
+        )}
+
+        {/* Categoría — sólo para gastos fijos, y es lo que evita contarlos dos
+            veces: una en el presupuesto y otra aquí. */}
+        {esFijo && categoriasFijas.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">Categoría</p>
+            <div className="flex flex-wrap gap-1.5">
+              {categoriasFijas.map((c) => {
+                const sel = categoriaId === c.id
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoriaId(sel ? null : c.id)}
+                    className={
+                      'rounded-full px-3 py-1.5 text-[11.5px] font-bold transition-all ' +
+                      (sel ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary')
+                    }
+                  >
+                    {c.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <Input
-          label="Nombre"
-          placeholder="Netflix, Gimnasio…"
+          label={t.nombre}
+          placeholder={t.ejemplo}
           error={errors.name?.message}
           {...register('name')}
         />
@@ -183,7 +256,7 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
         </div>
 
         <Input
-          label="Día de cobro"
+          label={t.dia}
           inputMode="numeric"
           placeholder="1–31"
           error={errors.charge_day?.message}

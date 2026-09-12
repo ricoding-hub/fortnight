@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.8.3"
+            version="1.9.0"
             date="12 sep 2026"
             current
+            notes={[
+              'Ya puedes registrar tus gastos fijos con su día: la renta, la luz, el internet. Aparecen en el calendario y cuentan en los egresos del mes',
+              'Si el gasto fijo lleva categoría, se descuenta de lo que el plan ya le presupuestaba, así no se resta dos veces de tu disponible',
+              'El calendario ya no cuenta los días de otros meses: septiembre decía tres pagos donde hay dos, porque uno era del 1 de octubre',
+              'Ahora el mes dice cuántos pagos recibes, en vez de tener que contar celdas',
+              'Corregido el total de suscripciones, que en vez de sumar pegaba los montos uno tras otro',
+            ]}
+          />
+          <VersionRow
+            version="1.8.3"
+            date="12 sep 2026"
             notes={[
               'Los formularios en ventana ya se pueden desplazar en el celular: el botón de guardar estaba ahí abajo, pero no había forma de llegar a él',
               'Si amplías la pantalla, las ventanas ahora se colocan sobre lo que estás viendo en vez de quedarse fuera de cuadro y dejarte atascado',

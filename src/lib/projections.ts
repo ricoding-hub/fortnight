@@ -13,11 +13,20 @@ function monthLabel(offset: number): string {
   return MONTH_NAMES[d.getMonth()]
 }
 
-/** Monthly equivalent of a subscription amount based on its frequency. */
+/**
+ * Equivalente mensual de un cargo según su periodicidad.
+ *
+ * `Number()` y no confiar en el tipo: `numeric` de Postgres llega como cadena, y
+ * en el caso mensual esto devolvía el valor tal cual. Quien sumaba concatenaba —
+ * 299 y 199 daban "0299199" — y sólo en mensual, que es el caso común, porque
+ * anual y trimestral se salvaban por la división.
+ */
 export function subMonthlyAmount(amount: number, frequency: Subscription['frequency']): number {
-  if (frequency === 'anual') return amount / 12
-  if (frequency === 'trimestral') return amount / 3
-  return amount
+  const n = Number(amount)
+  if (!Number.isFinite(n)) return 0
+  if (frequency === 'anual') return n / 12
+  if (frequency === 'trimestral') return n / 3
+  return n
 }
 
 /**
