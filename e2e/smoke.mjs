@@ -58,14 +58,44 @@ async function reventó() {
   return page.locator('h1', { hasText: 'Algo se rompió en esta pantalla' }).count().then((n) => n > 0)
 }
 
+/** Termina cerrando el navegador, pase lo que pase. */
+async function abortar(motivo) {
+  console.error(`\n✗ ${motivo}`)
+  await browser.close()
+  process.exit(1)
+}
+
 console.log(`→ ${BASE}`)
-await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
+await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' }).catch(() => {})
+if ((await page.locator('input[type="email"]').count()) === 0) {
+  await abortar(`No se encontró la pantalla de acceso en ${BASE}/login. ¿Está corriendo el servidor?`)
+}
+
 await page.fill('input[type="email"]', EMAIL)
 await page.fill('input[type="password"]', PASSWORD)
 await page.click('button[type="submit"]')
 
-// La sesión se resuelve cuando la barra inferior aparece.
-await page.waitForSelector('nav[aria-label="Navegación principal"]', { timeout: 20_000 })
+// La sesión se resuelve cuando la barra inferior aparece. Timeout corto: si las
+// credenciales son malas la app ya pintó el error y esperar 20 s no aporta nada.
+const entro = await page
+  .waitForSelector('nav[aria-label="Navegación principal"]', { timeout: 12_000 })
+  .then(() => true)
+  .catch(() => false)
+
+if (!entro) {
+  // La app muestra el motivo en pantalla; enseñarlo vale más que un TimeoutError.
+  const enPantalla = await page
+    .locator('p.text-debt, p.text-xs.text-debt')
+    .first()
+    .innerText()
+    .catch(() => null)
+  await page.screenshot({ path: `${SHOTS}/fallo-acceso.png` }).catch(() => {})
+  await abortar(
+    `No se pudo entrar con ${EMAIL}.` +
+      (enPantalla ? `\n  La app dice: "${enPantalla}"` : '\n  La app no mostró ningún error; revisa E2E_BASE y las credenciales.') +
+      `\n  Captura en ${SHOTS}/fallo-acceso.png`,
+  )
+}
 console.log('  sesión iniciada')
 
 let fallos = 0
