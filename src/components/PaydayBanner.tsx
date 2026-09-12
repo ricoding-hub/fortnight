@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { IconBell, IconTarget, IconX } from '@tabler/icons-react'
-import { isPayday } from '@/lib/paydays'
+import { isPayday, payFreqOf } from '@/lib/paydays'
 import { useConfig } from '@/hooks/useConfig'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { Richeto } from '@/components/Richeto'
-import type { PayFreq } from '@/types'
 
 interface PaydayBannerProps {
   /** Fires when the user taps "Aplicar mi plan" — typically opens the add-movement modal. */
@@ -28,7 +27,7 @@ export function PaydayBanner({ onApply }: PaydayBannerProps) {
 
   if (dismissed) return null
   const reference = parseDateString(config?.pay_reference)
-  const freq = (config?.pay_freq ?? 'catorcenal') as PayFreq
+  const freq = payFreqOf(config?.pay_freq)
   const pay = Number(config?.pay_amount ?? 0)
   if (!reference || pay <= 0) return null
   if (!isPayday(reference, freq)) return null

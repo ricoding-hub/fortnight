@@ -1,6 +1,6 @@
 import { getExigibleEsteCiclo } from '@/lib/debt'
 import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
-import { computePaydays, type PayFreq } from '@/lib/paydays'
+import { computePaydays, payFreqOf } from '@/lib/paydays'
 
 /**
  * The financial calendar.
@@ -241,7 +241,7 @@ export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date):
   // Paydays — the only recurring inflow the app knows about.
   if (config?.pay_reference && config.pay_freq) {
     const ref = fromKey(config.pay_reference.slice(0, 10))
-    const days = computePaydays(ref, config.pay_freq as PayFreq, 40, start)
+    const days = computePaydays(ref, payFreqOf(config.pay_freq), 40, start)
     for (const d of days) {
       if (d < start || d > end) continue
       out.push({

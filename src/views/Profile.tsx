@@ -36,7 +36,7 @@ import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { Richeto } from '@/components/Richeto'
 import { Confetti } from '@/components/Confetti'
 import { supabase } from '@/lib/supabase'
-import { PAY_FREQS, computePaydays, fmtPayday } from '@/lib/paydays'
+import { PAY_FREQS, computePaydays, fmtPayday, payFreqOf} from '@/lib/paydays'
 import { calculateScore } from '@/lib/score'
 import { moneyOr } from '@/lib/money'
 import type { PayFreq, UserConfig } from '@/types'
@@ -254,7 +254,7 @@ export function Profile() {
   }, [watch, scheduleSave])
 
   const live = watch()
-  const freq = (live.pay_freq ?? 'catorcenal') as PayFreq
+  const freq = payFreqOf(live.pay_freq)
   const amount = moneyOr(live.pay_amount, 0)
   const refDate = live.pay_reference ?? ''
 

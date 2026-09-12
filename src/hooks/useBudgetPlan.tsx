@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -35,15 +43,22 @@ function snapshotFromBuckets(buckets: BucketWithItems[]): PersonalSnapshot {
  * creates one with the 50/30/20 default + buckets + items, linking each item
  * to the user's same-named category when present. Seeding is guarded by a
  * ref so React 19's double-render in dev never duplicates the plan.
+ *
+ * Ese ref es por instancia, y por eso esto vive detrás de un provider: con el
+ * hook llamado suelto, cada consumidor traía su propia copia del efecto de
+ * siembra y podía insertar un plan en paralelo con los demás. Una sola
+ * instancia, una sola siembra, un solo canal de realtime.
  */
-export function useBudgetPlan() {
+function useBudgetPlanState() {
   const { user } = useAuth()
   const { data: categories } = useCategories()
   const [data, setData] = useState<PlanData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | Error | null>(null)
   const [channelKey] = useState(() => crypto.randomUUID())
-  const seedingRef = useRef(false)
+  // Id del usuario al que ya se le intentó sembrar el plan. No se limpia: ver
+  // el comentario del efecto.
+  const sembradoPara = useRef<string | null>(null)
 
   const fetchPlan = useCallback(async (): Promise<void> => {
     if (!user) return
@@ -111,8 +126,8 @@ export function useBudgetPlan() {
   }, [user])
 
   const seed = useCallback(async (): Promise<void> => {
-    if (!user || seedingRef.current) return
-    seedingRef.current = true
+    if (!user || sembradoPara.current === user.id) return
+    sembradoPara.current = user.id
     try {
       const { data: planRow, error: planErr } = await supabase
         .from('budget_plans')
@@ -158,8 +173,6 @@ export function useBudgetPlan() {
       await fetchPlan()
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)))
-    } finally {
-      seedingRef.current = false
     }
   }, [user, categories, fetchPlan])
 
@@ -193,10 +206,17 @@ export function useBudgetPlan() {
     }
   }, [user, channelKey, fetchPlan])
 
-  // Seed once when we know there's no plan and we have categories loaded.
+  /**
+   * Seed once when we know there's no plan and we have categories loaded.
+   *
+   * La marca se pone al empezar y no se quita. Liberarla en el `finally` hacía
+   * que, si la siembra no acababa dejando un plan — permisos, un fallo a mitad
+   * de las inserciones, la red —, el efecto se volviera a disparar en cuanto
+   * `data` cambiara de identidad, y otra vez, sin fin.
+   */
   useEffect(() => {
     if (!user || loading || data !== null) return
-    if (seedingRef.current) return
+    if (sembradoPara.current === user.id) return
     if (categories.length === 0) return
     // seed() awaits before calling setState — same async pattern as other hooks.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -353,4 +373,23 @@ export function useBudgetPlan() {
     renamePersonalPreset,
     refetch: fetchPlan,
   }
+}
+
+type BudgetPlanValue = ReturnType<typeof useBudgetPlanState>
+
+const BudgetPlanContext = createContext<BudgetPlanValue | undefined>(undefined)
+
+export function BudgetPlanProvider({ children }: { children: ReactNode }) {
+  const value = useBudgetPlanState()
+  return <BudgetPlanContext.Provider value={value}>{children}</BudgetPlanContext.Provider>
+}
+
+// Mismo caso que useAuth: el fichero exporta el provider y el hook que lo lee.
+// Separarlos sólo para contentar a fast refresh partiría en dos un módulo que
+// se entiende de una pieza.
+// eslint-disable-next-line react-refresh/only-export-components
+export function useBudgetPlan(): BudgetPlanValue {
+  const ctx = useContext(BudgetPlanContext)
+  if (!ctx) throw new Error('useBudgetPlan debe usarse dentro de BudgetPlanProvider')
+  return ctx
 }

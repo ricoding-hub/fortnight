@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { marcarArranqueSano } from '@/lib/recover'
 import { usePwaStore, type BeforeInstallPromptEvent } from '@/store/pwaStore'
 
 /**
@@ -23,6 +24,12 @@ const updateSW = registerSW({
       // would log an unhandled rejection.
       if (document.visibilityState === 'visible') reg.update().catch(() => {})
     })
+  },
+  // Sin esto, un fallo al instalar el worker — cuota llena, precaché a medias —
+  // no dejaba rastro en ninguna parte. Es justo el fallo del que no teníamos ni
+  // una línea que mirar cuando la app se quedó en blanco al actualizar.
+  onRegisterError(err) {
+    console.error('[Fortnight] no se pudo registrar el service worker', err)
   },
 })
 usePwaStore.getState().setApplyUpdate(() => void updateSW(true))
@@ -54,3 +61,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Arranque sano: todos los recursos cargaron y React montó algo. Se borra la
+// marca que pone la red de arranque de index.html, para que la siguiente
+// actualización que falle también se pueda curar.
+window.addEventListener('load', () => {
+  if (document.getElementById('root')?.childElementCount) marcarArranqueSano()
+})

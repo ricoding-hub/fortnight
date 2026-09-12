@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
 import { useConfig } from '@/hooks/useConfig'
-import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
+import { PAY_FREQS, payFreqOf } from '@/lib/paydays'
 
 const TABS = [
   { to: '/plan/proyeccion', label: 'Proyección' },
@@ -11,7 +11,7 @@ const TABS = [
 
 export function PlanLayout() {
   const { data: config } = useConfig()
-  const freq: PayFreq = (config?.pay_freq ?? 'catorcenal') as PayFreq
+  const freq = payFreqOf(config?.pay_freq)
   const monthlyIncome = Math.round(
     (config?.pay_amount ?? 0) * PAY_FREQS[freq].cyclesPerMonth,
   )

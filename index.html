@@ -47,6 +47,90 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Geist+Mono:wght@400;500;600&display=swap"
     />
     <title>Fortnight — Finanzas personales</title>
+    <!--
+      Red de arranque. Tiene que ir aquí, en línea y antes del bundle: si el
+      service worker sirve un armazón viejo que apunta a un archivo que ya no
+      existe — y eso pasa en cada despliegue, porque el nombre lleva el hash del
+      contenido — el bundle da 404, React no arranca y queda una página en
+      blanco. Cualquier código que viviera dentro del bundle no llegaría a
+      ejecutarse. El ErrorBoundary tampoco: sólo atrapa lo que React dibuja.
+
+      Lo que hace: si falla un script o una hoja de estilo DEL MISMO ORIGEN,
+      desregistra los workers, borra las cachés y recarga UNA vez. La marca en
+      sessionStorage impide el bucle, y main.tsx la borra cuando el arranque
+      llega a buen puerto.
+
+      El mismo origen es la condición que importa: la tipografía viene de
+      fonts.googleapis.com y falla por una red corporativa, un bloqueador o
+      estar sin conexión. Borrar la caché por eso sería tirarla justo cuando el
+      usuario no tiene red y más la necesita.
+    -->
+    <script>
+      (function () {
+        var MARCA = 'fortnight:recuperado'
+        var curando = false
+
+        function propio(el) {
+          if (!el || typeof el.tagName !== 'string') return false
+          var tag = el.tagName.toUpperCase()
+          if (tag !== 'SCRIPT' && !(tag === 'LINK' && el.rel === 'stylesheet')) return false
+          var url = el.src || el.href || ''
+          if (!url) return false
+          try {
+            return new URL(url, location.origin).origin === location.origin
+          } catch (e) {
+            return false
+          }
+        }
+
+        function curar(motivo) {
+          if (curando) return
+          try {
+            if (sessionStorage.getItem(MARCA)) {
+              console.error('[Fortnight] el bundle sigue sin cargar tras limpiar:', motivo)
+              return
+            }
+            sessionStorage.setItem(MARCA, '1')
+          } catch (e) {
+            return // Sin sessionStorage no hay forma de evitar el bucle.
+          }
+          curando = true
+          console.warn('[Fortnight] bundle roto, limpiando y recargando:', motivo)
+          var tareas = []
+          try {
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              tareas.push(
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                  return Promise.all(rs.map(function (r) { return r.unregister() }))
+                }),
+              )
+            }
+            if (window.caches && caches.keys) {
+              tareas.push(
+                caches.keys().then(function (ks) {
+                  return Promise.all(ks.map(function (k) { return caches.delete(k) }))
+                }),
+              )
+            }
+          } catch (e) { /* el navegador no lo permite; recargar aún puede servir */ }
+          Promise.all(tareas)
+            .catch(function () {})
+            .then(function () { location.reload() })
+        }
+
+        addEventListener(
+          'error',
+          function (e) { if (propio(e.target)) curar('recurso propio ' + e.target.tagName) },
+          true, // los errores de carga de recursos no burbujean: hay que capturarlos
+        )
+        addEventListener('unhandledrejection', function (e) {
+          var m = (e.reason && e.reason.message) || String(e.reason || '')
+          if (/Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload|ChunkLoadError/i.test(m)) {
+            curar('import dinámico')
+          }
+        })
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.8.0"
+            version="1.8.1"
             date="12 sep 2026"
             current
+            notes={[
+              'Arreglada la pantalla en blanco al actualizar: si la app se queda sin poder cargarse, ahora se limpia y vuelve sola en vez de dejarte mirando un hueco',
+              'El mes libre de deuda vuelve, y esta vez sale de tus números: antes daba siempre seis meses, con cualquier deuda y para cualquiera',
+              'Los días del calendario ya no se tocan entre sí, y el aro de hoy no se encima con el día siguiente',
+              'Si tu frecuencia de pago trae un valor raro ya no se cae la pantalla: se usa catorcenal y sigue funcionando',
+            ]}
+          />
+          <VersionRow
+            version="1.8.0"
+            date="12 sep 2026"
             notes={[
               'Ya puedes entrar con correo y contraseña, además del enlace mágico y de Google',
               'Si se te olvida, hay recuperación por correo: pides el enlace y eliges una contraseña nueva',

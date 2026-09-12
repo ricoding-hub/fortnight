@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -22,15 +30,24 @@ const EMPTY: Goal[] = []
 /**
  * Fetches the user's goals. If the user has credit debt > 0 and no goals at
  * all, seeds a "Liberar tarjetas" debt-freedom goal with a 6-month payoff.
+ *
+ * Vive detrás de un provider a propósito. El efecto de siembra se guarda con un
+ * `seedingRef`, y un ref es por instancia: con el hook llamado suelto, cada
+ * componente que lo usaba traía su propia copia del efecto y su propio ref, así
+ * que un usuario nuevo con deuda podía acabar con varias filas de "Liberar
+ * tarjetas" insertadas a la vez. Una sola instancia elimina la carrera, y de
+ * paso deja un único canal de realtime en vez de uno por consumidor.
  */
-export function useGoals() {
+function useGoalsState() {
   const { user } = useAuth()
   const { data: accounts } = useAccounts()
   const [data, setData] = useState<Goal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | Error | null>(null)
   const [channelKey] = useState(() => crypto.randomUUID())
-  const seedingRef = useRef(false)
+  // Guarda el id del usuario al que ya se le intentó sembrar. Latched a
+  // propósito: ver el comentario del efecto de siembra.
+  const sembradoPara = useRef<string | null>(null)
 
   const fetchGoals = useCallback(async () => {
     if (!user) return
@@ -110,15 +127,25 @@ export function useGoals() {
     }
   }, [user, channelKey, fetchGoals])
 
-  // Seed the debt-freedom goal once when user has credit debt and no goals.
+  /**
+   * Seed the debt-freedom goal once when user has credit debt and no goals.
+   *
+   * La marca se pone y NO se quita. Antes se liberaba al terminar el insert, y
+   * como `data` es un arreglo nuevo en cada `fetchGoals`, el efecto se volvía a
+   * disparar; si la inserción no acababa produciendo una fila — RLS, un
+   * conflicto, la red — el ciclo era: sembrar, refrescar, seguir sin metas,
+   * sembrar otra vez. Un bucle infinito de peticiones que deja la pestaña
+   * clavada. Un solo intento por usuario, y si falla se ve el error.
+   */
   useEffect(() => {
-    if (!user || loading || data.length > 0 || seedingRef.current) return
+    if (!user || loading || data.length > 0) return
+    if (sembradoPara.current === user.id) return
     const creditDebt = accounts
       .filter((a) => a.type === 'credit')
       .reduce((s, a) => s + a.balance, 0)
     if (creditDebt <= 0) return
 
-    seedingRef.current = true
+    sembradoPara.current = user.id
     const desiredMonths = 6
     const interestBuffer = 1.05
     const monthly = Math.round((creditDebt * interestBuffer) / desiredMonths)
@@ -141,7 +168,6 @@ export function useGoals() {
       })
       .then(({ error: insErr }) => {
         if (insErr) setError(insErr)
-        seedingRef.current = false
         void fetchGoals()
       })
   }, [user, loading, data, accounts, fetchGoals])
@@ -271,4 +297,23 @@ export function useGoals() {
     setLinkedAccounts,
     setPrimary,
   }
+}
+
+type GoalsValue = ReturnType<typeof useGoalsState>
+
+const GoalsContext = createContext<GoalsValue | undefined>(undefined)
+
+export function GoalsProvider({ children }: { children: ReactNode }) {
+  const value = useGoalsState()
+  return <GoalsContext.Provider value={value}>{children}</GoalsContext.Provider>
+}
+
+// Mismo caso que useAuth: el fichero exporta el provider y el hook que lo lee.
+// Separarlos sólo para contentar a fast refresh partiría en dos un módulo que
+// se entiende de una pieza.
+// eslint-disable-next-line react-refresh/only-export-components
+export function useGoals(): GoalsValue {
+  const ctx = useContext(GoalsContext)
+  if (!ctx) throw new Error('useGoals debe usarse dentro de GoalsProvider')
+  return ctx
 }

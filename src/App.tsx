@@ -2,6 +2,8 @@ import { type ReactNode, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import { GoalsProvider } from '@/hooks/useGoals'
+import { BudgetPlanProvider } from '@/hooks/useBudgetPlan'
 import { useAutoSync } from '@/hooks/useAutoSync'
 import { useUiStore } from '@/store/uiStore'
 import { hadSession } from '@/lib/dataCache'
@@ -76,6 +78,11 @@ export default function App() {
   return (
     <ErrorBoundary scope="app">
       <AuthProvider>
+        {/* Metas y plan de presupuesto viven aquí arriba porque ambos siembran
+            filas la primera vez. Llamados sueltos, cada consumidor traía su
+            propio efecto de siembra y podían insertar en paralelo. */}
+        <GoalsProvider>
+        <BudgetPlanProvider>
         <BrowserRouter>
         <Routes>
           <Route
@@ -135,6 +142,8 @@ export default function App() {
         <AppTour />
         </BrowserRouter>
         <ToastContainer />
+        </BudgetPlanProvider>
+        </GoalsProvider>
       </AuthProvider>
     </ErrorBoundary>
   )

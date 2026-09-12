@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { IconAlertTriangle, IconRefresh, IconTrash } from '@tabler/icons-react'
+import { reiniciarApp } from '@/lib/recover'
 
 interface Props {
   children: ReactNode
@@ -41,18 +42,12 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload()
   }
 
-  /** The way out when the failure really is a bad cache or a stuck worker. */
-  resetApp = async () => {
-    try {
-      const regs = await navigator.serviceWorker?.getRegistrations?.()
-      await Promise.all((regs ?? []).map((r) => r.unregister()))
-      const keys = await caches?.keys?.()
-      await Promise.all((keys ?? []).map((k) => caches.delete(k)))
-    } catch {
-      // Nothing to clean, or the browser won't let us. Reloading is still worth a try.
-    }
-    window.location.reload()
-  }
+  /**
+   * The way out when the failure really is a bad cache or a stuck worker.
+   * Shared with the boot-time self-healing in `lib/recover`, which does the
+   * same thing without waiting for a user who may be staring at a blank page.
+   */
+  resetApp = () => reiniciarApp()
 
   render() {
     const { error, details } = this.state

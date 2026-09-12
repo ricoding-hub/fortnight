@@ -52,7 +52,7 @@ export function DayMarkers({ events, accountById, size = 14, max = 3 }: DayMarke
   // A cell is about 46px wide at the 380px baseline, so the marks trade size
   // for room: a day with one thing happening shows it big, a crowded day
   // shrinks rather than spilling out of its cell.
-  const base = picked.length >= 3 ? size - 2 : picked.length === 1 ? size + 3 : size
+  const base = picked.length >= 3 ? size - 3 : picked.length === 1 ? size + 3 : size
 
   return (
     <span className="flex items-center justify-center gap-px">

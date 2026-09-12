@@ -15,6 +15,21 @@ export const PAY_FREQS = {
   mensual:    { label: 'Mensual',    cyclesPerMonth: 1,    cyclesPerYear: 12, stepDays: 30 },
 } as const
 
+/**
+ * Convierte lo que venga de la base de datos en una frecuencia válida.
+ *
+ * `pay_freq` es una columna de texto, así que el valor puede ser cualquier cosa:
+ * una frecuencia que se añada más adelante y llegue a un cliente viejo, una
+ * fila migrada a mano, un nulo. Media app hacía `(config?.pay_freq ?? 'catorcenal')
+ * as PayFreq` y luego `PAY_FREQS[freq].cyclesPerMonth`, y ese `as` no comprueba
+ * nada: con un valor desconocido `PAY_FREQS[freq]` es undefined y leer
+ * `.cyclesPerMonth` revienta al dibujar. Una pantalla en blanco por un dato,
+ * no por un error de lógica. Aquí se comprueba de verdad.
+ */
+export function payFreqOf(value: unknown): PayFreq {
+  return typeof value === 'string' && value in PAY_FREQS ? (value as PayFreq) : 'catorcenal'
+}
+
 const MONTHS_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'] as const
 
 /** Returns a new Date pinned to local 12:00 — avoids DST/midnight off-by-one drift. */
@@ -74,7 +89,7 @@ export function computePaydays(
     return out.slice(0, count)
   }
 
-  const stepDays = PAY_FREQS[freq].stepDays
+  const stepDays = PAY_FREQS[payFreqOf(freq)].stepDays
   const cur = new Date(ref)
   while (cur < t) cur.setDate(cur.getDate() + stepDays)
   // `cur` is now the soonest payday >= today (includes today if it's an exact payday).

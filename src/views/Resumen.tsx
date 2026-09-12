@@ -46,12 +46,11 @@ import { useUiStore } from '@/store/uiStore'
 import { formatMXN } from '@/lib/format'
 import { getInstallmentRemaining } from '@/lib/debt'
 import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
+import { useDebtFreeMonth } from '@/hooks/useDebtFreeMonth'
 import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
-import { monthsToGoal } from '@/lib/goals'
 import { useNotifications } from '@/hooks/useNotifications'
-import { computePaydays, fmtPayday } from '@/lib/paydays'
-import type { PayFreq } from '@/lib/paydays'
+import { computePaydays, fmtPayday, payFreqOf } from '@/lib/paydays'
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
@@ -134,7 +133,7 @@ export function Resumen() {
   const nextPayday = useMemo(() => {
     if (!config?.pay_reference || !config?.pay_freq) return null
     const ref = new Date(config.pay_reference + 'T12:00:00')
-    const days = computePaydays(ref, config.pay_freq as PayFreq, 1)
+    const days = computePaydays(ref, payFreqOf(config.pay_freq), 1)
     return days[0] ?? null
   }, [config])
 
@@ -199,18 +198,10 @@ export function Resumen() {
 
   // Mes libre de deuda — projected month/year from the primary goal (falling
   // back to any debt goal so existing users see something on day one).
-  const primaryGoal = useMemo(
-    () => goals.find((g) => g.is_primary) ?? goals.find((g) => g.is_debt) ?? null,
-    [goals],
-  )
-  const mesLibre = useMemo(() => {
-    if (!primaryGoal) return null
-    const m = monthsToGoal(primaryGoal)
-    if (!Number.isFinite(m)) return null
-    const d = new Date()
-    d.setMonth(d.getMonth() + m)
-    return d
-  }, [primaryGoal])
+  // Shared with Proyección so the two screens can't disagree, and so the month
+  // stops coming from the seeded goal's `monthly`, which cancels the debt out
+  // and hands every user the same six months.
+  const { month: mesLibre, reason: mesLibreReason } = useDebtFreeMonth()
 
   const urgent = creditAccounts
     .map((a) => ({ account: a, days: daysUntilPayment(a) }))
@@ -729,7 +720,12 @@ export function Resumen() {
               {mesLibre ? shortMonth(mesLibre) : '—'}
             </p>
             <p className="mt-1 text-[10.5px] font-semibold text-text-tertiary">
-              libre de deuda
+              {/* Better an honest dash with a way forward than a date we made up. */}
+              {mesLibre
+                ? 'libre de deuda'
+                : mesLibreReason === 'no-disposable'
+                  ? 'configura tu plan'
+                  : 'libre de deuda'}
             </p>
           </div>
         </Card>

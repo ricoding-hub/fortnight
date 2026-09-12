@@ -7,7 +7,7 @@ import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useGoals } from '@/hooks/useGoals'
 import { Richeto } from '@/components/Richeto'
 import { richetoAdvice, type AdviceTip } from '@/lib/advice'
-import { PAY_FREQS, type PayFreq } from '@/lib/paydays'
+import { PAY_FREQS, payFreqOf } from '@/lib/paydays'
 import { useUiStore } from '@/store/uiStore'
 import { moduleKey, moduleMessage, markSeen, readSeen } from '@/lib/richetoModules'
 import type { BucketWithSpend } from '@/lib/plan'
@@ -54,7 +54,7 @@ export function PetCompanion() {
   // Smart tips — only computed on home where they make sense.
   const tips = useMemo<AdviceTip[]>(() => {
     if (location.pathname !== '/') return []
-    const freq: PayFreq = (config?.pay_freq ?? 'catorcenal') as PayFreq
+    const freq = payFreqOf(config?.pay_freq)
     const monthlyIncome = Math.round(
       (config?.pay_amount ?? 0) * PAY_FREQS[freq].cyclesPerMonth,
     )

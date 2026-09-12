@@ -20,6 +20,16 @@ export default defineConfig({
       includeAssets: ['favicon.png', 'icons/*.png', 'richeto.png'],
       workbox: {
         clientsClaim: true,
+        // Sin esto Workbox conserva las revisiones viejas de cada precaché.
+        // Se acumulan versión tras versión y en iOS, que tiene cuota dura, un
+        // `cache.put` puede fallar al instalar el worker nuevo — que con
+        // clientsClaim toma el control igualmente y sirve un bundle a medias.
+        // Eso es una pantalla en blanco justo al actualizar, sin traza alguna.
+        cleanupOutdatedCaches: true,
+        // El SW no debe responder por las rutas de autenticación: el enlace de
+        // recuperación llega con el token en el fragmento y tiene que llegar
+        // entero a la app, no a una copia cacheada del index.
+        navigateFallbackDenylist: [/^\/auth\//],
         globPatterns: ['**/*.{js,css,html,svg,woff,woff2}'],
         runtimeCaching: [
           {
