@@ -157,7 +157,24 @@ Financial score 1-10 calculated from:
 
 ## Auth
 
-Email magic link via Supabase. No password. Session in Supabase auth.
+Supabase auth, tres caminos que conviven:
+
+- **Correo y contraseña** (`signInWithPassword` / `signUp`). Mínimo 10
+  caracteres, validado en `src/lib/password.ts` antes de llegar al servidor.
+- **Enlace mágico** (`signInWithOtp`), que sigue siendo lo más cómodo en móvil.
+- **Google** (OAuth).
+
+Recuperación en `/auth/forgot` → correo → `/auth/reset`. Reglas que no se
+negocian:
+
+- La solicitud de recuperación responde **siempre lo mismo**, exista la cuenta o
+  no: decir lo contrario convierte la pantalla en un detector de correos
+  registrados.
+- El enlace de recuperación **abre sesión real** (`detectSessionInUrl`), así que
+  `useAuth` marca `isRecovery` y `ProtectedRoute` bloquea la app hasta que se
+  elija contraseña nueva.
+- Los mensajes de error salen de `src/lib/authErrors.ts`, nunca del texto crudo
+  de Supabase, que viene en inglés y con códigos.
 
 ## Security
 

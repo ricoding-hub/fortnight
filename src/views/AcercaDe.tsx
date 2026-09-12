@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.8.0"
+            date="12 sep 2026"
+            current
+            notes={[
+              'Ya puedes entrar con correo y contraseña, además del enlace mágico y de Google',
+              'Si se te olvida, hay recuperación por correo: pides el enlace y eliges una contraseña nueva',
+              'Al cambiar tu contraseña cerramos la sesión en los demás dispositivos',
+              'Mínimo 10 caracteres, con medidor de fuerza y botón para ver lo que escribes',
+            ]}
+          />
+          <VersionRow
             version="1.7.6"
             date="11 sep 2026"
-            current
             notes={[
               'Si algo falla al dibujar una pantalla, la app ahora te lo dice y te ofrece recargar, en vez de quedarse en blanco',
               'El aviso incluye el error exacto para que puedas copiarlo y mandárnoslo desde el teléfono',

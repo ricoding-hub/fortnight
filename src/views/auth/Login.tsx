@@ -1,13 +1,17 @@
-import { useState, type FormEvent } from 'react'
-import { IconMailForward, IconCheck } from '@tabler/icons-react'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useForm, useWatch } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { IconCheck, IconMailForward } from '@tabler/icons-react'
 import { useAuth } from '@/hooks/useAuth'
-import { errorMessage } from '@/lib/errorMessage'
+import { authErrorMessage } from '@/lib/authErrors'
+import { validarPassword } from '@/lib/password'
 import { isIOS, isStandalone } from '@/lib/platform'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Card } from '@/components/ui/Card'
-
-type Status = 'idle' | 'sending' | 'sent' | 'error'
 
 /** Inline Google "G" logo – avoids external image dependency. */
 function GoogleIcon() {
@@ -33,56 +37,102 @@ function GoogleIcon() {
   )
 }
 
-export function Login() {
-  const { signInWithEmail, signInWithGoogle } = useAuth()
-  // The magic link opens in Safari, which an installed iOS app can't see.
-  const showIosNote = isIOS() && !isStandalone()
-  const [email, setEmail] = useState('')
-  const [status, setStatus] = useState<Status>('idle')
-  const [error, setError] = useState('')
-  const [googleLoading, setGoogleLoading] = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setStatus('sending')
-    setError('')
+type Modo = 'entrar' | 'crear'
+
+const esquema = z.object({
+  email: z.string().trim().min(1, 'Escribe tu correo').email('Ese correo no parece válido'),
+  password: z.string().min(1, 'Escribe tu contraseña'),
+})
+type Valores = z.infer<typeof esquema>
+
+export function Login() {
+  const { signInWithEmail, signInWithGoogle, signInWithPassword, signUpWithPassword } = useAuth()
+  // El enlace mágico abre en Safari, que una app instalada en iOS no ve.
+  const showIosNote = isIOS() && !isStandalone()
+
+  const [modo, setModo] = useState<Modo>('entrar')
+  const [formError, setFormError] = useState('')
+  const [avisoCorreo, setAvisoCorreo] = useState<'magico' | 'confirmar' | null>(null)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [magicLoading, setMagicLoading] = useState(false)
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<Valores>({
+    resolver: zodResolver(esquema),
+    defaultValues: { email: '', password: '' },
+  })
+
+  // useWatch en vez de watch(): watch() devuelve una función nueva en
+  // cada render y el compilador de React se salta el componente entero.
+  const email = useWatch({ control, name: 'email' })
+  // useWatch en vez de watch(): watch() devuelve una función nueva en
+  // cada render y el compilador de React se salta el componente entero.
+  const password = useWatch({ control, name: 'password' })
+
+  async function onSubmit(v: Valores) {
+    setFormError('')
     try {
-      await signInWithEmail(email.trim())
-      setStatus('sent')
+      if (modo === 'crear') {
+        // La política vive en lib/password: el esquema sólo exige "no vacío"
+        // para que al ENTRAR no se rechace la contraseña de alguien que se
+        // registró bajo otras reglas.
+        const veredicto = validarPassword(v.password)
+        if (!veredicto.ok) {
+          setError('password', { message: veredicto.error })
+          return
+        }
+        const { needsConfirmation } = await signUpWithPassword(v.email, v.password)
+        if (needsConfirmation) setAvisoCorreo('confirmar')
+        return
+      }
+      await signInWithPassword(v.email, v.password)
     } catch (err) {
-      setStatus('error')
-      setError(
-        navigator.onLine
-          ? errorMessage(err)
-          : 'Sin conexión. Conéctate a internet para recibir tu enlace de acceso.',
-      )
+      setFormError(authErrorMessage(err))
+    }
+  }
+
+  async function enviarEnlace() {
+    const correo = email?.trim()
+    if (!correo) {
+      setError('email', { message: 'Escribe tu correo para enviarte el enlace' })
+      return
+    }
+    setMagicLoading(true)
+    setFormError('')
+    try {
+      await signInWithEmail(correo)
+      setAvisoCorreo('magico')
+    } catch (err) {
+      setFormError(authErrorMessage(err))
+    } finally {
+      setMagicLoading(false)
     }
   }
 
   async function handleGoogle() {
     setGoogleLoading(true)
-    setError('')
+    setFormError('')
     try {
       await signInWithGoogle()
     } catch (err) {
       setGoogleLoading(false)
-      setError(
-        navigator.onLine
-          ? errorMessage(err)
-          : 'Sin conexión. Conéctate a internet para entrar con Google.',
-      )
+      setFormError(authErrorMessage(err))
     }
   }
 
   return (
-    <main className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden gradient-mesh px-6">
-      {/* Decorative blurred circles */}
+    <main className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden gradient-mesh px-6 py-10">
       <div className="absolute -left-32 -top-32 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
       <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
       <div className="absolute left-1/2 top-1/3 h-48 w-48 -translate-x-1/2 rounded-full bg-asset/8 blur-3xl" />
 
       <div className="relative w-full max-w-sm animate-[scale-in_500ms_cubic-bezier(0.34,1.56,0.64,1)]">
-        {/* Brand header */}
         <header className="mb-8 text-center">
           <img
             src="/icons/icon-192.png"
@@ -96,83 +146,126 @@ export function Login() {
         </header>
 
         <Card variant="glass" className="shadow-elevated">
-          {status === 'sent' ? (
-            <div className="text-center py-2 animate-[scale-in_300ms_ease-out]">
+          {avisoCorreo ? (
+            <div className="animate-[scale-in_300ms_ease-out] py-2 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-asset/12">
                 <IconCheck size={24} className="text-asset" />
               </div>
-              <p className="text-sm font-semibold text-asset">
-                Revisa tu correo
-              </p>
+              <p className="text-sm font-semibold text-asset">Revisa tu correo</p>
               <p className="mt-1.5 text-sm text-text-secondary">
-                Te enviamos un enlace de acceso a{' '}
-                <strong className="text-text">{email}</strong>.
+                {avisoCorreo === 'magico' ? (
+                  <>Te enviamos un enlace de acceso a <strong className="text-text">{email}</strong>.</>
+                ) : (
+                  <>Te enviamos un enlace para confirmar <strong className="text-text">{email}</strong>. Ábrelo y ya podrás entrar.</>
+                )}
               </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {/* Google sign-in */}
               <button
                 type="button"
-                onClick={() => void handleGoogle()}
-                disabled={googleLoading}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-border bg-bg-elevated font-medium text-sm text-text shadow-sm transition-all duration-[--duration-fast] ease-[--ease-spring] hover:shadow-card hover:border-border-strong active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setAvisoCorreo(null)}
+                className="mt-4 text-xs font-bold text-primary transition-colors hover:text-primary-deep"
               >
-                {googleLoading ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-text-secondary border-t-transparent" />
-                    Conectando…
-                  </>
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    Continuar con Google
-                  </>
-                )}
+                Volver
               </button>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-text-tertiary">o</span>
-                <div className="h-px flex-1 bg-border" />
+            </div>
+          ) : (
+            <>
+              {/* Entrar / Crear cuenta */}
+              <div className="mb-4 flex overflow-hidden rounded-xl border border-border" role="tablist">
+                {(['entrar', 'crear'] as Modo[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={modo === m}
+                    onClick={() => { setModo(m); setFormError('') }}
+                    className={
+                      'flex-1 py-2.5 text-[13px] font-bold transition-colors ' +
+                      (modo === m ? 'bg-primary text-white' : 'bg-bg text-text-secondary hover:bg-primary/5')
+                    }
+                  >
+                    {m === 'entrar' ? 'Entrar' : 'Crear cuenta'}
+                  </button>
+                ))}
               </div>
 
-              {/* Magic link form */}
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
                 <Input
                   label="Correo electrónico"
                   type="email"
-                  name="email"
-                  required
                   autoComplete="email"
                   placeholder="tucorreo@ejemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  error={status === 'error' ? error : undefined}
+                  error={errors.email?.message}
+                  {...register('email')}
                 />
-                <Button type="submit" loading={status === 'sending'}>
-                  <IconMailForward size={18} />
-                  Enviar enlace de acceso
-                </Button>
-                {showIosNote && (
-                  <p className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[11.5px] leading-snug text-text-secondary">
-                    En iPhone el enlace abre en Safari. Si ya instalaste Fortnight,
-                    entra con Google para que la app quede con tu sesión.
-                  </p>
+
+                <PasswordInput
+                  label="Contraseña"
+                  // current-password al entrar y new-password al crear: es lo
+                  // que hace que un gestor guarde o rellene lo correcto.
+                  autoComplete={modo === 'crear' ? 'new-password' : 'current-password'}
+                  placeholder={modo === 'crear' ? 'Al menos 10 caracteres' : '••••••••••'}
+                  showStrength={modo === 'crear'}
+                  strengthValue={password ?? ''}
+                  error={errors.password?.message}
+                  {...register('password')}
+                />
+
+                {modo === 'entrar' && (
+                  <Link
+                    to="/auth/forgot"
+                    className="-mt-1 self-end text-xs font-semibold text-primary transition-colors hover:text-primary-deep"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
                 )}
+
+                {formError && <p className="text-xs text-debt">{formError}</p>}
+
+                <Button type="submit" loading={isSubmitting}>
+                  {modo === 'crear' ? 'Crear cuenta' : 'Entrar'}
+                </Button>
               </form>
 
-              {/* Google-level error */}
-              {error && status !== 'error' && (
-                <p className="text-center text-xs text-debt">{error}</p>
+              <div className="my-4 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[11px] font-semibold text-text-tertiary">o</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleGoogle()}
+                  disabled={googleLoading}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-elevated text-sm font-semibold text-text transition-all hover:border-border-strong active:scale-[0.99] disabled:opacity-60"
+                >
+                  <GoogleIcon />
+                  {googleLoading ? 'Conectando…' : 'Continuar con Google'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void enviarEnlace()}
+                  disabled={magicLoading}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-elevated text-sm font-semibold text-text transition-all hover:border-border-strong active:scale-[0.99] disabled:opacity-60"
+                >
+                  <IconMailForward size={18} />
+                  {magicLoading ? 'Enviando…' : 'Enviarme un enlace de acceso'}
+                </button>
+              </div>
+
+              {showIosNote && (
+                <p className="mt-3 rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[11.5px] leading-snug text-text-secondary">
+                  En iPhone el enlace de acceso abre en Safari, fuera de la app
+                  instalada. Entra con tu contraseña para quedarte dentro.
+                </p>
               )}
-            </div>
+            </>
           )}
         </Card>
 
         <p className="mt-6 text-center text-xs text-text-tertiary">
-          Sin contraseña. Accede con Google o con un enlace seguro.
+          Tus datos viajan cifrados y sólo tú puedes verlos.
         </p>
       </div>
     </main>

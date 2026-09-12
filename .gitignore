@@ -189,3 +189,6 @@ design_handoff_fortnight_redesign/
 # TypeScript incremental build info
 *.tsbuildinfo
 .env*.local
+
+# Capturas del recorrido de humo (se regeneran)
+e2e/capturas/

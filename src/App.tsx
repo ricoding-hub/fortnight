@@ -8,6 +8,8 @@ import { hadSession } from '@/lib/dataCache'
 import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
+import { ForgotPassword } from '@/views/auth/ForgotPassword'
+import { ResetPassword } from '@/views/auth/ResetPassword'
 import { InviteRedirect } from '@/views/auth/InviteRedirect'
 import { JoinGroup } from '@/views/auth/JoinGroup'
 import { Resumen } from '@/views/Resumen'
@@ -37,7 +39,7 @@ function Splash({ label }: { label: string }) {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth()
+  const { session, loading, isRecovery } = useAuth()
   const openTour = useUiStore((s) => s.openTour)
   // Kicks off a background refresh of synced bank credentials when the
   // session is fresh and the last sync is older than 6 hours. The hook
@@ -53,6 +55,10 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   }, [session, openTour])
 
   if (loading) return <Splash label="Cargando…" />
+  // Una sesión de recuperación es una sesión real, así que sin esto quien
+  // tuviera el enlace del correo podría recorrer la app entera sin saber la
+  // contraseña. Sólo sirve para una cosa: elegir una nueva.
+  if (isRecovery) return <Navigate to="/auth/reset" replace />
   // Offline, getSession() can resolve null because refreshing the token needs
   // the network. Bouncing a returning user to the login screen would make the
   // whole offline-read feature pointless, and every query is still RLS-scoped.
@@ -81,6 +87,11 @@ export default function App() {
             }
           />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          {/* Deben declararse: el comodín de abajo se traga cualquier ruta no
+              registrada y la manda a "/". Sin PublicOnlyRoute porque el enlace
+              de recuperación llega YA con sesión abierta. */}
+          <Route path="/auth/forgot" element={<ForgotPassword />} />
+          <Route path="/auth/reset" element={<ResetPassword />} />
           <Route path="/invite/:token" element={<InviteRedirect />} />
           <Route path="/join/:code" element={<JoinGroup />} />
 
