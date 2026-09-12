@@ -1,5 +1,8 @@
 import { useEffect } from 'react'
 import { IconCamera, IconX } from '@tabler/icons-react'
+import { lockAppScroll } from '@/lib/appScroll'
+import { ModalLayer } from '@/components/ui/ModalLayer'
+import { estiloDeCapa, useViewportRect } from '@/hooks/useViewportRect'
 
 interface ImageViewerModalProps {
   open: boolean
@@ -23,18 +26,34 @@ export function ImageViewerModal({ open, src, alt = '', onClose, onChange }: Ima
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    // `body` no es quien se desplaza: el armazón es de un viewport de alto y
+    // quien se mueve es `<main id="app-scroll">`. Ponerle overflow hidden al
+    // body congelaba algo que ya estaba quieto, así que el fondo seguía
+    // desplazándose detrás del visor. lockAppScroll sabe dónde mirar.
+    const unlock = lockAppScroll()
     return () => {
       window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      unlock()
     }
   }, [open, onClose])
 
   if (!open || !src) return null
 
   return (
+    <VisorEnCapa src={src} alt={alt} onClose={onClose} onChange={onChange} />
+  )
+}
+
+/**
+ * Separado para poder usar hooks: el visor sale antes con un early return y
+ * los hooks no pueden vivir detrás de una condición.
+ */
+function VisorEnCapa({ src, alt, onClose, onChange }: Omit<ImageViewerModalProps, 'open' | 'src'> & { src: string }) {
+  const rect = useViewportRect(true)
+  return (
+    <ModalLayer>
     <div
+      style={estiloDeCapa(rect)}
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-[#0A0C18]/92 p-6 animate-[fade-in_180ms_ease-out]"
       onClick={onClose}
       role="dialog"
@@ -70,5 +89,6 @@ export function ImageViewerModal({ open, src, alt = '', onClose, onChange }: Ima
         </button>
       )}
     </div>
+    </ModalLayer>
   )
 }

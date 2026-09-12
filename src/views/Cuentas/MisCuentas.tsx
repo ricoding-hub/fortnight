@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  IconAlertTriangle,
   IconCalendarEvent,
   IconPlus,
   IconWallet,
@@ -24,6 +23,7 @@ import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
 import { ComingSoonBadge } from '@/components/ComingSoonBadge'
 import { BANK_LINKING_ENABLED } from '@/lib/features'
 import { InstallmentCard } from '@/components/InstallmentCard'
+import { MsiGapAlert } from '@/components/MsiGapAlert'
 import { InstallmentFormModal } from '@/components/InstallmentFormModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
@@ -374,22 +374,15 @@ export function MisCuentas() {
                   .map((a) => ({ account: a, gap: getMsiUncovered(a, installments) }))
                   .filter(({ gap }) => gap > 0.005)
                   .map(({ account, gap }) => (
-                    <div
+                    <MsiGapAlert
                       key={account.id}
-                      className="flex items-start gap-2.5 rounded-xl border border-peach/40 bg-peach-soft/50 px-3.5 py-3"
-                    >
-                      <IconAlertTriangle size={15} className="mt-px shrink-0 text-peach-deep" />
-                      <p className="text-[11.5px] leading-snug text-text-secondary">
-                        <b className="text-text">{account.name}</b> tiene{' '}
-                        <b className="font-mono text-text">{formatMXN(gap)}</b> a meses que
-                        su saldo no alcanza a cubrir. Si esas compras ya están en tu
-                        tarjeta, actualiza el saldo a{' '}
-                        <b className="font-mono text-text">
-                          {formatMXN(Number(account.balance) + gap)}
-                        </b>{' '}
-                        o más.
-                      </p>
-                    </div>
+                      account={account}
+                      gap={gap}
+                      onAgregar={async (nuevoSaldo) => {
+                        await updateBalance(account, nuevoSaldo)
+                        toast.success('Saldo actualizado', `${account.name} quedó en ${formatMXN(nuevoSaldo)}`)
+                      }}
+                    />
                   ))}
                 {installments.map((inst) => (
                   <InstallmentCard

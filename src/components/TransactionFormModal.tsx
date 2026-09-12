@@ -7,6 +7,8 @@ import {
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { lockAppScroll } from '@/lib/appScroll'
+import { ModalLayer } from '@/components/ui/ModalLayer'
+import { estiloDeCapa, useViewportRect } from '@/hooks/useViewportRect'
 import { Confetti } from '@/components/Confetti'
 import { Richeto } from '@/components/Richeto'
 import { useToast } from '@/hooks/useToast'
@@ -186,10 +188,15 @@ export function TransactionFormModal({
 
   /* ------------ render ------------ */
 
+  // Antes del early return: los hooks no pueden vivir detrás de una condición.
+  const rect = useViewportRect(mounted)
+
   if (!mounted) return null
 
   return (
+    <ModalLayer>
     <div
+      style={estiloDeCapa(rect)}
       className={clsx(
         'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300',
         // Same desktop treatment as ui/Modal: the overlay scrolls, so the wheel
@@ -201,7 +208,7 @@ export function TransactionFormModal({
     >
       {/* Inert: a fixed backdrop scrolls with the document, not the overlay,
           so leaving it clickable froze the wheel anywhere outside the panel. */}
-      <div className="pointer-events-none fixed inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
+      <div className="pointer-events-none absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
       <div className="contents lg:flex lg:min-h-full lg:items-center lg:justify-center lg:p-6">
       {/* Panel: flex column with max height so it never extends off-screen */}
@@ -209,7 +216,7 @@ export function TransactionFormModal({
         className={clsx(
           'relative w-full max-w-[480px] bg-bg shadow-lift outline-none',
           'rounded-t-[28px] flex flex-col overflow-hidden',
-          'max-h-[88svh]',
+          'max-h-[var(--modal-h,88svh)]',
           // No inner cap on desktop: the panel grows, the overlay scrolls.
           'lg:max-h-none lg:rounded-[28px]',
           'transition-transform duration-300 ease-[cubic-bezier(0.4,1.6,0.5,1)]',
@@ -412,6 +419,7 @@ export function TransactionFormModal({
       </div>
       </div>
     </div>
+    </ModalLayer>
   )
 }
 

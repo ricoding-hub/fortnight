@@ -2,6 +2,8 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { IconX } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { lockAppScroll } from '@/lib/appScroll'
+import { ModalLayer } from '@/components/ui/ModalLayer'
+import { estiloDeCapa, useViewportRect } from '@/hooks/useViewportRect'
 
 interface ModalProps {
   open: boolean
@@ -77,10 +79,15 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     if (open && panelRef.current) panelRef.current.focus({ preventScroll: true })
   }, [open])
 
+  // Antes del early return: los hooks no pueden vivir detrás de una condición.
+  const rect = useViewportRect(mounted)
+
   if (!mounted) return null
 
   return (
+    <ModalLayer>
     <div
+      style={estiloDeCapa(rect)}
       className={clsx(
         'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300',
         // From lg the overlay itself scrolls, so the wheel works anywhere on
@@ -95,7 +102,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
           inert so it doesn't swallow the wheel: a fixed element's scroll parent
           is the document, not the overlay, so hovering it froze the page. The
           overlay's own onClick keeps click-to-close working. */}
-      <div className="pointer-events-none fixed inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
+      <div className="pointer-events-none absolute inset-0 bg-[#1A1F36]/35 backdrop-blur-sm" />
 
       {/* Centring track: only real from lg, where the overlay scrolls */}
       <div className="contents lg:flex lg:min-h-full lg:items-center lg:justify-center lg:p-6">
@@ -104,7 +111,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
           ref={panelRef}
           tabIndex={-1}
           className={clsx(
-            'relative flex w-full max-w-[480px] max-h-[90dvh] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+            'relative flex w-full max-w-[480px] max-h-[var(--modal-h,90dvh)] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
             // No inner cap on desktop: the panel grows and the overlay scrolls.
             'lg:max-h-none lg:rounded-2xl',
             // A full slide-up is a sheet gesture; on desktop the dialog rises.
@@ -138,5 +145,6 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         </div>
       </div>
     </div>
+    </ModalLayer>
   )
 }

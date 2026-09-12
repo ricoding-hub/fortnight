@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.8.2"
+            version="1.8.3"
             date="12 sep 2026"
             current
+            notes={[
+              'Los formularios en ventana ya se pueden desplazar en el celular: el botón de guardar estaba ahí abajo, pero no había forma de llegar a él',
+              'Si amplías la pantalla, las ventanas ahora se colocan sobre lo que estás viendo en vez de quedarse fuera de cuadro y dejarte atascado',
+              'El teclado ya no tapa el formulario',
+              'El aviso de gastos a meses sin registrar ahora dice qué significa y trae el botón para arreglarlo de un toque',
+            ]}
+          />
+          <VersionRow
+            version="1.8.2"
+            date="12 sep 2026"
             notes={[
               'Arreglada la caída de Inicio y Proyección: dos partes de la misma pantalla se peleaban por la misma conexión de tiempo real y tiraban la vista entera',
               'Ese era también el fallo de la versión de ayer. Ya no se puede repetir: el nombre de cada conexión lo pone la app, no quien la usa',
