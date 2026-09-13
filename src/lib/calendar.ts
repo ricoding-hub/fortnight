@@ -50,6 +50,8 @@ export interface CalendarEvent {
   /** True when the amount is a forecast rather than a known figure. */
   estimated?: boolean
   accountId?: string
+  /** Proveedor del cargo (CFE, Telmex…), para pintar su logo en el marcador. */
+  brandId?: string
   /** Short labels shown on the day detail. */
   tags: string[]
 }
@@ -308,6 +310,7 @@ export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date):
         countsToCash: cash,
         estimated: s.frequency !== 'mensual',
         accountId: s.account_id ?? undefined,
+        brandId: s.brand_id ?? undefined,
         tags: [
           esFijo ? 'Gasto fijo' : 'Suscripción',
           s.frequency === 'mensual' ? 'Mensual' : s.frequency === 'trimestral' ? 'Trimestral' : 'Anual',

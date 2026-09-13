@@ -12,6 +12,8 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import { useCategories } from '@/hooks/useCategories'
 import { adivinarCategoria } from '@/lib/categoryGuess'
+import { SERVICE_PRESETS, type ServicePreset } from '@/lib/services'
+import { RecurringLogo } from '@/components/RecurringLogo'
 import { useBudgetPlan } from '@/hooks/useBudgetPlan'
 import { useConfig } from '@/hooks/useConfig'
 import { formatMXN } from '@/lib/format'
@@ -94,6 +96,22 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
   const categoriasFijas = categories.filter((c) => c.kind !== 'income')
   const [categoriaId, setCategoriaId] = useState<string | null>(existing?.category_id ?? null)
   const [tocada, setTocada] = useState(false)
+  const [proveedor, setProveedor] = useState<ServicePreset | null>(
+    () => SERVICE_PRESETS.find((x) => x.id === existing?.brand_id) ?? null,
+  )
+
+  /** Elegir proveedor llena el nombre y la categoría de una vez. */
+  function elegirProveedor(sv: ServicePreset) {
+    const mismo = proveedor?.id === sv.id
+    setProveedor(mismo ? null : sv)
+    if (mismo) return
+    setValue('name', sv.name, { shouldValidate: true })
+    const c = categoriasFijas.find((x) => x.name.toLowerCase() === sv.categoria.toLowerCase())
+    if (c) {
+      setCategoriaId(c.id)
+      setTocada(true)
+    }
+  }
 
   const { data: plan } = useBudgetPlan()
   const { data: config } = useConfig()
@@ -151,8 +169,10 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
       frequency:  freq,
       charge_day: parseCountInput(values.charge_day) ?? 1,
       account_id: values.account_id || null,
-      brand_id:   selectedBrand?.id ?? null,
-      color:      selectedBrand?.color ?? null,
+      // `brand_id` guarda la marca de suscripción o el preset de servicio: los
+      // dos catálogos se consultan al pintar, así que no hizo falta columna.
+      brand_id:   esFijo ? (proveedor?.id ?? null) : (selectedBrand?.id ?? null),
+      color:      esFijo ? (proveedor?.color ?? null) : (selectedBrand?.color ?? null),
       // La categoría es lo que permite descontar este gasto del presupuesto en
       // vez de sumarlo encima de lo ya presupuestado.
       category_id: esFijo ? categoriaId : null,
@@ -221,6 +241,41 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
             })}
           </div>
         </div>
+        )}
+
+        {/* Proveedor — el equivalente al selector de banco en cuentas: enseña el
+            logo de verdad, y al elegirlo llena nombre y categoría. */}
+        {esFijo && (
+          <div>
+            <p className="mb-2 text-[12px] font-semibold text-text-secondary">Proveedor</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SERVICE_PRESETS.map((sv) => {
+                const sel = proveedor?.id === sv.id
+                return (
+                  <button
+                    key={sv.id}
+                    type="button"
+                    onClick={() => elegirProveedor(sv)}
+                    className="inline-flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-[11.5px] font-bold transition-all"
+                    style={
+                      sel
+                        ? { background: sv.color, color: '#fff', boxShadow: `0 4px 10px ${sv.color}55` }
+                        : { background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }
+                    }
+                  >
+                    <RecurringLogo
+                      sub={{ brand_id: sv.id, name: sv.name, color: sv.color, kind: 'fijo' }}
+                      size={20}
+                    />
+                    {sv.name}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-text-tertiary">
+              ¿No está el tuyo? Escribe el nombre abajo y listo.
+            </p>
+          </div>
         )}
 
         {/* Categoría — sólo para gastos fijos, y es lo que los enlaza con la

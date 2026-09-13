@@ -38,10 +38,11 @@ export const BANK_PRESETS: BankPreset[] = [
   { id: 'finsus',     name: 'Finsus',       domain: 'finsus.mx',           color: '#0046FF' },
 ]
 
-/** Returns the favicon URL for a domain. */
-export function bankLogoUrl(domain: string, size = 128): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`
-}
+/**
+ * Alias histórico de `logoUrl`. Se conserva para no tocar los cinco sitios que
+ * ya lo importan; lo nuevo debería usar `@/lib/logos`.
+ */
+export { logoUrl as bankLogoUrl } from '@/lib/logos'
 
 const BY_DOMAIN = new Map(BANK_PRESETS.map((b) => [b.domain, b]))
 export function presetForDomain(domain: string | null | undefined): BankPreset | undefined {

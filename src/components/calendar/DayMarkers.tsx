@@ -1,4 +1,6 @@
 import { AccountBadge } from '@/components/calendar/AccountBadge'
+import { RecurringLogo } from '@/components/RecurringLogo'
+import { servicePreset } from '@/lib/services'
 import { KIND_ORDER, tierOf } from '@/components/calendar/eventStyle'
 import type { CalendarEvent } from '@/lib/calendar'
 import type { Account } from '@/types'
@@ -58,6 +60,19 @@ export function DayMarkers({ events, accountById, size = 14, max = 3 }: DayMarke
     <span className="flex items-center justify-center gap-px">
       {picked.map((e) => {
         const tier = tierOf(e.kind)
+        // Un cargo con proveedor enseña su logo, igual que una tarjeta enseña
+        // el de su banco: reconocer "CFE" de un vistazo vale más que reconocer
+        // "un gasto fijo".
+        const servicio = e.brandId ? servicePreset(e.brandId) : undefined
+        if (servicio) {
+          return (
+            <RecurringLogo
+              key={e.id}
+              sub={{ brand_id: servicio.id, name: servicio.name, color: servicio.color, kind: 'fijo' }}
+              size={tier === 'primary' ? base : base - 2}
+            />
+          )
+        }
         return (
           <AccountBadge
             key={e.id}

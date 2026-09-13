@@ -13,6 +13,7 @@ import { moneyNum } from '@/lib/money'
 import clsx from 'clsx'
 import { iconFor } from '@/lib/icons'
 import { bucketStats, type BucketWithSpend } from '@/lib/plan'
+import { RecurringLogo } from '@/components/RecurringLogo'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -274,9 +275,15 @@ export function BucketCard({
                       )}
                     >
                       {item.name}
-                      {item.auto_from_subscriptions && (
+                      {item.auto_from_recurring && (
                         <IconLink size={10} className="text-text-tertiary" />
                       )}
+                      {/* Los logos de los cargos que alimentan esta partida.
+                          El eslabón solo decía "esto viene de otro sitio"; los
+                          logos dicen de cuál. */}
+                      {item.recurring_charges?.slice(0, 3).map((c) => (
+                        <RecurringLogo key={c.id} sub={c} size={14} />
+                      ))}
                       {item.manual_override && (
                         <span
                           className="rounded-full px-1.5 py-px text-[8.5px] font-extrabold tracking-wide"
@@ -296,6 +303,13 @@ export function BucketCard({
                       </span>
                     </span>
                   </div>
+                  {item.recurring_charges && item.recurring_charges.length > 0 && (
+                    <p className="mt-0.5 truncate text-[10px] font-medium text-text-tertiary">
+                      {item.recurring_charges
+                        .map((c) => `${c.name} $${Math.round(c.amount).toLocaleString()} · día ${c.charge_day}`)
+                        .join('  ·  ')}
+                    </p>
+                  )}
                   <div
                     className="relative mt-1 h-1 overflow-hidden rounded-full"
                     style={{ background: bucket.soft_color }}

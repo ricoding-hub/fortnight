@@ -5,7 +5,7 @@
  * `spent` (filled either from a real-spending hook in PR-6 or 0 by default).
  */
 
-import type { BucketWithItems, BudgetItem, PlanPreset } from '@/types'
+import type { BucketWithItems, BudgetItem, PlanPreset, Subscription } from '@/types'
 
 export interface BucketStats {
   /** Planned monthly amount = monthlyIncome × bucket.pct / 100. */
@@ -25,8 +25,10 @@ export interface ItemWithSpend extends BudgetItem {
   spent: number
   /** True when the user marked the item as paid for the current cycle. */
   completed?: boolean
-  /** Marker that this item's spent value comes from the subscriptions table. */
-  auto_from_subscriptions?: boolean
+  /** El gasto de esta partida sale de cargos recurrentes registrados. */
+  auto_from_recurring?: boolean
+  /** Los cargos que la alimentan, para poder enseñarlos. */
+  recurring_charges?: Subscription[]
   /** True if the item can be toggled "paid" — only fixed or auto-sub items. */
   completable?: boolean
   /** True when `spent` came from a manual user override (replaces transactions). */

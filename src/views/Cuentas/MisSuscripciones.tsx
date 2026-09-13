@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { IconPlus } from '@tabler/icons-react'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
+import { useBudgetPlan } from '@/hooks/useBudgetPlan'
+import { useCategories } from '@/hooks/useCategories'
+import { conCategoriaPorDefecto, enlaceDelCargo, enlacesPorCategoria } from '@/lib/recurringLink'
 import { SubscriptionCard } from '@/components/SubscriptionCard'
 import { SubscriptionFormModal, type SubFormMode } from '@/components/SubscriptionFormModal'
 import { Richeto } from '@/components/Richeto'
@@ -9,6 +12,15 @@ import type { Subscription } from '@/types'
 
 export function MisSuscripciones() {
   const { data, loading, create, update, remove, totalMonthly, toMonthly } = useSubscriptions()
+  const { data: plan } = useBudgetPlan()
+  const { data: categories } = useCategories()
+
+  // El mismo cálculo que usa Presupuesto, para que las dos pantallas cuenten la
+  // misma historia sobre el mismo cargo.
+  const enlaces = enlacesPorCategoria(
+    plan?.buckets ?? [],
+    conCategoriaPorDefecto(data, categories),
+  )
   const [formMode, setFormMode] = useState<SubFormMode | null>(null)
 
   // Dos grupos, una tabla. Un gasto fijo y una suscripción son lo mismo por
@@ -87,6 +99,7 @@ export function MisSuscripciones() {
               key={sub.id}
               sub={sub}
               monthlyAmount={toMonthly(sub)}
+              enlace={enlaceDelCargo(sub, enlaces)}
               onEdit={(s: Subscription) => setFormMode({ kind: 'edit', sub: s })}
               onDelete={(id: string) => void remove(id)}
             />

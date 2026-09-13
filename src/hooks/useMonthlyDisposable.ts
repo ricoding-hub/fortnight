@@ -5,6 +5,7 @@ import { useConfig } from '@/hooks/useConfig'
 import { useInstallments } from '@/hooks/useInstallments'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { subMonthlyAmount } from '@/lib/projections'
+import { conCategoriaPorDefecto, enlacesPorCategoria, liberadoPorSobre } from '@/lib/recurringLink'
 import { PAY_FREQS, payFreqOf } from '@/lib/paydays'
 
 export interface MonthlyDisposable {
@@ -61,26 +62,6 @@ export function useMonthlyDisposable(): MonthlyDisposable {
     [activeInstallments],
   )
 
-  /**
-   * Categorías que ya tienen un cargo recurrente registrado con su monto real.
-   *
-   * Lo presupuestado para ellas hay que descontarlo del sobre, o el mismo dinero
-   * se resta dos veces: una como porcentaje del plan y otra como el cargo de
-   * verdad. Antes esto existía sólo para "Suscripciones", a mano; al entrar los
-   * gastos fijos con fecha — la renta, la luz — el caso dejó de ser uno.
-   */
-  const categoriasConCargo = useMemo(() => {
-    const ids = new Set<string>()
-    for (const s of subs) {
-      if (s.active && s.category_id) ids.add(s.category_id)
-    }
-    // La categoría "Suscripciones" cuenta aunque ninguna suscripción la lleve
-    // asignada: el formulario de suscripciones no pide categoría.
-    const susc = categories.find((c) => c.name.toLowerCase() === 'suscripciones')
-    if (susc && subs.some((s) => s.active && s.kind !== 'fijo')) ids.add(susc.id)
-    return ids
-  }, [subs, categories])
-
   return useMemo(() => {
     // Source of truth = the live budget plan (needs/wants/save buckets), NOT
     // the static user_config estimates, which only get set during onboarding
@@ -105,37 +86,17 @@ export function useMonthlyDisposable(): MonthlyDisposable {
     /**
      * Lo presupuestado que se libera, sobre por sobre.
      *
-     * Una categoría puede aparecer en más de una partida: en el plan por
-     * omisión, "Comida" está en Despensa (necesidades, 13 %) y en Comida fuera
-     * (gustos, 8 %). Acreditando ambas, un solo cargo liberaba el 21 % del
-     * ingreso y el disponible salía demasiado optimista — que en una app de
-     * finanzas es la dirección mala del error.
-     *
-     * Se acredita UNA partida por categoría, la primera recorriendo los sobres
-     * en orden. Y una por categoría, no una por cargo: con dos cargos de la
-     * misma categoría no hay forma de saber cuál corresponde a qué partida, y
-     * quedarse corto deja el disponible algo pesimista, mientras que pasarse
-     * hace creer que hay dinero que no hay.
+     * La regla — una categoría acredita una sola partida — vive en
+     * `lib/recurringLink`, compartida con la pantalla de Presupuesto. Tenerla
+     * dos veces es lo que hizo divergir Inicio y Proyección hace tres
+     * versiones, y no hay motivo para repetir el experimento.
      */
-    const acreditadas = new Set<string>()
-    const liberado = new Map<string, number>()
-    for (const bucket of plan.buckets) {
-      let suma = 0
-      for (const it of bucket.items) {
-        if (!it.category_id) continue
-        if (!categoriasConCargo.has(it.category_id)) continue
-        if (acreditadas.has(it.category_id)) continue
-        acreditadas.add(it.category_id)
-        suma += (it.pct * monthlyIncome) / 100
-      }
-      liberado.set(bucket.slug, suma)
-    }
+    const enlaces = enlacesPorCategoria(plan.buckets, conCategoriaPorDefecto(subs, categories))
+    const liberado = liberadoPorSobre(plan.buckets, enlaces, monthlyIncome)
 
     const sobre = (b: typeof needs) =>
       Math.max(((b?.pct ?? 0) * monthlyIncome) / 100 - (liberado.get(b?.slug ?? '') ?? 0), 0)
 
-    // El sobre menos lo que ya está contado como cargo real. Sin esto, dar de
-    // alta la renta con su fecha la restaría dos veces del disponible.
     const fixed = sobre(needs)
     const variable = sobre(wants)
     return {
@@ -148,5 +109,5 @@ export function useMonthlyDisposable(): MonthlyDisposable {
       disposable: monthlyIncome - fixed - variable - subsMonthly - fijosMonthly - installmentsMonthly,
       fromPlan: true,
     }
-  }, [plan, monthlyIncome, config, subsMonthly, fijosMonthly, installmentsMonthly, categoriasConCargo])
+  }, [plan, monthlyIncome, config, subs, categories, subsMonthly, fijosMonthly, installmentsMonthly])
 }

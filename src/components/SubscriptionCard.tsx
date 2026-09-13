@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { IconPencil, IconTrash } from '@tabler/icons-react'
-import { BrandLogo } from '@/components/BrandLogo'
+import { IconLink, IconPencil, IconTrash } from '@tabler/icons-react'
+import { RecurringLogo } from '@/components/RecurringLogo'
 import type { Subscription } from '@/types'
 
 const FREQ_LABEL: Record<string, string> = {
@@ -12,11 +12,13 @@ const FREQ_LABEL: Record<string, string> = {
 interface Props {
   sub: Subscription
   monthlyAmount: number
+  /** Partida del plan que este cargo alimenta, si alguna. */
+  enlace?: { itemName: string; bucketName: string } | null
   onEdit: (sub: Subscription) => void
   onDelete: (id: string) => void
 }
 
-export function SubscriptionCard({ sub, monthlyAmount, onEdit, onDelete }: Props) {
+export function SubscriptionCard({ sub, monthlyAmount, enlace, onEdit, onDelete }: Props) {
   const [confirm, setConfirm] = useState(false)
 
   const fmt = (n: number) =>
@@ -24,13 +26,21 @@ export function SubscriptionCard({ sub, monthlyAmount, onEdit, onDelete }: Props
 
   return (
     <div className="flex items-center gap-3 rounded-xl bg-bg-elevated px-3.5 py-3 shadow-card">
-      <BrandLogo brandId={sub.brand_id} name={sub.name} color={sub.color} size={42} />
+      <RecurringLogo sub={sub} size={42} />
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13.5px] font-bold text-text">{sub.name}</p>
         <p className="mt-0.5 text-[11px] font-medium text-text-tertiary">
           {fmt(sub.amount)} · {FREQ_LABEL[sub.frequency]} · día {sub.charge_day}
         </p>
+        {/* El otro lado del enlace. En Presupuesto se ve de qué está hecha la
+            partida; aquí se ve a qué partida va el cargo. */}
+        {enlace && (
+          <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-semibold text-primary-deep">
+            <IconLink size={10} stroke={2.2} />
+            En tu plan: {enlace.itemName} · {enlace.bucketName}
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-1">

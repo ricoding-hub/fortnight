@@ -13,6 +13,7 @@ import { BucketCard } from '@/components/BucketCard'
 import { Richeto } from '@/components/Richeto'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { PRESETS, planIntegrityPct, type BucketWithSpend } from '@/lib/plan'
+import { conCategoriaPorDefecto, enlacesPorCategoria } from '@/lib/recurringLink'
 import type { PlanPreset } from '@/types'
 
 interface PlanContext {
@@ -24,7 +25,7 @@ export function Presupuesto() {
   const { data, loading, updateItemPct, applyPlanPreset, renamePersonalPreset } = useBudgetPlan()
   const { data: accounts } = useAccounts()
   const { data: categories } = useCategories()
-  const { totalMonthly: subscriptionsMonthly } = useSubscriptions()
+  const { data: recurrentes } = useSubscriptions()
   const { completed, toggle: toggleCompletion } = useBudgetCompletions()
   const { data: manualSpend, setManual, clearManual } = useBudgetItemManualSpend()
 
@@ -41,9 +42,20 @@ export function Presupuesto() {
   const dateTo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
   const { data: txs } = useTransactions({ dateFrom, dateTo })
 
-  const subsCategoryId = useMemo(
-    () => categories.find((c) => c.name.toLowerCase() === 'suscripciones')?.id ?? null,
-    [categories],
+  /**
+   * Qué partida alimenta cada cargo recurrente.
+   *
+   * Antes esto estaba cableado a la categoría "Suscripciones" y tomaba el total
+   * de TODOS los cargos. Desde que los gastos fijos comparten tabla con las
+   * suscripciones, eso metía la renta dentro de la partida de Suscripciones —
+   * y dejaba la partida de Renta sin enterarse de su propio cargo.
+   *
+   * La regla vive en `lib/recurringLink`, compartida con `useMonthlyDisposable`,
+   * para que el presupuesto y el disponible no puedan discrepar.
+   */
+  const enlaces = useMemo(
+    () => enlacesPorCategoria(data?.buckets ?? [], conCategoriaPorDefecto(recurrentes, categories)),
+    [data, recurrentes, categories],
   )
 
   const categorySpend = useMemo(() => {
@@ -75,15 +87,19 @@ export function Presupuesto() {
   const bucketsWithSpend: BucketWithSpend[] = data.buckets.map((b) => ({
     ...b,
     items: b.items.map((it) => {
-      const isSubs = !!subsCategoryId && it.category_id === subsCategoryId
+      // El enlace cuenta sólo si apunta a ESTA partida: una categoría puede
+      // estar en dos sobres y sólo una de las dos la acredita.
+      const enlace = it.category_id ? enlaces.get(it.category_id) : undefined
+      const recurrente = enlace?.itemId === it.id ? enlace : undefined
       const transactionSpend = it.category_id ? (categorySpend.get(it.category_id) ?? 0) : 0
       const manual = manualSpend.get(it.id)
-      // Priority: manual override > subscriptions auto > transactions
-      const spent = manual ?? (isSubs ? subscriptionsMonthly : transactionSpend)
+      // Prioridad: ajuste a mano > cargo recurrente registrado > transacciones
+      const spent = manual ?? (recurrente ? recurrente.mensual : transactionSpend)
       return {
         ...it,
         spent,
-        auto_from_subscriptions: isSubs && manual === undefined,
+        auto_from_recurring: !!recurrente && manual === undefined,
+        recurring_charges: recurrente?.cargos ?? [],
         manual_override: manual !== undefined,
         // Every item is markable as "pagado este mes" — covers fixed,
         // variable, and saving items. The user picks whatever they want

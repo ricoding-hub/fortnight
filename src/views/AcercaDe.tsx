@@ -121,9 +121,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.9.1"
+            version="1.10.0"
             date="13 sep 2026"
             current
+            notes={[
+              'La renta que registras ahora aparece dentro de la partida Renta de tu presupuesto, con su monto y su día. Lo mismo con servicios y con lo que agregues',
+              'Corregido: la partida de Suscripciones estaba mostrando la renta dentro, porque tomaba el total de todos los cargos',
+              'Cada cargo dice a qué partida de tu plan va, y cada partida enseña de qué cargos está hecha',
+              'Logos de verdad para CFE, Telmex, Totalplay, izzi, Megacable y más, igual que en cuentas. Al elegir proveedor se llena el nombre y la categoría',
+              'En el calendario, un gasto fijo con proveedor enseña su logo en vez de un icono genérico',
+            ]}
+          />
+          <VersionRow
+            version="1.9.1"
+            date="13 sep 2026"
             notes={[
               'Corregido un error de ayer: un gasto fijo de una categoría que tu plan usa en dos sobres liberaba presupuesto de ambos, y te mostraba más disponible del que tienes',
               'Al escribir el nombre del gasto ya te elegimos la categoría, que es lo que lo enlaza con tu plan',
