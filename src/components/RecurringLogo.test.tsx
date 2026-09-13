@@ -46,11 +46,30 @@ describe('RecurringLogo', () => {
     expect(container.textContent).toBe('TA')
   })
 
-  it('una suscripción conocida conserva sus iniciales de marca', () => {
+  it('una suscripción conocida carga su logo real', () => {
     const { container } = render(
       <RecurringLogo sub={cargo({ brand_id: 'netflix', name: 'Netflix', kind: 'suscripcion' })} />,
     )
-    expect(container.textContent).toBe('N')
+    expect(container.querySelector('img')?.getAttribute('src')).toContain('netflix.com')
+  })
+
+  it('la reconoce por el nombre aunque nunca se eligiera la marca', () => {
+    // Lo que arregla los cargos ya guardados: "Claude Pro" y "Telcel" estaban
+    // en la lista como cuadros grises porque se dieron de alta escribiendo el
+    // nombre, sin tocar el selector.
+    for (const [nombre, dominio] of [['Claude Pro', 'claude.ai'], ['Telcel', 'telcel.com']]) {
+      cleanup()
+      const { container } = render(<RecurringLogo sub={cargo({ name: nombre, kind: 'suscripcion' })} />)
+      expect(container.querySelector('img')?.getAttribute('src'), nombre).toContain(dominio)
+    }
+  })
+
+  it('una marca sin dominio se queda en iniciales de color', () => {
+    const { container } = render(
+      <RecurringLogo sub={cargo({ brand_id: 'gym', name: 'Gimnasio', kind: 'suscripcion' })} />,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toBe('GY')
   })
 
   it('un nombre vacío no revienta', () => {

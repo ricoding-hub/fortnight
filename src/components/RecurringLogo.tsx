@@ -29,9 +29,12 @@ export function RecurringLogo({
 }) {
   const [falló, setFalló] = useState(false)
 
+  // Por id primero, y si no hay, por el nombre escrito. Eso es lo que hace que
+  // los cargos ya guardados — los que nunca pasaron por el selector — enseñen
+  // su logo sin tener que editarlos uno por uno.
   const servicio = servicePreset(sub.brand_id)
   const marca = servicio ? undefined : findBrand(sub.brand_id ?? sub.name ?? '')
-  const dominio = servicio?.domain ?? null
+  const dominio = servicio?.domain ?? marca?.domain ?? null
   const color = servicio?.color ?? marca?.color ?? sub.color ?? '#6B7194'
   const Icono = servicio?.icon ?? ICONO_GENERICO
   const conLogo = !!dominio && !falló

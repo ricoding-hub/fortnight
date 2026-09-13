@@ -5,8 +5,7 @@ import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { BrandLogo } from '@/components/BrandLogo'
-import { SUBSCRIPTION_BRANDS, BRANDS, type Brand } from '@/lib/brands'
+import { SUBSCRIPTION_BRANDS, findBrand, type Brand } from '@/lib/brands'
 import { useToast } from '@/hooks/useToast'
 import { useAccounts } from '@/hooks/useAccounts'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
@@ -129,7 +128,9 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
     return null
   })()
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(
-    existing?.brand_id ? (BRANDS.find((b) => b.id === existing.brand_id) ?? null) : null
+    // Por id si lo hay, y si no por el nombre: así al editar un cargo viejo —
+    // guardado antes de que existiera el selector — ya aparece su marca.
+    findBrand(existing?.brand_id ?? existing?.name) ?? null,
   )
   const [freq, setFreq] = useState<SubscriptionFrequency>(existing?.frequency ?? 'mensual')
   const [search, setSearch] = useState('')
@@ -152,7 +153,15 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
   })
 
   function alEscribirNombre(valor: string) {
-    if (!esFijo || tocada || !isCreate) return
+    // Suscripción: se busca la marca, para que escribir "Claude Pro" traiga su
+    // logo sin tener que encontrar el chip entre cuarenta.
+    if (!esFijo) {
+      if (!isCreate) return
+      const marca = findBrand(valor)
+      if (marca) setSelectedBrand(marca)
+      return
+    }
+    if (tocada || !isCreate) return
     const sugerida = adivinarCategoria(valor, categoriasFijas)
     if (sugerida) setCategoriaId(sugerida)
   }
@@ -194,8 +203,14 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
     }
   }
 
+  // La búsqueda mira también los alias: quien escribe "gpt" u "office" espera
+  // encontrar ChatGPT y Microsoft 365, no una lista vacía.
   const filtered = search
-    ? SUBSCRIPTION_BRANDS.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()))
+    ? SUBSCRIPTION_BRANDS.filter((b) =>
+        [b.name, ...(b.aliases ?? [])].some((n) =>
+          n.toLowerCase().includes(search.toLowerCase()),
+        ),
+      )
     : SUBSCRIPTION_BRANDS
 
   const FREQS: { value: SubscriptionFrequency; label: string }[] = [
@@ -234,7 +249,7 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
                       : { background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }
                   }
                 >
-                  <BrandLogo brandId={b.id} name={b.name} size={16} />
+                  <RecurringLogo sub={{ brand_id: b.id, name: b.name, color: b.color, kind: 'suscripcion' }} size={18} />
                   {b.name}
                 </button>
               )

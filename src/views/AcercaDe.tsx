@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.10.0"
+            version="1.10.1"
             date="13 sep 2026"
             current
+            notes={[
+              'Logos de verdad en tus suscripciones: Spotify, Claude, Apple, Telcel, Netflix, Amazon, HBO Max, Disney+, ChatGPT, YouTube y muchas más',
+              'Los cargos que ya tenías guardados los reconocen por su nombre: no tienes que editarlos para que aparezca el logo',
+              'Al escribir el nombre ya te detectamos la marca, sin buscar el chip entre cuarenta',
+              'El buscador entiende apodos: escribe "gpt" u "office" y encuentra lo que buscas',
+            ]}
+          />
+          <VersionRow
+            version="1.10.0"
+            date="13 sep 2026"
             notes={[
               'La renta que registras ahora aparece dentro de la partida Renta de tu presupuesto, con su monto y su día. Lo mismo con servicios y con lo que agregues',
               'Corregido: la partida de Suscripciones estaba mostrando la renta dentro, porque tomaba el total de todos los cargos',
