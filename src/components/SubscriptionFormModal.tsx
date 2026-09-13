@@ -11,6 +11,11 @@ import { useToast } from '@/hooks/useToast'
 import { useAccounts } from '@/hooks/useAccounts'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import { useCategories } from '@/hooks/useCategories'
+import { adivinarCategoria } from '@/lib/categoryGuess'
+import { useBudgetPlan } from '@/hooks/useBudgetPlan'
+import { useConfig } from '@/hooks/useConfig'
+import { formatMXN } from '@/lib/format'
+import { PAY_FREQS, payFreqOf } from '@/lib/paydays'
 import type { Subscription, NewSubscription, SubscriptionFrequency, RecurringKind } from '@/types'
 
 const isDay = (v: string) => isCountInput(v, 1, 31)
@@ -83,8 +88,28 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
   const recurring: RecurringKind = mode.kind === 'create' ? mode.recurring : mode.sub.kind
   const esFijo = recurring === 'fijo'
   const t = TEXTOS[recurring]
-  const categoriasFijas = categories.filter((c) => c.kind === 'fixed')
+  // Todas, no sólo las `fixed`. El sobre de necesidades enlaza también con
+  // Comida y Transporte, que son `variable`: limitarlo a tres categorías dejaba
+  // sin enlazar gastos que el plan sí contempla.
+  const categoriasFijas = categories.filter((c) => c.kind !== 'income')
   const [categoriaId, setCategoriaId] = useState<string | null>(existing?.category_id ?? null)
+  const [tocada, setTocada] = useState(false)
+
+  const { data: plan } = useBudgetPlan()
+  const { data: config } = useConfig()
+  const ingresoMensual = Math.round(
+    (config?.pay_amount ?? 0) * PAY_FREQS[payFreqOf(config?.pay_freq)].cyclesPerMonth,
+  )
+
+  /** La partida del plan que enlaza con la categoría elegida, si la hay. */
+  const partida = (() => {
+    if (!categoriaId || !plan) return null
+    for (const b of plan.buckets) {
+      const it = b.items.find((x) => x.category_id === categoriaId)
+      if (it) return { nombre: it.name, sobre: b.name, mensual: (it.pct * ingresoMensual) / 100 }
+    }
+    return null
+  })()
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(
     existing?.brand_id ? (BRANDS.find((b) => b.id === existing.brand_id) ?? null) : null
   )
@@ -107,6 +132,12 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
       notes:      existing?.notes ?? '',
     },
   })
+
+  function alEscribirNombre(valor: string) {
+    if (!esFijo || tocada || !isCreate) return
+    const sugerida = adivinarCategoria(valor, categoriasFijas)
+    if (sugerida) setCategoriaId(sugerida)
+  }
 
   function pickBrand(b: Brand) {
     setSelectedBrand(b)
@@ -192,8 +223,8 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
         </div>
         )}
 
-        {/* Categoría — sólo para gastos fijos, y es lo que evita contarlos dos
-            veces: una en el presupuesto y otra aquí. */}
+        {/* Categoría — sólo para gastos fijos, y es lo que los enlaza con la
+            partida del plan para no contarlos dos veces. */}
         {esFijo && categoriasFijas.length > 0 && (
           <div>
             <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">Categoría</p>
@@ -204,7 +235,10 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setCategoriaId(sel ? null : c.id)}
+                    onClick={() => {
+                      setTocada(true)
+                      setCategoriaId(sel ? null : c.id)
+                    }}
                     className={
                       'rounded-full px-3 py-1.5 text-[11.5px] font-bold transition-all ' +
                       (sel ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary')
@@ -215,6 +249,24 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
                 )
               })}
             </div>
+
+            {/* Decir qué hace la elección, con la cifra real. Sin esto el campo
+                parece decorativo y la consecuencia de dejarlo vacío es un
+                disponible más bajo del que toca, sin ningún síntoma. */}
+            {partida ? (
+              <p className="mt-2 rounded-lg bg-asset-soft/50 px-3 py-2 text-[11px] leading-snug text-text-secondary">
+                Tu plan ya aparta{' '}
+                <b className="font-mono text-text">{formatMXN(partida.mensual)}/mes</b> para{' '}
+                <b className="text-text">{partida.nombre}</b> en {partida.sobre}. Al registrarlo
+                aquí con su monto real dejamos de contarlo dos veces.
+              </p>
+            ) : (
+              <p className="mt-2 rounded-lg bg-bg-secondary px-3 py-2 text-[11px] leading-snug text-text-secondary">
+                {categoriaId
+                  ? 'Tu plan no presupuesta nada para esta categoría, así que este gasto se suma completo a tus egresos.'
+                  : 'Sin categoría se suma completo a tus egresos. Si tu plan ya lo contempla, elígela para no contarlo dos veces.'}
+              </p>
+            )}
           </div>
         )}
 
@@ -222,7 +274,9 @@ export function SubscriptionFormModal({ mode, onClose, onCreate, onUpdate }: Pro
           label={t.nombre}
           placeholder={t.ejemplo}
           error={errors.name?.message}
-          {...register('name')}
+          {...register('name', {
+            onChange: (e) => alEscribirNombre((e.target as HTMLInputElement).value),
+          })}
         />
 
         <Input

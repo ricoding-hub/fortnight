@@ -23,6 +23,7 @@ afterEach(cleanup)
 
 const CATEGORIAS = [
   { id: 'c-renta', user_id: 'u-1', name: 'Renta', kind: 'fixed', icon: null, color: null },
+  { id: 'c-comida', user_id: 'u-1', name: 'Comida', kind: 'variable', icon: null, color: null },
   { id: 'c-subs', user_id: 'u-1', name: 'Suscripciones', kind: 'fixed', icon: null, color: null },
 ]
 
@@ -36,9 +37,20 @@ const PLAN = [{
     {
       id: 'b-1', plan_id: 'p-1', slug: 'needs', name: 'Necesidades', pct: '50',
       color: '#2A4BFF', soft_color: '#E6EAFF', sort_order: 0,
-      budget_items: [{ id: 'i-1', bucket_id: 'b-1', slug: 'renta', name: 'Renta', pct: '30', category_id: 'c-renta', icon: null, sort_order: 0 }],
+      budget_items: [
+        { id: 'i-1', bucket_id: 'b-1', slug: 'renta', name: 'Renta', pct: '30', category_id: 'c-renta', icon: null, sort_order: 0 },
+        // Despensa y "Comida fuera" comparten categoría, igual que en la
+        // semilla real del plan. Ahí es donde se resta de más.
+        { id: 'i-2', bucket_id: 'b-1', slug: 'food', name: 'Despensa', pct: '13', category_id: 'c-comida', icon: null, sort_order: 1 },
+      ],
     },
-    { id: 'b-2', plan_id: 'p-1', slug: 'wants', name: 'Gustos', pct: '30', color: '#FFB59E', soft_color: '#FFF1EC', sort_order: 1, budget_items: [] },
+    {
+      id: 'b-2', plan_id: 'p-1', slug: 'wants', name: 'Gustos', pct: '30',
+      color: '#FFB59E', soft_color: '#FFF1EC', sort_order: 1,
+      budget_items: [
+        { id: 'i-3', bucket_id: 'b-2', slug: 'out', name: 'Comida fuera', pct: '8', category_id: 'c-comida', icon: null, sort_order: 0 },
+      ],
+    },
     { id: 'b-3', plan_id: 'p-1', slug: 'save', name: 'Ahorro', pct: '20', color: '#2BB673', soft_color: '#E4F6EE', sort_order: 2, budget_items: [] },
   ],
 }]
@@ -136,5 +148,47 @@ describe('useMonthlyDisposable con gastos fijos', () => {
     })
     expect(r.fijosMonthly).toBe(3000)
     expect(r.subsMonthly).toBe(299)
+  })
+})
+
+describe('una categoría que está en dos sobres', () => {
+  const despensa = { ...RENTA, id: 'f2', name: 'Despensa', amount: '2000', category_id: 'c-comida' }
+  const base = {
+    user_config: CONFIG, budget_plans: PLAN, categories: CATEGORIAS,
+    installments: [], accounts: [],
+  }
+
+  it('sólo libera UNA partida, no las dos', async () => {
+    // "Comida" aparece en Despensa (necesidades, 13 %) y en Comida fuera
+    // (gustos, 8 %). Con un cargo de esa categoría se liberaban las dos: 21 %
+    // del ingreso por un solo gasto. El disponible salía demasiado optimista,
+    // que es la dirección mala del error en una app de finanzas.
+    //
+    // Ingreso 10,000. Necesidades 50 % = 5,000, menos Despensa 13 % = 1,300 → 3,700.
+    // Gustos 30 % = 3,000, intacto.
+    const r = await leer({ ...base, subscriptions: [despensa] })
+    expect(r.fixedMonthly).toBe(3700)
+    expect(r.variableMonthly).toBe(3000)
+    expect(r.disposable).toBe(10_000 - 3700 - 3000 - 2000)
+  })
+
+  it('dos cargos de la misma categoría tampoco la liberan dos veces', async () => {
+    // No se puede saber cuál corresponde a qué partida, así que se acredita una
+    // sola vez. Quedarse corto deja el disponible algo pesimista; pasarse hace
+    // creer que hay dinero que no hay.
+    const otro = { ...despensa, id: 'f3', name: 'Súper quincenal', amount: '800' }
+    const r = await leer({ ...base, subscriptions: [despensa, otro] })
+    expect(r.fixedMonthly).toBe(3700)
+    expect(r.variableMonthly).toBe(3000)
+    expect(r.fijosMonthly).toBe(2800)
+  })
+
+  it('una categoría que el plan no usa no libera nada', async () => {
+    const r = await leer({
+      ...base,
+      subscriptions: [{ ...despensa, category_id: 'c-subs' }],
+    })
+    expect(r.fixedMonthly).toBe(5000)
+    expect(r.variableMonthly).toBe(3000)
   })
 })

@@ -102,16 +102,42 @@ export function useMonthlyDisposable(): MonthlyDisposable {
     const needs = plan.buckets.find((b) => b.slug === 'needs')
     const wants = plan.buckets.find((b) => b.slug === 'wants')
 
-    /** Lo presupuestado para categorías que ya se cobran de verdad. */
-    const yaCobrado = (bucket: typeof needs) =>
-      (bucket?.items ?? [])
-        .filter((it) => it.category_id && categoriasConCargo.has(it.category_id))
-        .reduce((n, it) => n + (it.pct * monthlyIncome) / 100, 0)
+    /**
+     * Lo presupuestado que se libera, sobre por sobre.
+     *
+     * Una categoría puede aparecer en más de una partida: en el plan por
+     * omisión, "Comida" está en Despensa (necesidades, 13 %) y en Comida fuera
+     * (gustos, 8 %). Acreditando ambas, un solo cargo liberaba el 21 % del
+     * ingreso y el disponible salía demasiado optimista — que en una app de
+     * finanzas es la dirección mala del error.
+     *
+     * Se acredita UNA partida por categoría, la primera recorriendo los sobres
+     * en orden. Y una por categoría, no una por cargo: con dos cargos de la
+     * misma categoría no hay forma de saber cuál corresponde a qué partida, y
+     * quedarse corto deja el disponible algo pesimista, mientras que pasarse
+     * hace creer que hay dinero que no hay.
+     */
+    const acreditadas = new Set<string>()
+    const liberado = new Map<string, number>()
+    for (const bucket of plan.buckets) {
+      let suma = 0
+      for (const it of bucket.items) {
+        if (!it.category_id) continue
+        if (!categoriasConCargo.has(it.category_id)) continue
+        if (acreditadas.has(it.category_id)) continue
+        acreditadas.add(it.category_id)
+        suma += (it.pct * monthlyIncome) / 100
+      }
+      liberado.set(bucket.slug, suma)
+    }
+
+    const sobre = (b: typeof needs) =>
+      Math.max(((b?.pct ?? 0) * monthlyIncome) / 100 - (liberado.get(b?.slug ?? '') ?? 0), 0)
 
     // El sobre menos lo que ya está contado como cargo real. Sin esto, dar de
     // alta la renta con su fecha la restaría dos veces del disponible.
-    const fixed = Math.max(((needs?.pct ?? 0) * monthlyIncome) / 100 - yaCobrado(needs), 0)
-    const variable = Math.max(((wants?.pct ?? 0) * monthlyIncome) / 100 - yaCobrado(wants), 0)
+    const fixed = sobre(needs)
+    const variable = sobre(wants)
     return {
       monthlyIncome,
       fixedMonthly: fixed,

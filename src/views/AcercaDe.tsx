@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.9.1"
+            date="13 sep 2026"
+            current
+            notes={[
+              'Corregido un error de ayer: un gasto fijo de una categoría que tu plan usa en dos sobres liberaba presupuesto de ambos, y te mostraba más disponible del que tienes',
+              'Al escribir el nombre del gasto ya te elegimos la categoría, que es lo que lo enlaza con tu plan',
+              'El formulario ahora te dice cuánto aparta tu plan para esa categoría, y qué pasa si la dejas vacía',
+              'Puedes enlazar con cualquier categoría, no sólo las fijas: tu plan también presupuesta despensa y transporte',
+            ]}
+          />
+          <VersionRow
             version="1.9.0"
             date="12 sep 2026"
-            current
             notes={[
               'Ya puedes registrar tus gastos fijos con su día: la renta, la luz, el internet. Aparecen en el calendario y cuentan en los egresos del mes',
               'Si el gasto fijo lleva categoría, se descuenta de lo que el plan ya le presupuestaba, así no se resta dos veces de tu disponible',
