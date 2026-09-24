@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeShares,
+  impactoLiquidacion,
+  impactoPersonal,
   memberNets,
+  toCents,
   simplifyDebts,
   loanNetForContact,
-  toCents,
   SplitValidationError,
   type ExpenseForNet,
   type SettlementForNet,
@@ -337,5 +339,96 @@ describe('toCents', () => {
     expect(toCents(0.1 + 0.2)).toBe(30)
     expect(toCents(33.335)).toBe(3334)
     expect(toCents(100)).toBe(10000)
+  })
+})
+
+/* ── Impacto personal ─────────────────────────────────────────────────────── */
+
+describe('impactoPersonal', () => {
+  const YO = 'm-yo'
+  const OTRO = 'm-otro'
+  const mitad = (a: number) => [
+    { member_id: YO, amount: a / 2 },
+    { member_id: OTRO, amount: a / 2 },
+  ]
+
+  it('pagaste tú y participas: te deben el resto', () => {
+    // El caso del reporte. Un gasto de $1,000 que pagas tú y se parte a la
+    // mitad no es una deuda de $1,000: es un saldo a tu favor de $500.
+    const r = impactoPersonal(1000, YO, mitad(1000), YO)
+    expect(r.neto).toBe(500)
+    expect(r.tuParte).toBe(500)
+    expect(r.total).toBe(1000)
+    expect(r.loPagasteTu).toBe(true)
+  })
+
+  it('pagó el otro: debes sólo tu parte, no el total', () => {
+    const r = impactoPersonal(170, OTRO, mitad(170), YO)
+    expect(r.neto).toBe(-85)
+    expect(r.tuParte).toBe(85)
+    expect(r.total).toBe(170)
+  })
+
+  it('pagaste tú y no participas: te deben todo', () => {
+    const r = impactoPersonal(320, YO, [{ member_id: OTRO, amount: 320 }], YO)
+    expect(r.neto).toBe(320)
+    expect(r.tuParte).toBe(0)
+  })
+
+  it('ni pagaste ni participas: no te toca', () => {
+    const r = impactoPersonal(500, OTRO, [{ member_id: OTRO, amount: 500 }], YO)
+    expect(r.neto).toBe(0)
+    expect(r.tuParte).toBe(0)
+  })
+
+  it('reparto desigual: tu parte no es la mitad', () => {
+    const r = impactoPersonal(
+      300,
+      OTRO,
+      [{ member_id: YO, amount: 100 }, { member_id: OTRO, amount: 200 }],
+      YO,
+    )
+    expect(r.neto).toBe(-100)
+    expect(r.tuParte).toBe(100)
+  })
+})
+
+describe('impactoLiquidacion', () => {
+  it('pagar sube tu saldo y cobrar lo baja', () => {
+    expect(impactoLiquidacion(588.04, 'm-yo', 'm-yo')).toBe(588.04)
+    expect(impactoLiquidacion(588.04, 'm-otro', 'm-yo')).toBe(-588.04)
+  })
+})
+
+describe('los netos de las filas suman el saldo del encabezado', () => {
+  it('con varios gastos y una liquidación', () => {
+    // Esta es la propiedad que hace la lista auditable: si alguien suma lo que
+    // ve fila por fila, tiene que darle su saldo. Sin esto la pantalla puede
+    // mentir aunque cada fila se vea bien por separado.
+    const YO = 'm-yo'
+    const OTRO = 'm-otro'
+    const gastos = [
+      { total: 1000, pagador: YO,   shares: [{ member_id: YO, amount: 500 }, { member_id: OTRO, amount: 500 }] },
+      { total: 354.42, pagador: YO, shares: [{ member_id: YO, amount: 177.21 }, { member_id: OTRO, amount: 177.21 }] },
+      { total: 170, pagador: OTRO,  shares: [{ member_id: YO, amount: 85 }, { member_id: OTRO, amount: 85 }] },
+      { total: 320, pagador: OTRO,  shares: [{ member_id: YO, amount: 160 }, { member_id: OTRO, amount: 160 }] },
+    ]
+    const liquidacion = { amount: 100, from: OTRO, to: YO }
+
+    const sumaFilas =
+      gastos.reduce((n, g) => n + impactoPersonal(g.total, g.pagador, g.shares, YO).neto, 0) +
+      impactoLiquidacion(liquidacion.amount, liquidacion.from, YO)
+
+    const nets = memberNets(
+      [YO, OTRO],
+      gastos.map((g) => ({
+        paidByMemberId: g.pagador,
+        totalCents: toCents(g.total),
+        shares: new Map(g.shares.map((sh) => [sh.member_id, toCents(sh.amount)])),
+      })),
+      [{ fromMemberId: liquidacion.from, toMemberId: liquidacion.to, amountCents: toCents(liquidacion.amount) }],
+    )
+
+    expect(Math.round(sumaFilas * 100)).toBe(nets.get(YO))
   })
 })

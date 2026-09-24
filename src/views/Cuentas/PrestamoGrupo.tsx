@@ -23,6 +23,7 @@ import clsx from 'clsx'
 import { useAuth } from '@/hooks/useAuth'
 import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe, type NewSettlement } from '@/hooks/useSplitGroups'
+import { impactoLiquidacion, impactoPersonal } from '@/lib/split'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
@@ -660,6 +661,12 @@ export function PrestamoGrupo() {
                 const creator = creatorName(e.user_id)
                 const cat = e.category_id ? categoriesById.get(e.category_id) ?? null : null
                 const CatIcon = cat ? categoryIcon(cat) : IconReceipt
+                // Lo tuyo va primero. El importe completo de la operación
+                // hacía creer que la deuda era el total: un gasto de $1,000
+                // que pagas tú y se parte a la mitad son $500 a tu favor.
+                const yo = me
+                  ? impactoPersonal(e.amount, e.paid_by_member_id, g.sharesByExpense.get(e.id) ?? [], me.id)
+                  : null
                 return (
                   <li key={e.id}>
                     <button
@@ -676,12 +683,42 @@ export function PrestamoGrupo() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-semibold text-text">{e.description}</p>
                         <p className="truncate text-[11px] text-text-tertiary">
-                          Pagó {payer ? displayName(payer) : '—'} · {formatDateGroupMX(e.expense_date)}
+                          {/* "Pagaste tú" y no tu nombre: es lo que explica que
+                              el número de al lado esté a tu favor. */}
+                          {yo?.loPagasteTu ? 'Pagaste tú' : `Pagó ${payer ? displayName(payer) : '—'}`}
+                          {' · '}{formatDateGroupMX(e.expense_date)}
                           {creator && ` · Añadió ${creator}`}
                         </p>
                       </div>
-                      <span className="font-mono text-[13px] font-bold tabular-nums text-text">
-                        {formatMXN(Number(e.amount))}
+                      <span className="flex shrink-0 flex-col items-end">
+                        {yo && yo.neto !== 0 ? (
+                          <>
+                            <span
+                              className={clsx(
+                                'text-[9px] font-extrabold uppercase tracking-[0.06em]',
+                                yo.neto > 0 ? 'text-asset-deep' : 'text-debt-deep',
+                              )}
+                            >
+                              {yo.neto > 0 ? 'Te deben' : 'Debes'}
+                            </span>
+                            <span
+                              className={clsx(
+                                'font-mono text-[14px] font-extrabold tabular-nums',
+                                yo.neto > 0 ? 'text-asset-deep' : 'text-debt-deep',
+                              )}
+                            >
+                              {yo.neto > 0 ? '+' : '−'}{formatMXN(Math.abs(yo.neto))}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-[9px] font-extrabold uppercase tracking-[0.06em] text-text-tertiary">
+                            No te toca
+                          </span>
+                        )}
+                        {/* El total, en pequeño: informativo, no el titular. */}
+                        <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
+                          de {formatMXN(Number(e.amount))}
+                        </span>
                       </span>
                       <IconChevronRight size={15} className="shrink-0 text-text-tertiary" />
                     </button>
@@ -691,6 +728,10 @@ export function PrestamoGrupo() {
               {g.settlements.map((s) => {
                 const from = membersById.get(s.from_member_id)
                 const to = membersById.get(s.to_member_id)
+                // También con signo: una liquidación en la que pagas tú y otra
+                // en la que cobras mueven tu saldo en direcciones contrarias, y
+                // las dos salían en verde sin decir de qué lado estabas.
+                const efecto = me ? impactoLiquidacion(s.amount, s.from_member_id, me.id) : 0
                 return (
                   <li key={s.id} className="flex items-center gap-3 py-2.5">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-asset/10 text-asset-deep">
@@ -704,8 +745,23 @@ export function PrestamoGrupo() {
                         Liquidación · {formatDateGroupMX(s.created_at)}
                       </p>
                     </div>
-                    <span className="font-mono text-[13px] font-bold tabular-nums text-asset-deep">
-                      {formatMXN(Number(s.amount))}
+                    <span className="flex shrink-0 flex-col items-end">
+                      <span
+                        className={clsx(
+                          'text-[9px] font-extrabold uppercase tracking-[0.06em]',
+                          efecto >= 0 ? 'text-asset-deep' : 'text-debt-deep',
+                        )}
+                      >
+                        {efecto >= 0 ? 'Bajó tu deuda' : 'Bajó la suya'}
+                      </span>
+                      <span
+                        className={clsx(
+                          'font-mono text-[14px] font-extrabold tabular-nums',
+                          efecto >= 0 ? 'text-asset-deep' : 'text-debt-deep',
+                        )}
+                      >
+                        {efecto >= 0 ? '+' : '−'}{formatMXN(Math.abs(efecto))}
+                      </span>
                     </span>
                     <button
                       type="button"

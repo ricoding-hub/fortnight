@@ -121,9 +121,19 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.10.2"
+            date="24 sep 2026"
+            current
+            notes={[
+              'En un grupo, cada gasto ahora enseña primero lo tuyo: "Debes $85" en grande y "de $170.00" pequeñito debajo',
+              'Antes veías el importe completo de la operación, y eso hacía creer que las deudas eran más grandes de lo que son',
+              'Las liquidaciones también dicen de qué lado estás en vez de salir todas en verde',
+              'Si sumas lo que ves fila por fila, te da exactamente tu saldo de arriba',
+            ]}
+          />
+          <VersionRow
             version="1.10.1"
             date="13 sep 2026"
-            current
             notes={[
               'Logos de verdad en tus suscripciones: Spotify, Claude, Apple, Telcel, Netflix, Amazon, HBO Max, Disney+, ChatGPT, YouTube y muchas más',
               'Los cargos que ya tenías guardados los reconocen por su nombre: no tienes que editarlos para que aparezca el logo',

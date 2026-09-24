@@ -1,4 +1,5 @@
 import { loanRemaining, loanActivityKey, memberIsMe } from '@/lib/loanFormat'
+import { impactoLiquidacion, impactoPersonal } from '@/lib/split'
 import type { GroupComputed } from '@/hooks/useSplitGroups'
 import type { Loan, LoanPayment, Profile, SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
@@ -122,10 +123,6 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
     if (!meMember) return NO_MOVEMENTS
     const out: BalanceMovement[] = []
     for (const e of g.expenses) {
-      const myShare = (g.sharesByExpense.get(e.id) ?? [])
-        .filter((sh) => sh.member_id === meMember.id)
-        .reduce((s, sh) => s + Number(sh.amount), 0)
-      const iPaid = e.paid_by_member_id === meMember.id
       const payer = g.members.find((m) => m.id === e.paid_by_member_id)
       out.push({
         kind: 'expense',
@@ -133,7 +130,15 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
         description: e.description,
         payerName: payer ? displayName(payer) : '—',
         date: e.expense_date,
-        myEffect: iPaid ? Number(e.amount) - myShare : -myShare,
+        // Una sola definición, en lib/split junto a memberNets, para que la
+        // lista de personas y la del grupo no puedan decir cosas distintas del
+        // mismo gasto.
+        myEffect: impactoPersonal(
+          e.amount,
+          e.paid_by_member_id,
+          g.sharesByExpense.get(e.id) ?? [],
+          meMember.id,
+        ).neto,
         expense: e,
       })
     }
@@ -145,7 +150,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
         description: received ? 'Recibiste un pago' : 'Pagaste',
         payerName: '',
         date: st.created_at,
-        myEffect: received ? -Number(st.amount) : Number(st.amount),
+        myEffect: impactoLiquidacion(st.amount, st.from_member_id, meMember.id),
         settlement: st,
       })
     }

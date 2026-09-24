@@ -164,6 +164,61 @@ export function memberNets(
   return nets
 }
 
+/* ─────────────────────────── impacto personal ── */
+
+export interface ImpactoPersonal {
+  /** + te deben, − debes, 0 no te toca. Es lo que este gasto mueve tu saldo. */
+  neto: number
+  /** Lo que el gasto te costó a ti. */
+  tuParte: number
+  /** El importe completo de la operación. */
+  total: number
+  loPagasteTu: boolean
+}
+
+/**
+ * Qué te toca a ti de un gasto compartido.
+ *
+ * La lista del grupo enseñaba el importe completo de la operación, y eso hizo
+ * creer que los gastos y las deudas eran más grandes de lo que son: un gasto de
+ * $1,000 que pagas tú y se parte a la mitad no es una deuda de $1,000, es un
+ * saldo a tu favor de $500.
+ *
+ * `neto` es exactamente lo que `memberNets` suma para ti por este gasto — de ahí
+ * la propiedad que hace la pantalla auditable: sumar los netos de todas las
+ * filas da tu saldo del encabezado. Por eso vive aquí, pegado a `memberNets`, y
+ * no en la vista.
+ */
+export function impactoPersonal(
+  total: number,
+  paidByMemberId: string,
+  shares: readonly { member_id: string; amount: number }[],
+  meMemberId: string,
+): ImpactoPersonal {
+  const tuParte = shares
+    .filter((sh) => sh.member_id === meMemberId)
+    .reduce((s, sh) => s + Number(sh.amount), 0)
+  const loPagasteTu = paidByMemberId === meMemberId
+  // `|| 0` normaliza el −0 que sale de negar cero: sin eso, un gasto que no te
+  // toca se imprimiría como "−$0.00".
+  const neto = (loPagasteTu ? Number(total) - tuParte : -tuParte) || 0
+  return {
+    neto,
+    tuParte,
+    total: Number(total),
+    loPagasteTu,
+  }
+}
+
+/** Lo que una liquidación mueve tu saldo: pagar lo sube, cobrar lo baja. */
+export function impactoLiquidacion(
+  amount: number,
+  fromMemberId: string,
+  meMemberId: string,
+): number {
+  return fromMemberId === meMemberId ? Number(amount) : -Number(amount)
+}
+
 /* ─────────────────────────── debt simplification ── */
 
 export interface Transfer {
