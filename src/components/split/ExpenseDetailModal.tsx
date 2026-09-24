@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { IconPencil, IconTrash, IconReceipt } from '@tabler/icons-react'
+import { IconCheck, IconPencil, IconTrash, IconReceipt } from '@tabler/icons-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { categoryIcon, categoryColor } from '@/lib/categories'
@@ -18,6 +18,13 @@ interface ExpenseDetailModalProps {
   category: Category | null
   onEdit: () => void
   onDelete: () => void
+  /**
+   * Saldar este gasto por separado. null cuando no hay nada que saldar o no hay
+   * un único pago que lo cierre (te deben varias personas).
+   */
+  saldar?: { etiqueta: string; monto: number; onClick: () => void } | null
+  /** Ya quedó saldado con una liquidación enlazada. */
+  saldado?: boolean
 }
 
 /**
@@ -33,6 +40,8 @@ export function ExpenseDetailModal({
   category,
   onEdit,
   onDelete,
+  saldar = null,
+  saldado = false,
 }: ExpenseDetailModalProps) {
   if (!expense) return null
   const nameOf = (memberId: string) => members.find((m) => m.id === memberId)?.name ?? '—'
@@ -85,6 +94,19 @@ export function ExpenseDetailModal({
             ))}
           </ul>
         </div>
+
+        {/* Saldar sólo este gasto. Es la acción que más se busca al abrir un
+            gasto, por eso va antes que editar o borrar. */}
+        {saldar && (
+          <Button onClick={saldar.onClick} className="w-full">
+            <IconCheck size={15} stroke={2.5} /> {saldar.etiqueta} · {formatMXN(saldar.monto)}
+          </Button>
+        )}
+        {saldado && (
+          <p className="flex items-center justify-center gap-1.5 rounded-xl bg-asset-soft/60 py-2.5 text-[12.5px] font-bold text-asset-deep">
+            <IconCheck size={15} stroke={2.5} /> Este gasto ya está saldado
+          </p>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2">

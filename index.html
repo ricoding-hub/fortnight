@@ -11,7 +11,15 @@
     />
     <meta name="theme-color" content="#F7F4ED" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      `default` y no `black-translucent`. Con translúcida la app se dibuja DEBAJO
+      del reloj, y desde iOS 26 el sistema difumina el borde superior del
+      contenido que queda ahí (el "scroll edge effect" de Liquid Glass): una
+      franja borrosa que parecía la pantalla sucia. Con `default` iOS pinta la
+      barra opaca y la app empieza debajo; `env(safe-area-inset-top)` pasa a 0 y
+      `pt-safe` se anula solo, sin tocar el armazón.
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Fortnight" />
     <!-- iOS no admite alfa en el icono de inicio: según la versión lo compone
          sobre negro o descarta el icono y genera un mosaico con la inicial.

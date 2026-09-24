@@ -52,6 +52,8 @@ export interface NewSettlement {
   amount: number
   accountId?: string | null
   note?: string | null
+  /** Gasto concreto que se salda. Sin él es una liquidación general. */
+  expenseId?: string | null
 }
 
 export interface GroupComputed {
@@ -656,7 +658,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     }
 
     if (leftover > 0) {
-      const { error: stErr } = await supabase.from('split_settlements').insert({
+      const fila: Record<string, unknown> = {
         group_id: groupId,
         user_id: user.id,
         from_member_id: s.fromMemberId,
@@ -664,7 +666,17 @@ export function useSplitGroups(legacy: LegacyInputs) {
         amount: fromCents(leftover),
         note: s.note ?? null,
         account_id: s.accountId ?? null,
-      })
+      }
+      let { error: stErr } = await supabase
+        .from('split_settlements')
+        .insert(s.expenseId ? { ...fila, expense_id: s.expenseId } : fila)
+      // Sin la migración 033 la columna no existe y PostgREST lo rechaza. El
+      // pago tiene que registrarse igual — el saldo es lo que importa —, así
+      // que se reintenta sin el vínculo: la fila del gasto no dirá "Saldado"
+      // hasta que se corra la migración, pero nadie pierde un pago.
+      if (stErr && s.expenseId && (stErr.code === 'PGRST204' || stErr.code === '42703')) {
+        ;({ error: stErr } = await supabase.from('split_settlements').insert(fila))
+      }
       if (stErr) throw stErr
     }
 

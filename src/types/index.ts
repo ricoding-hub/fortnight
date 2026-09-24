@@ -259,6 +259,8 @@ export interface SplitSettlement {
   amount: number
   note: string | null
   account_id: string | null
+  /** Gasto que salda, si se saldó uno concreto (033). null = liquidación general. */
+  expense_id?: string | null
   created_at: string
 }
 

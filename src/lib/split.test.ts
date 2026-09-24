@@ -3,6 +3,7 @@ import {
   computeShares,
   impactoLiquidacion,
   impactoPersonal,
+  saldoDeGasto,
   memberNets,
   toCents,
   simplifyDebts,
@@ -430,5 +431,81 @@ describe('los netos de las filas suman el saldo del encabezado', () => {
     )
 
     expect(Math.round(sumaFilas * 100)).toBe(nets.get(YO))
+  })
+})
+
+describe('saldoDeGasto', () => {
+  const YO = 'm-yo'
+  const ALE = 'm-ale'
+  const BETO = 'm-beto'
+  const mitad = (a: number) => [
+    { member_id: YO, amount: a / 2 },
+    { member_id: ALE, amount: a / 2 },
+  ]
+
+  it('si debes, el pago va de ti a quien pagó, por tu parte', () => {
+    const r = saldoDeGasto(170, ALE, mitad(170), YO, [])
+    expect(r.pago).toEqual({ fromMemberId: YO, toMemberId: ALE })
+    expect(r.pendiente).toBe(85)
+  })
+
+  it('si te deben y sólo hay otra persona, el pago va de ella a ti', () => {
+    const r = saldoDeGasto(1000, YO, mitad(1000), YO, [])
+    expect(r.pago).toEqual({ fromMemberId: ALE, toMemberId: YO })
+    expect(r.pendiente).toBe(500)
+  })
+
+  it('una liquidación enlazada lo deja saldado', () => {
+    // Lo que faltaba: tras pagar tu parte, la fila seguía diciendo "Debes".
+    const r = saldoDeGasto(170, ALE, mitad(170), YO, [
+      { from_member_id: YO, to_member_id: ALE, amount: 85 },
+    ])
+    expect(r.pendiente).toBe(0)
+    expect(r.saldado).toBe(85)
+  })
+
+  it('un pago parcial deja el resto pendiente', () => {
+    const r = saldoDeGasto(170, ALE, mitad(170), YO, [
+      { from_member_id: YO, to_member_id: ALE, amount: 50 },
+    ])
+    expect(r.pendiente).toBe(35)
+  })
+
+  it('una liquidación en sentido contrario no cuenta', () => {
+    const r = saldoDeGasto(170, ALE, mitad(170), YO, [
+      { from_member_id: ALE, to_member_id: YO, amount: 85 },
+    ])
+    expect(r.pendiente).toBe(85)
+  })
+
+  it('pagar de más no deja un pendiente negativo', () => {
+    const r = saldoDeGasto(170, ALE, mitad(170), YO, [
+      { from_member_id: YO, to_member_id: ALE, amount: 100 },
+    ])
+    expect(r.pendiente).toBe(0)
+  })
+
+  it('si te deben varias personas no hay un único pago', () => {
+    // Cada quien salda lo suyo desde su lado; aquí no hay un botón honesto.
+    const tres = [
+      { member_id: YO, amount: 100 },
+      { member_id: ALE, amount: 100 },
+      { member_id: BETO, amount: 100 },
+    ]
+    const r = saldoDeGasto(300, YO, tres, YO, [])
+    expect(r.pago).toBeNull()
+    expect(r.pendiente).toBe(200)
+  })
+
+  it('un gasto que no te toca no tiene nada que saldar', () => {
+    const r = saldoDeGasto(500, ALE, [{ member_id: ALE, amount: 500 }], YO, [])
+    expect(r).toEqual({ pendiente: 0, saldado: 0, pago: null })
+  })
+
+  it('centavos: 354.42 a la mitad se salda exacto', () => {
+    const r = saldoDeGasto(354.42, ALE, mitad(354.42), YO, [
+      { from_member_id: YO, to_member_id: ALE, amount: 177.21 },
+    ])
+    expect(r.pendiente).toBe(0)
   })
 })

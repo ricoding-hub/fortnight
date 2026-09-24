@@ -235,7 +235,9 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* iPhone status bar safe padding (needed with black-translucent) */
+/* Hueco superior del área segura. Con la barra de estado en `default` vale 0
+   en la app instalada — iOS ya deja la app debajo del reloj —, pero se conserva
+   para Safari con viewport-fit=cover y por si algún día vuelve la translúcida. */
 @utility pt-safe {
   padding-top: env(safe-area-inset-top);
 }

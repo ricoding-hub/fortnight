@@ -23,7 +23,7 @@ import clsx from 'clsx'
 import { useAuth } from '@/hooks/useAuth'
 import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe, type NewSettlement } from '@/hooks/useSplitGroups'
-import { impactoLiquidacion, impactoPersonal } from '@/lib/split'
+import { impactoLiquidacion, impactoPersonal, saldoDeGasto } from '@/lib/split'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
@@ -84,7 +84,14 @@ export function PrestamoGrupo() {
   const [expenseFormOpen, setExpenseFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<SplitExpense | null>(null)
   const [viewingExpense, setViewingExpense] = useState<SplitExpense | null>(null)
-  const [settleEdge, setSettleEdge] = useState<{ from: SplitMember; to: SplitMember; amount: number } | null>(null)
+  const [settleEdge, setSettleEdge] = useState<{
+    from: SplitMember
+    to: SplitMember
+    amount: number
+    /** Gasto concreto que se salda; ausente en "Liquidar" general. */
+    expenseId?: string
+    expenseDescription?: string
+  } | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deletingExpense, setDeletingExpense] = useState<SplitExpense | null>(null)
@@ -276,6 +283,41 @@ export function PrestamoGrupo() {
   const contactName = contact ? displayName(contact) : g.group.name
   const noun = isDirect ? 'conexión' : 'grupo'
 
+  const gastoPorId = new Map((g?.expenses ?? []).map((e) => [e.id, e]))
+
+  /** Liquidaciones enlazadas a cada gasto (migración 033). */
+  const liquidacionesPorGasto = new Map<string, NonNullable<typeof g>['settlements']>()
+  for (const st of g?.settlements ?? []) {
+    if (!st.expense_id) continue
+    liquidacionesPorGasto.set(st.expense_id, [...(liquidacionesPorGasto.get(st.expense_id) ?? []), st])
+  }
+
+  function saldoDe(e: SplitExpense) {
+    if (!me || !g) return null
+    return saldoDeGasto(
+      e.amount,
+      e.paid_by_member_id,
+      g.sharesByExpense.get(e.id) ?? [],
+      me.id,
+      liquidacionesPorGasto.get(e.id) ?? [],
+    )
+  }
+
+  /**
+   * Gastos saldados del todo. Su fila sale tachada y la del pago que los saldó
+   * sale neutra, para que se anulen también a la vista: si el pago siguiera en
+   * verde, quien sume los números de colores contaría el pago y no el gasto, y
+   * no le cuadraría con el saldo de arriba.
+   */
+  const gastosSaldados = new Set(
+    (g?.expenses ?? [])
+      .filter((e) => {
+        const sd = saldoDe(e)
+        return !!sd && sd.saldado > 0 && sd.pendiente === 0
+      })
+      .map((e) => e.id),
+  )
+
   function creatorName(userId: string): string | null {
     if (userId === user?.id) return null // don't label your own expenses
     return profiles.get(userId)?.display_name ?? null
@@ -283,7 +325,14 @@ export function PrestamoGrupo() {
 
   async function handleSettle(s: NewSettlement) {
     if (!groupId) return
-    await addSettlement(groupId, s)
+    const edge = settleEdge
+    await addSettlement(groupId, {
+      ...s,
+      expenseId: edge?.expenseId ?? null,
+      // Sin nota propia, que diga qué gasto se saldó: en el historial se lee
+      // "Saldo: Cena Cactus" en vez de una liquidación suelta sin contexto.
+      note: s.note ?? (edge?.expenseDescription ? `Saldo: ${edge.expenseDescription}` : null),
+    })
     toast.success('Liquidación registrada', `Los balances de la ${noun} fueron actualizados`)
   }
 
@@ -672,6 +721,8 @@ export function PrestamoGrupo() {
                 const yo = me
                   ? impactoPersonal(e.amount, e.paid_by_member_id, g.sharesByExpense.get(e.id) ?? [], me.id)
                   : null
+                const saldo = saldoDe(e)
+                const estaSaldado = !!yo && yo.neto !== 0 && !!saldo && saldo.saldado > 0 && saldo.pendiente === 0
                 return (
                   <li key={e.id}>
                     <button
@@ -710,7 +761,16 @@ export function PrestamoGrupo() {
                         )}
                       </div>
                       <span className="flex shrink-0 flex-col items-end">
-                        {yo && yo.neto !== 0 ? (
+                        {estaSaldado ? (
+                          <>
+                            <span className="flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-[0.06em] text-asset-deep">
+                              <IconCheck size={10} stroke={3} /> Saldado
+                            </span>
+                            <span className="font-mono text-[14px] font-extrabold tabular-nums text-text-tertiary line-through">
+                              {formatMXN(Math.abs(yo!.neto))}
+                            </span>
+                          </>
+                        ) : yo && yo.neto !== 0 ? (
                           <>
                             <span
                               className={clsx(
@@ -760,10 +820,25 @@ export function PrestamoGrupo() {
                       <p className="truncate text-[13px] font-semibold text-text">
                         {from ? displayName(from) : '—'} pagó a {to ? displayName(to) : '—'}
                       </p>
-                      <p className="text-[11px] text-text-tertiary">
-                        Liquidación · {formatDateGroupMX(s.created_at)}
+                      <p className="truncate text-[11px] text-text-tertiary">
+                        {/* Si saldó un gasto concreto, decir cuál: si no, es una
+                            liquidación suelta sin contexto en el historial. */}
+                        {s.expense_id && gastoPorId.get(s.expense_id)
+                          ? `Saldó: ${gastoPorId.get(s.expense_id)!.description}`
+                          : 'Liquidación'}
+                        {' · '}{formatDateGroupMX(s.created_at)}
                       </p>
                     </div>
+                    {s.expense_id && gastosSaldados.has(s.expense_id) ? (
+                      <span className="flex shrink-0 flex-col items-end">
+                        <span className="text-[9px] font-extrabold uppercase tracking-[0.06em] text-text-tertiary">
+                          Saldó el gasto
+                        </span>
+                        <span className="font-mono text-[14px] font-extrabold tabular-nums text-text-tertiary">
+                          {formatMXN(Math.abs(efecto))}
+                        </span>
+                      </span>
+                    ) : (
                     <span className="flex shrink-0 flex-col items-end">
                       <span
                         className={clsx(
@@ -782,6 +857,7 @@ export function PrestamoGrupo() {
                         {efecto >= 0 ? '+' : '−'}{formatMXN(Math.abs(efecto))}
                       </span>
                     </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setDeletingSettlement(s)}
@@ -923,6 +999,38 @@ export function PrestamoGrupo() {
         shares={viewingExpense ? g.sharesByExpense.get(viewingExpense.id) ?? [] : []}
         members={g.members.map((m) => ({ ...m, name: displayName(m) }))}
         category={viewingExpense?.category_id ? categoriesById.get(viewingExpense.category_id) ?? null : null}
+        {...(() => {
+          // Saldar sólo este gasto: la liquidación sale rellenada con quién le
+          // paga a quién y cuánto falta, y queda enlazada al gasto para que la
+          // fila pase a "Saldado".
+          if (!viewingExpense) return {}
+          const saldo = saldoDe(viewingExpense)
+          if (!saldo) return {}
+          const saldado = saldo.saldado > 0 && saldo.pendiente === 0
+          if (!saldo.pago || saldo.pendiente === 0) return { saldado }
+          const from = membersById.get(saldo.pago.fromMemberId)
+          const to = membersById.get(saldo.pago.toMemberId)
+          if (!from || !to) return { saldado }
+          const pagoYo = me && saldo.pago.fromMemberId === me.id
+          const exp = viewingExpense
+          return {
+            saldado,
+            saldar: {
+              etiqueta: pagoYo ? 'Saldar mi parte' : `${displayName(from)} me pagó`,
+              monto: saldo.pendiente,
+              onClick: () => {
+                setViewingExpense(null)
+                setSettleEdge({
+                  from,
+                  to,
+                  amount: saldo.pendiente,
+                  expenseId: exp.id,
+                  expenseDescription: exp.description,
+                })
+              },
+            },
+          }
+        })()}
         onEdit={() => {
           setEditingExpense(viewingExpense)
           setViewingExpense(null)

@@ -210,6 +210,63 @@ export function impactoPersonal(
   }
 }
 
+export interface SaldoDeGasto {
+  /** Lo que falta saldar de este gasto, en pesos. 0 = saldado o no te toca. */
+  pendiente: number
+  /** Lo que ya se saldó con liquidaciones enlazadas a este gasto. */
+  saldado: number
+  /**
+   * Quién le paga a quién para saldarlo. null cuando no hay UN pago que lo
+   * cierre: pagaste tú y te deben varias personas, cada una su parte.
+   */
+  pago: { fromMemberId: string; toMemberId: string } | null
+}
+
+/**
+ * Lo que queda por saldar de un gasto concreto.
+ *
+ * Si debes, el pago va de ti a quien pagó, por tu parte. Si te deben y sólo
+ * hay otra persona en el reparto, va de ella a ti. Si te deben varias, no hay
+ * un único pago que lo salde y `pago` es null — cada quien salda lo suyo desde
+ * su propio lado.
+ *
+ * Las liquidaciones cuentan sólo si están enlazadas al gasto (`expense_id`). Las
+ * generales mueven el saldo total pero no dicen qué gasto pagaron, así que no
+ * pueden marcar ninguno como saldado.
+ */
+export function saldoDeGasto(
+  total: number,
+  paidByMemberId: string,
+  shares: readonly { member_id: string; amount: number }[],
+  meMemberId: string,
+  liquidaciones: readonly { from_member_id: string; to_member_id: string; amount: number }[],
+): SaldoDeGasto {
+  const { neto } = impactoPersonal(total, paidByMemberId, shares, meMemberId)
+  if (neto === 0) return { pendiente: 0, saldado: 0, pago: null }
+
+  let pago: SaldoDeGasto['pago'] = null
+  let objetivo = Math.abs(neto)
+
+  if (neto < 0) {
+    pago = { fromMemberId: meMemberId, toMemberId: paidByMemberId }
+  } else {
+    const deudores = shares.filter((sh) => sh.member_id !== meMemberId && Number(sh.amount) > 0)
+    if (deudores.length === 1) {
+      pago = { fromMemberId: deudores[0].member_id, toMemberId: meMemberId }
+      objetivo = Number(deudores[0].amount)
+    }
+  }
+
+  const cuenta = (l: { from_member_id: string; to_member_id: string }) =>
+    pago
+      ? l.from_member_id === pago.fromMemberId && l.to_member_id === pago.toMemberId
+      : l.to_member_id === meMemberId
+  const saldadoC = liquidaciones.filter(cuenta).reduce((n, l) => n + toCents(Number(l.amount)), 0)
+  const pendienteC = Math.max(0, toCents(objetivo) - saldadoC)
+
+  return { pendiente: fromCents(pendienteC), saldado: fromCents(saldadoC), pago }
+}
+
 /** Lo que una liquidación mueve tu saldo: pagar lo sube, cobrar lo baja. */
 export function impactoLiquidacion(
   amount: number,

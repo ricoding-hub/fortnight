@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.10.3"
+            version="1.11.0"
             date="24 sep 2026"
             current
+            notes={[
+              'Ya puedes saldar un gasto compartido por separado: ábrelo y toca "Saldar mi parte". La liquidación sale ya rellenada con quién, a quién y cuánto',
+              'Un gasto saldado se marca como tal en la lista, y su pago dice qué gasto saldó',
+              'Quitamos la franja borrosa de arriba de la pantalla: era el efecto de iOS sobre la barra de estado transparente',
+            ]}
+          />
+          <VersionRow
+            version="1.10.3"
+            date="24 sep 2026"
             notes={[
               'La categoría de un gasto compartido ya se elige con una lista desplegable: la fila de píldoras se cortaba en el borde y no había forma de llegar a las de la derecha',
               'En la lista del grupo ahora ves la cara de quien agregó cada gasto, en vez de un "· Añadi…" cortado al final de la línea',
