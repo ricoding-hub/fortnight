@@ -121,9 +121,17 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.10.2"
+            version="1.10.3"
             date="24 sep 2026"
             current
+            notes={[
+              'La categoría de un gasto compartido ya se elige con una lista desplegable: la fila de píldoras se cortaba en el borde y no había forma de llegar a las de la derecha',
+              'En la lista del grupo ahora ves la cara de quien agregó cada gasto, en vez de un "· Añadi…" cortado al final de la línea',
+            ]}
+          />
+          <VersionRow
+            version="1.10.2"
+            date="24 sep 2026"
             notes={[
               'En un grupo, cada gasto ahora enseña primero lo tuyo: "Debes $85" en grande y "de $170.00" pequeñito debajo',
               'Antes veías el importe completo de la operación, y eso hacía creer que las deudas eran más grandes de lo que son',

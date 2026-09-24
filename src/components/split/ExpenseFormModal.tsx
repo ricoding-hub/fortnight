@@ -190,10 +190,19 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
     }
   }
 
-  function pickCategory(id: string | null) {
+  /**
+   * Se asigna, no se alterna.
+   *
+   * La versión de píldoras alternaba — volver a tocar la activa la quitaba —,
+   * y en un select esa semántica sorprende. Para quitarla está la opción
+   * "Sin categoría".
+   */
+  function setCategory(id: string | null) {
     setCategoryTouched(true)
-    setCategoryId((prev) => (prev === id ? null : id))
+    setCategoryId(id)
   }
+
+  const categoriaElegida = pickableCategories.find((c) => c.id === categoryId) ?? null
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Editar gasto' : 'Nuevo gasto compartido'}>
@@ -224,33 +233,40 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
           ))}
         </Select>
 
-        {/* Category — auto-suggested from the description, tap to override/clear */}
+        {/* Categoría.
+            Era una fila de píldoras con `overflow-x-auto`, y dentro de un modal
+            no había forma de llegar a las de la derecha: se veían cortadas por
+            el borde y el arrastre horizontal no las movía. Un `select` nativo
+            se desplaza solo, funciona con zoom y con lector de pantalla, y es
+            el mismo control que ya usa el filtro de Movimientos. */}
         {pickableCategories.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-text">Categoría</p>
-            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-              {pickableCategories.map((c) => {
-                const active = c.id === categoryId
-                const color = categoryColor(c)
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => pickCategory(c.id)}
-                    className={clsx(
-                      'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-all active:scale-95',
-                      active
-                        ? 'border-transparent text-white'
-                        : 'border-border bg-bg-elevated text-text-secondary hover:border-border-strong',
-                    )}
-                    style={active ? { background: color } : undefined}
-                  >
-                    {createElement(categoryIcon(c), { size: 14, stroke: 2 })}
-                    {c.name}
-                  </button>
-                )
-              })}
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+            <Select
+              label="Categoría"
+              className="w-full"
+              value={categoryId ?? ''}
+              onChange={(e) => setCategory(e.target.value || null)}
+            >
+              <option value="">Sin categoría</option>
+              {pickableCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
             </div>
+            {/* El icono y el color de la categoría elegida, que es lo único que
+                el select nativo no puede enseñar. */}
+            {categoriaElegida && (
+              <span
+                aria-hidden="true"
+                className="mb-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white"
+                style={{ background: categoryColor(categoriaElegida) }}
+              >
+                {createElement(categoryIcon(categoriaElegida), { size: 20, stroke: 2 })}
+              </span>
+            )}
           </div>
         )}
 

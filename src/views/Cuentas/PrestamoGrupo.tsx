@@ -27,6 +27,7 @@ import { impactoLiquidacion, impactoPersonal } from '@/lib/split'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
+import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -659,6 +660,10 @@ export function PrestamoGrupo() {
               {g.expenses.map((e) => {
                 const payer = membersById.get(e.paid_by_member_id)
                 const creator = creatorName(e.user_id)
+                // El perfil de quien lo agregó, para poner su cara. En texto
+                // iba al final de una línea que ya se truncaba ("· Añadi…"),
+                // así que no se identificaba de un vistazo.
+                const creatorProfile = profiles.get(e.user_id)
                 const cat = e.category_id ? categoriesById.get(e.category_id) ?? null : null
                 const CatIcon = cat ? categoryIcon(cat) : IconReceipt
                 // Lo tuyo va primero. El importe completo de la operación
@@ -687,8 +692,22 @@ export function PrestamoGrupo() {
                               el número de al lado esté a tu favor. */}
                           {yo?.loPagasteTu ? 'Pagaste tú' : `Pagó ${payer ? displayName(payer) : '—'}`}
                           {' · '}{formatDateGroupMX(e.expense_date)}
-                          {creator && ` · Añadió ${creator}`}
                         </p>
+                        {/* Quién lo agregó, con su cara y en su propia línea.
+                            Sólo cuando no fuiste tú: etiquetar tus propios
+                            gastos no dice nada. */}
+                        {creator && (
+                          <span className="mt-1 flex items-center gap-1.5">
+                            <Avatar
+                              name={creator}
+                              avatarUrl={creatorProfile?.avatar_url}
+                              size={16}
+                            />
+                            <span className="truncate text-[10.5px] font-semibold text-text-tertiary">
+                              Agregado por {creator}
+                            </span>
+                          </span>
+                        )}
                       </div>
                       <span className="flex shrink-0 flex-col items-end">
                         {yo && yo.neto !== 0 ? (
