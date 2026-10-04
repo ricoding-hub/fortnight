@@ -1,4 +1,4 @@
-import { type SelectHTMLAttributes, type Ref } from 'react'
+import { type SelectHTMLAttributes, type Ref, useId } from 'react'
 import clsx from 'clsx'
 
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -16,7 +16,11 @@ export function Select({
   children,
   ...props
 }: SelectProps) {
-  const selectId = id ?? props.name
+  // `useId` como último recurso: sin él, un campo sin `name` ni `id` quedaba con
+  // la etiqueta suelta — tocarla no enfocaba el campo y un lector de pantalla no
+  // la anunciaba. Era el caso de casi todos los formularios.
+  const generado = useId()
+  const selectId = id ?? props.name ?? generado
 
   return (
     <div className="flex flex-col gap-1.5">

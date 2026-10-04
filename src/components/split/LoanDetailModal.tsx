@@ -15,6 +15,8 @@ import { Modal } from '@/components/ui/Modal'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { loanDateHint } from '@/lib/loanFormat'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
+import { diaDelPrestamo } from '@/lib/loanFormat'
+import { registroDistinto } from '@/lib/movementDates'
 import type { Loan, LoanPayment } from '@/types'
 
 interface LoanDetailModalProps {
@@ -119,8 +121,19 @@ export function LoanDetailModal({
             </span>
           </div>
           <div className="flex items-center justify-between gap-3">
+            <span className="text-[12.5px] font-semibold text-text-secondary">Fecha del préstamo</span>
+            <span className="text-[13px] font-bold text-text">{formatDateGroupMX(diaDelPrestamo(loan))}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
             <span className="text-[12.5px] font-semibold text-text-secondary">Registrado</span>
-            <span className="text-[13px] font-bold text-text">{formatDateGroupMX(loan.created_at)}</span>
+            <span className="text-[13px] font-bold text-text">
+              {formatDateGroupMX(loan.created_at)}
+              {registroDistinto(diaDelPrestamo(loan), loan.created_at) && (
+                <span className="ml-1.5 rounded-full bg-peach-soft px-1.5 py-px text-[10px] font-extrabold text-peach-ink">
+                  otro día
+                </span>
+              )}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-[12.5px] font-semibold text-text-secondary">Estado</span>

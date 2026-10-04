@@ -27,37 +27,90 @@ interface Opciones {
   tablas?: Filas
   /** Tablas que deben fallar, para probar el camino de error. */
   errores?: Record<string, { message: string; code?: string }>
+  /**
+   * Tablas que fallan SÓLO al escribir (insert/update/upsert/delete). Las
+   * lecturas siguen funcionando: es lo que permite probar que una escritura
+   * optimista se revierte sin que la pantalla ni siquiera llegue a cargar.
+   */
+  erroresAlEscribir?: Record<string, { message: string; code?: string }>
+  /**
+   * Las escrituras esperan a esta promesa antes de resolver. Es lo que permite
+   * mirar la pantalla MIENTRAS el servidor todavía no contesta, que es donde
+   * vive una actualización optimista.
+   */
+  retrasoEscritura?: Promise<unknown>
   /** Usuario de la sesión fingida. null = sin sesión. */
   userId?: string | null
 }
 
 const SIN_ERROR = null
 
-export function crearSupabaseDoble({ tablas = {}, errores = {}, userId = 'u-1' }: Opciones = {}) {
+/** Una escritura que la app mandó, tal como la mandó. */
+export interface Llamada {
+  tabla: string
+  op: 'insert' | 'update' | 'upsert' | 'delete'
+  payload: unknown
+}
+
+const ESCRITURAS = new Set(['insert', 'update', 'upsert', 'delete'])
+
+export function crearSupabaseDoble({
+  tablas = {},
+  errores = {},
+  erroresAlEscribir = {},
+  retrasoEscritura,
+  userId = 'u-1',
+}: Opciones = {}) {
   const consultas: string[] = []
+  /** Lo que la app escribió, en orden: es lo que verifican las pruebas de formularios. */
+  const llamadas: Llamada[] = []
+  let contador = 0
 
   function cadena(tabla: string): unknown {
-    const resultado = () =>
-      errores[tabla]
+    // Qué escritura lleva esta cadena, si alguna. Una consulta es una cadena
+    // nueva, así que el estado vive aquí y no se mezcla entre consultas.
+    let op: Llamada['op'] | null = null
+    let payload: unknown = null
+
+    const resultado = () => {
+      if (op && erroresAlEscribir[tabla]) {
+        return { data: null, error: { ...erroresAlEscribir[tabla], details: '', hint: '' } }
+      }
+      return errores[tabla]
         ? { data: null, error: { ...errores[tabla], details: '', hint: '' } }
         : { data: tablas[tabla] ?? [], error: SIN_ERROR }
+    }
 
     const objetivo = {} as Record<string, unknown>
     const proxy: unknown = new Proxy(objetivo, {
       get(_t, prop) {
         if (prop === 'then') {
           // Awaitable en cualquier punto de la cadena, como postgrest-js.
-          return (res: (v: unknown) => void) => Promise.resolve(resultado()).then(res)
+          return (res: (v: unknown) => void) =>
+            (op && retrasoEscritura ? retrasoEscritura : Promise.resolve()).then(() => resultado()).then(res)
         }
         if (prop === 'single' || prop === 'maybeSingle') {
-          const { data, error } = resultado()
-          const fila = Array.isArray(data) ? (data[0] ?? null) : data
-          return () => Promise.resolve({ data: fila, error })
+          return async () => {
+            if (op && retrasoEscritura) await retrasoEscritura
+            const { data, error } = resultado()
+            // `insert(...).select().single()` devuelve la fila creada, con id.
+            // Sin esto, crear algo "devolvía" la primera fila que ya hubiera.
+            if (!error && op === 'insert' && payload && !Array.isArray(payload)) {
+              return Promise.resolve({ data: { id: `ins-${++contador}`, ...(payload as object) }, error })
+            }
+            const fila = Array.isArray(data) ? (data[0] ?? null) : data
+            return Promise.resolve({ data: fila, error })
+          }
         }
         if (typeof prop === 'symbol') return undefined
         // select/eq/order/limit/insert/update/delete/in/gte/… todos encadenan.
-        return () => {
+        return (...args: unknown[]) => {
           consultas.push(`${tabla}.${String(prop)}`)
+          if (ESCRITURAS.has(String(prop))) {
+            op = String(prop) as Llamada['op']
+            payload = args[0] ?? null
+            llamadas.push({ tabla, op, payload })
+          }
           return proxy
         }
       },
@@ -119,6 +172,7 @@ export function crearSupabaseDoble({ tablas = {}, errores = {}, userId = 'u-1' }
 
   return {
     consultas,
+    llamadas,
     canales: registro,
     cliente: {
       from: vi.fn((tabla: string) => cadena(tabla)),

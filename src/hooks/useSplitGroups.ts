@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { toKey } from '@/lib/calendar'
+import { diaDelPrestamo } from '@/lib/loanFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { resizeImage } from '@/lib/image'
 import { errorMessage } from '@/lib/errorMessage'
@@ -490,6 +492,46 @@ export function useSplitGroups(legacy: LegacyInputs) {
     }))
     const computedShares = computeShares(totalCents, exp.method, shareInputs)
 
+    // Optimista: el gasto aparece en la lista al instante en vez de esperar el
+    // viaje al servidor (y el `fetchAll` de abajo, que lo reemplaza por el real).
+    // Con 4G eso eran varios segundos mirando una lista que "no hizo nada".
+    const tempId = `tmp-${crypto.randomUUID()}`
+    const ahora = new Date().toISOString()
+    const fecha = exp.date ?? toKey(new Date())
+    setExpenses((prev) => [
+      {
+        id: tempId,
+        group_id: groupId,
+        user_id: user.id,
+        description: exp.description.trim(),
+        amount: exp.amount,
+        paid_by_member_id: exp.paidByMemberId,
+        split_method: exp.method,
+        account_id: exp.accountId ?? null,
+        category_id: exp.categoryId ?? null,
+        expense_date: fecha,
+        created_at: ahora,
+      },
+      ...prev,
+    ])
+    setShares((prev) => [
+      ...prev,
+      ...exp.inputs.map((i) => ({
+        id: `tmp-${tempId}-${i.memberId}`,
+        expense_id: tempId,
+        member_id: i.memberId,
+        user_id: user.id,
+        amount: fromCents(computedShares.get(i.memberId) ?? 0),
+        weight: null,
+        group_id: groupId,
+        created_at: ahora,
+      })),
+    ])
+    const revertir = () => {
+      setExpenses((prev) => prev.filter((x) => x.id !== tempId))
+      setShares((prev) => prev.filter((x) => x.expense_id !== tempId))
+    }
+
     const { data: e, error: eErr } = await supabase
       .from('split_expenses')
       .insert({
@@ -501,11 +543,14 @@ export function useSplitGroups(legacy: LegacyInputs) {
         split_method: exp.method,
         account_id: exp.accountId ?? null,
         category_id: exp.categoryId ?? null,
-        expense_date: exp.date ?? new Date().toISOString().slice(0, 10),
+        expense_date: exp.date ?? toKey(new Date()),
       })
       .select('id')
       .single()
-    if (eErr || !e) throw eErr ?? new Error('No se pudo guardar el gasto')
+    if (eErr || !e) {
+      revertir()
+      throw eErr ?? new Error('No se pudo guardar el gasto')
+    }
 
     const shareRows = exp.inputs.map((i) => ({
       expense_id: e.id,
@@ -518,6 +563,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const { error: sErr } = await supabase.from('split_expense_shares').insert(shareRows)
     if (sErr) {
       await supabase.from('split_expenses').delete().eq('id', e.id)
+      revertir()
       throw sErr
     }
 
@@ -530,7 +576,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         amount: -exp.amount,
         type: 'transaction',
         description: `Gasto compartido: ${exp.description.trim()}`,
-        date: exp.date ?? new Date().toISOString().slice(0, 10),
+        date: exp.date ?? toKey(new Date()),
       })
     }
     await fetchAll()
@@ -690,7 +736,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         amount: txAmount,
         type: 'transaction',
         description: `Liquidación: ${contactMember.name}${groupName ? ` · ${groupName}` : ''}`,
-        date: new Date().toISOString().slice(0, 10),
+        date: toKey(new Date()),
       })
     }
     await fetchAll()
@@ -849,7 +895,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
           paid_by_member_id: payer.id,
           split_method: 'exact',
           account_id: null,
-          expense_date: loan.created_at.slice(0, 10),
+          expense_date: diaDelPrestamo(loan),
         })
         .select('id')
         .single()
@@ -989,7 +1035,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
         amount: fromCents(combinedNetCents), // + I receive, − I pay
         type: 'transaction',
         description: `Saldar todo: ${contact.name}${groupName && groupName !== contact.name ? ` · ${groupName}` : ''}`,
-        date: new Date().toISOString().slice(0, 10),
+        date: toKey(new Date()),
       })
     }
     await fetchAll()

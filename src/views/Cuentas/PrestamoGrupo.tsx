@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -10,8 +10,6 @@ import {
   IconHistory,
   IconLogout,
   IconPencil,
-  IconPlus,
-  IconReceipt,
   IconTrash,
   IconUserPlus,
   IconUsers,
@@ -23,11 +21,11 @@ import clsx from 'clsx'
 import { useAuth } from '@/hooks/useAuth'
 import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe, type NewSettlement } from '@/hooks/useSplitGroups'
-import { impactoLiquidacion, impactoPersonal, saldoDeGasto } from '@/lib/split'
+import { saldoDeGasto } from '@/lib/split'
+import { construirMovimientos } from '@/lib/groupMovements'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
 import { Card } from '@/components/ui/Card'
-import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -39,15 +37,16 @@ import { SettleModal } from '@/components/split/SettleModal'
 import { AddMemberModal } from '@/components/split/AddMemberModal'
 import { SettleAllModal } from '@/components/split/SettleAllModal'
 import { ExpenseDetailModal } from '@/components/split/ExpenseDetailModal'
+import { BalanceHero } from '@/components/split/BalanceHero'
+import { GroupMovements } from '@/components/split/GroupMovements'
 import { LoanRow } from '@/components/split/LoanRow'
 import { useLoanActions } from '@/hooks/useLoanActions'
 import { ImageCropModal } from '@/components/ui/ImageCropModal'
 import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { useCategories } from '@/hooks/useCategories'
-import { categoryIcon, categoryColor } from '@/lib/categories'
 import { activityLabel } from '@/lib/splitActivity'
 import { nameColorClass } from '@/lib/avatarColors'
-import { formatMXN, formatDateGroupMX } from '@/lib/format'
+import { formatMXN } from '@/lib/format'
 import type { Loan, SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
 export function PrestamoGrupo() {
@@ -105,6 +104,10 @@ export function PrestamoGrupo() {
   const [deletingGroup, setDeletingGroup] = useState(false)
   const [leavingGroup, setLeavingGroup] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
+  /** «Quién le debe a quién» (sólo grupos de 3+). Cerrado: lo importante va arriba. */
+  const [showWho, setShowWho] = useState(false)
+  /** El historial de auditoría repetía cada gasto una segunda vez. Plegado. */
+  const [showHistorial, setShowHistorial] = useState(false)
 
   const g = useMemo(() => groups.find((x) => x.group.id === groupId), [groups, groupId])
 
@@ -242,6 +245,42 @@ export function PrestamoGrupo() {
     [g, displayName],
   )
 
+  /* ── Movimientos: una sola lista cronológica (gastos + liquidaciones) ── */
+  const nombreDeMiembro = useCallback(
+    (id: string) => {
+      const m = membersById.get(id)
+      return m ? displayName(m) : '—'
+    },
+    [membersById, displayName],
+  )
+  const creadorDe = useCallback(
+    (userId: string) => {
+      if (userId === user?.id) return null // lo tuyo no se etiqueta
+      const p = profiles.get(userId)
+      return p?.display_name ? { nombre: p.display_name, avatarUrl: p.avatar_url ?? null } : null
+    },
+    [profiles, user?.id],
+  )
+  // El id propio se resuelve DENTRO del memo, a partir de primitivos: el
+  // compilador de React no preserva la memoización si depende de `me`, que más
+  // abajo se pasa a otras funciones y puede "mutarse".
+  const userId = user?.id
+  const movimientos = useMemo(
+    () =>
+      g
+        ? construirMovimientos({
+            expenses: g.expenses,
+            settlements: g.settlements,
+            sharesByExpense: g.sharesByExpense,
+            meId: g.members.find((m) => memberIsMe(m, userId))?.id ?? null,
+            nombreDeMiembro,
+            nombreDeUsuario: (uid) => creadorDe(uid)?.nombre ?? null,
+            categoria: (id) => (id ? categoriesById.get(id)?.name ?? null : null),
+          })
+        : [],
+    [g, userId, nombreDeMiembro, creadorDe, categoriesById],
+  )
+
   if (loading || loans.loading) {
     return (
       <div className="flex flex-col gap-2 px-4 py-3 animate-[fade-in_300ms_ease-out]">
@@ -269,8 +308,6 @@ export function PrestamoGrupo() {
     )
   }
 
-  const hasActivity =
-    g.expenses.length > 0 || g.settlements.length > 0 || groupLoans.length > 0
   const visibleActivity = showAllActivity ? g.activity : g.activity.slice(0, 8)
   // A 2-person relationship is a direct 1:1 connection, not a "group".
   const isDirect = g.activeMembers.length === 2
@@ -282,8 +319,6 @@ export function PrestamoGrupo() {
   const contactProfile = contact?.member_user_id ? profiles.get(contact.member_user_id) : undefined
   const contactName = contact ? displayName(contact) : g.group.name
   const noun = isDirect ? 'conexión' : 'grupo'
-
-  const gastoPorId = new Map((g?.expenses ?? []).map((e) => [e.id, e]))
 
   /** Liquidaciones enlazadas a cada gasto (migración 033). */
   const liquidacionesPorGasto = new Map<string, NonNullable<typeof g>['settlements']>()
@@ -301,26 +336,6 @@ export function PrestamoGrupo() {
       me.id,
       liquidacionesPorGasto.get(e.id) ?? [],
     )
-  }
-
-  /**
-   * Gastos saldados del todo. Su fila sale tachada y la del pago que los saldó
-   * sale neutra, para que se anulen también a la vista: si el pago siguiera en
-   * verde, quien sume los números de colores contaría el pago y no el gasto, y
-   * no le cuadraría con el saldo de arriba.
-   */
-  const gastosSaldados = new Set(
-    (g?.expenses ?? [])
-      .filter((e) => {
-        const sd = saldoDe(e)
-        return !!sd && sd.saldado > 0 && sd.pendiente === 0
-      })
-      .map((e) => e.id),
-  )
-
-  function creatorName(userId: string): string | null {
-    if (userId === user?.id) return null // don't label your own expenses
-    return profiles.get(userId)?.display_name ?? null
   }
 
   async function handleSettle(s: NewSettlement) {
@@ -461,7 +476,7 @@ export function PrestamoGrupo() {
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold text-text">{g.group.name}</p>
-          <p className="flex items-center gap-1 text-[11px] text-text-tertiary">
+          <p className="flex items-center gap-1 text-[11px] text-text-secondary">
             {isDirect ? (
               <>
                 <IconLink size={11} className="shrink-0" />
@@ -478,7 +493,7 @@ export function PrestamoGrupo() {
             type="button"
             onClick={() => setRenameOpen(true)}
             aria-label="Renombrar grupo"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text"
           >
             <IconPencil size={16} />
           </button>
@@ -488,7 +503,7 @@ export function PrestamoGrupo() {
             type="button"
             onClick={() => setLeavingGroup(true)}
             aria-label={isDirect ? 'Salir de la conexión' : 'Salir del grupo'}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-secondary hover:text-text"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text"
           >
             <IconLogout size={16} />
           </button>
@@ -498,48 +513,35 @@ export function PrestamoGrupo() {
             type="button"
             onClick={() => setDeletingGroup(true)}
             aria-label={isDirect ? 'Eliminar conexión' : 'Eliminar grupo'}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-debt/10 hover:text-debt"
           >
             <IconTrash size={16} />
           </button>
         )}
       </div>
 
-      {/* Summary banner */}
-      <div className="px-4">
-        <div className="flex items-stretch gap-2 rounded-xl bg-primary-soft/25 px-3.5 py-3">
-          <div className="flex-1">
-            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep">
-              Total gastado
-            </p>
-            <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">
-              {formatMXN(totalGastado)}
-            </p>
-          </div>
-          <div className="w-px bg-primary/15" />
-          <div className="flex-1 pl-3">
-            <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep">
-              Tu balance
-            </p>
-            <p
-              className={clsx(
-                'mt-0.5 font-mono text-[15px] font-extrabold',
-                myNet > 0 ? 'text-asset-deep' : myNet < 0 ? 'text-debt-deep' : 'text-primary-deep',
-              )}
-            >
-              {myNet > 0 ? '+' : ''}{formatMXN(myNet)}
-            </p>
-          </div>
-        </div>
-        {g.activeMembers.length === 2 && Math.abs(myNet) > 0.005 && (
-          <button
-            type="button"
-            onClick={() => setSettleAllOpen(true)}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-asset/10 py-2.5 text-[12.5px] font-bold text-asset-deep transition-colors hover:bg-asset/20"
-          >
-            <IconCheck size={14} stroke={2.5} /> Saldar todo ({formatMXN(Math.abs(myNet))})
-          </button>
-        )}
+      {/* Un solo bloque: tu saldo, UNA vez y en grande, con la acción que lo
+          resuelve. Antes eran cuatro (stats + saldar todo + balances + para
+          saldar) repitiendo la misma cifra. */}
+      <div className="flex flex-col gap-2 px-4">
+        <BalanceHero
+          isDirect={isDirect}
+          nombre={isDirect ? contactName : g.group.name}
+          miSaldo={myNet}
+          totalGastado={totalGastado}
+          onSaldarTodo={isDirect && Math.abs(myNet) > 0.005 ? () => setSettleAllOpen(true) : undefined}
+          onAbonar={
+            isDirect && g.suggestions[0]
+              ? () => {
+                  const sg = g.suggestions[0]
+                  const from = membersById.get(sg.fromMemberId)
+                  const to = membersById.get(sg.toMemberId)
+                  if (from && to) setSettleEdge({ from, to, amount: sg.amount })
+                }
+              : undefined
+          }
+          onInvitar={isDirect && !g.isConnected && inviteLink ? () => setAddMemberOpen(true) : undefined}
+        />
         {unsyncedLoans.length > 0 && (
           <button
             type="button"
@@ -559,9 +561,28 @@ export function PrestamoGrupo() {
         )}
       </div>
 
-      {/* Member balances */}
-      <div className="flex flex-col gap-2 px-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+      {/* Grupos de 3+: quién debe a quién. En 1:1 esto era un espejo del bloque de
+          arriba (+190.96 / −190.96), así que sólo existe donde aporta algo. */}
+      {!isDirect && (
+        <div className="px-4">
+          <button
+            type="button"
+            onClick={() => setShowWho((v) => !v)}
+            aria-expanded={showWho}
+            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-bg-elevated px-4 py-2.5 text-left shadow-card transition-transform active:scale-[0.99]"
+          >
+            <span className="text-[13.5px] font-bold text-text">Quién le debe a quién</span>
+            <span className="flex items-center gap-2 text-[12px] text-text-secondary">
+              {g.suggestions.length > 0
+                ? `${g.suggestions.length} pago${g.suggestions.length === 1 ? '' : 's'} para saldar`
+                : 'Todo en paz'}
+              <IconChevronRight size={15} className={clsx('transition-transform', showWho && 'rotate-90')} />
+            </span>
+          </button>
+          {showWho && (
+            <div className="mt-2 flex animate-[fade-in_180ms_ease-out] flex-col gap-2 motion-reduce:animate-none">
+      <div className="flex flex-col gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
           Balances
         </p>
         <Card className="px-4 py-1">
@@ -600,13 +621,13 @@ export function PrestamoGrupo() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-text">
                       {name}
-                      {isMe && <span className="ml-1 text-[10px] font-bold text-text-tertiary">(tú)</span>}
+                      {isMe && <span className="ml-1 text-[10px] font-bold text-text-secondary">(tú)</span>}
                     </p>
                   </div>
                   <span
                     className={clsx(
                       'font-mono text-[13px] font-bold tabular-nums',
-                      net > 0 ? 'text-asset-deep' : net < 0 ? 'text-debt-deep' : 'text-text-tertiary',
+                      net > 0 ? 'text-asset-deep' : net < 0 ? 'text-debt-ink' : 'text-text-secondary',
                     )}
                   >
                     {net > 0 ? `+${formatMXN(net)}` : net < 0 ? formatMXN(net) : '—'}
@@ -637,10 +658,9 @@ export function PrestamoGrupo() {
         </Card>
       </div>
 
-      {/* Suggested transfers (debt simplification) */}
       {g.suggestions.length > 0 && (
-        <div className="flex flex-col gap-2 px-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
             {isDirect ? 'Para saldar' : 'Para saldar el grupo'}
           </p>
           <Card className="px-4 py-1">
@@ -656,7 +676,7 @@ export function PrestamoGrupo() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-semibold text-text">
-                        {displayName(from)} <IconChevronRight size={11} className="inline text-text-tertiary" /> {displayName(to)}
+                        {displayName(from)} <IconChevronRight size={11} className="inline text-text-secondary" /> {displayName(to)}
                       </p>
                       <p className="font-mono text-[12px] font-bold text-primary-deep">
                         {formatMXN(s.amount)}
@@ -677,204 +697,32 @@ export function PrestamoGrupo() {
         </div>
       )}
 
-      {/* Expenses */}
-      <div className="flex flex-col gap-2 px-4">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-            {isDirect ? 'Movimientos' : 'Movimientos del grupo'}
-          </p>
-          <button
-            type="button"
-            onClick={() => setExpenseFormOpen(true)}
-            className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
-          >
-            + Gasto
-          </button>
+            </div>
+          )}
         </div>
+      )}
 
-        {!hasActivity ? (
-          <EmptyState
-            icon={IconReceipt}
-            title="Sin gastos aún"
-            description={`Registra el primer gasto compartido de esta ${noun}.`}
-            action={
-              <Button compact onClick={() => setExpenseFormOpen(true)}>
-                <IconPlus size={14} /> Agregar gasto
-              </Button>
-            }
-          />
-        ) : (
-          <Card className="px-4 py-1">
-            <ul className="divide-y divide-border">
-              {g.expenses.map((e) => {
-                const payer = membersById.get(e.paid_by_member_id)
-                const creator = creatorName(e.user_id)
-                // El perfil de quien lo agregó, para poner su cara. En texto
-                // iba al final de una línea que ya se truncaba ("· Añadi…"),
-                // así que no se identificaba de un vistazo.
-                const creatorProfile = profiles.get(e.user_id)
-                const cat = e.category_id ? categoriesById.get(e.category_id) ?? null : null
-                const CatIcon = cat ? categoryIcon(cat) : IconReceipt
-                // Lo tuyo va primero. El importe completo de la operación
-                // hacía creer que la deuda era el total: un gasto de $1,000
-                // que pagas tú y se parte a la mitad son $500 a tu favor.
-                const yo = me
-                  ? impactoPersonal(e.amount, e.paid_by_member_id, g.sharesByExpense.get(e.id) ?? [], me.id)
-                  : null
-                const saldo = saldoDe(e)
-                const estaSaldado = !!yo && yo.neto !== 0 && !!saldo && saldo.saldado > 0 && saldo.pendiente === 0
-                return (
-                  <li key={e.id}>
-                    <button
-                      type="button"
-                      onClick={() => setViewingExpense(e)}
-                      className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-bg-secondary/40"
-                    >
-                      <div
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white"
-                        style={{ background: cat ? categoryColor(cat) : 'var(--color-primary)' }}
-                      >
-                        <CatIcon size={15} stroke={2} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold text-text">{e.description}</p>
-                        <p className="truncate text-[11px] text-text-tertiary">
-                          {/* "Pagaste tú" y no tu nombre: es lo que explica que
-                              el número de al lado esté a tu favor. */}
-                          {yo?.loPagasteTu ? 'Pagaste tú' : `Pagó ${payer ? displayName(payer) : '—'}`}
-                          {' · '}{formatDateGroupMX(e.expense_date)}
-                        </p>
-                        {/* Quién lo agregó, con su cara y en su propia línea.
-                            Sólo cuando no fuiste tú: etiquetar tus propios
-                            gastos no dice nada. */}
-                        {creator && (
-                          <span className="mt-1 flex items-center gap-1.5">
-                            <Avatar
-                              name={creator}
-                              avatarUrl={creatorProfile?.avatar_url}
-                              size={16}
-                            />
-                            <span className="truncate text-[10.5px] font-semibold text-text-tertiary">
-                              Agregado por {creator}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      <span className="flex shrink-0 flex-col items-end">
-                        {estaSaldado ? (
-                          <>
-                            <span className="flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-[0.06em] text-asset-deep">
-                              <IconCheck size={10} stroke={3} /> Saldado
-                            </span>
-                            <span className="font-mono text-[14px] font-extrabold tabular-nums text-text-tertiary line-through">
-                              {formatMXN(Math.abs(yo!.neto))}
-                            </span>
-                          </>
-                        ) : yo && yo.neto !== 0 ? (
-                          <>
-                            <span
-                              className={clsx(
-                                'text-[9px] font-extrabold uppercase tracking-[0.06em]',
-                                yo.neto > 0 ? 'text-asset-deep' : 'text-debt-deep',
-                              )}
-                            >
-                              {yo.neto > 0 ? 'Te deben' : 'Debes'}
-                            </span>
-                            <span
-                              className={clsx(
-                                'font-mono text-[14px] font-extrabold tabular-nums',
-                                yo.neto > 0 ? 'text-asset-deep' : 'text-debt-deep',
-                              )}
-                            >
-                              {yo.neto > 0 ? '+' : '−'}{formatMXN(Math.abs(yo.neto))}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-[9px] font-extrabold uppercase tracking-[0.06em] text-text-tertiary">
-                            No te toca
-                          </span>
-                        )}
-                        {/* El total, en pequeño: informativo, no el titular. */}
-                        <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
-                          de {formatMXN(Number(e.amount))}
-                        </span>
-                      </span>
-                      <IconChevronRight size={15} className="shrink-0 text-text-tertiary" />
-                    </button>
-                  </li>
-                )
-              })}
-              {g.settlements.map((s) => {
-                const from = membersById.get(s.from_member_id)
-                const to = membersById.get(s.to_member_id)
-                // También con signo: una liquidación en la que pagas tú y otra
-                // en la que cobras mueven tu saldo en direcciones contrarias, y
-                // las dos salían en verde sin decir de qué lado estabas.
-                const efecto = me ? impactoLiquidacion(s.amount, s.from_member_id, me.id) : 0
-                return (
-                  <li key={s.id} className="flex items-center gap-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-asset/10 text-asset-deep">
-                      <IconCheck size={15} stroke={2} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-text">
-                        {from ? displayName(from) : '—'} pagó a {to ? displayName(to) : '—'}
-                      </p>
-                      <p className="truncate text-[11px] text-text-tertiary">
-                        {/* Si saldó un gasto concreto, decir cuál: si no, es una
-                            liquidación suelta sin contexto en el historial. */}
-                        {s.expense_id && gastoPorId.get(s.expense_id)
-                          ? `Saldó: ${gastoPorId.get(s.expense_id)!.description}`
-                          : 'Liquidación'}
-                        {' · '}{formatDateGroupMX(s.created_at)}
-                      </p>
-                    </div>
-                    {s.expense_id && gastosSaldados.has(s.expense_id) ? (
-                      <span className="flex shrink-0 flex-col items-end">
-                        <span className="text-[9px] font-extrabold uppercase tracking-[0.06em] text-text-tertiary">
-                          Saldó el gasto
-                        </span>
-                        <span className="font-mono text-[14px] font-extrabold tabular-nums text-text-tertiary">
-                          {formatMXN(Math.abs(efecto))}
-                        </span>
-                      </span>
-                    ) : (
-                    <span className="flex shrink-0 flex-col items-end">
-                      <span
-                        className={clsx(
-                          'text-[9px] font-extrabold uppercase tracking-[0.06em]',
-                          efecto >= 0 ? 'text-asset-deep' : 'text-debt-deep',
-                        )}
-                      >
-                        {efecto >= 0 ? 'Bajó tu deuda' : 'Bajó la suya'}
-                      </span>
-                      <span
-                        className={clsx(
-                          'font-mono text-[14px] font-extrabold tabular-nums',
-                          efecto >= 0 ? 'text-asset-deep' : 'text-debt-deep',
-                        )}
-                      >
-                        {efecto >= 0 ? '+' : '−'}{formatMXN(Math.abs(efecto))}
-                      </span>
-                    </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setDeletingSettlement(s)}
-                      aria-label="Eliminar liquidación"
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-debt/10 hover:text-debt"
-                    >
-                      <IconTrash size={14} />
-                    </button>
-                  </li>
-                )
-              })}
+      {/* Movimientos: lista cronológica por día, con buscador y filtros. */}
+      <div className="px-4">
+        <GroupMovements
+          movimientos={movimientos}
+          isDirect={isDirect}
+          categoriasPorId={categoriesById}
+          nombreDeMiembro={nombreDeMiembro}
+          creador={creadorDe}
+          miMiembroId={me?.id}
+          onAbrirGasto={setViewingExpense}
+          onEliminarLiquidacion={setDeletingSettlement}
+          onAgregarGasto={() => setExpenseFormOpen(true)}
+          extra={
+            visibleLoans.length > 0 || paidLoans.length > 0 ? (
+              <ul className="divide-y divide-border">
               {visibleLoans.length > 0 && g.isConnected && (
                 <li className="pt-2">
-                  <p className="text-[10.5px] font-bold uppercase tracking-wider text-text-tertiary">
+                  <p className="text-[10.5px] font-bold uppercase tracking-wider text-text-secondary">
                     Tus préstamos privados
                   </p>
-                  <p className="mt-0.5 text-[10.5px] leading-snug text-text-tertiary">
+                  <p className="mt-0.5 text-[10.5px] leading-snug text-text-secondary">
                     Solo tú los ves. No cuentan en el balance del grupo hasta que los sincronices.
                   </p>
                 </li>
@@ -906,17 +754,30 @@ export function PrestamoGrupo() {
                   )}
                 </li>
               )}
-            </ul>
-          </Card>
-        )}
+              </ul>
+            ) : null
+          }
+        />
       </div>
 
       {/* Activity history (multi-user audit feed) */}
       {multiUserReady && g.activity.length > 0 && (
         <div className="flex flex-col gap-2 px-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-            Historial
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowHistorial((v) => !v)}
+            aria-expanded={showHistorial}
+            className="flex min-h-[44px] w-full items-center justify-between rounded-xl px-1 text-left"
+          >
+            <span className="text-[12px] font-extrabold uppercase tracking-wider text-text-secondary">
+              Historial
+            </span>
+            <span className="flex items-center gap-1.5 text-[12px] text-text-secondary">
+              {showHistorial ? 'Ocultar' : `Ver (${g.activity.length})`}
+              <IconChevronRight size={14} className={clsx('transition-transform', showHistorial && 'rotate-90')} />
+            </span>
+          </button>
+          {showHistorial && (
           <Card className="px-4 py-1">
             <ul className="divide-y divide-border">
               {visibleActivity.map((a) => {
@@ -932,7 +793,7 @@ export function PrestamoGrupo() {
                 const line = activityLabel(a, me?.id ?? null, myShare, isDirect)
                 return (
                   <li key={a.id} className="flex items-start gap-2.5 py-2.5">
-                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-bg-secondary text-text-tertiary">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-bg-secondary text-text-secondary">
                       <IconHistory size={13} stroke={2} />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -944,9 +805,9 @@ export function PrestamoGrupo() {
                       >
                         {line.text}
                       </p>
-                      <p className="mt-0.5 text-[10.5px] text-text-tertiary">
+                      <p className="mt-0.5 text-[10.5px] text-text-secondary">
                         {line.impact && (
-                          <span className={clsx('mr-1.5 font-bold', line.struck ? 'text-text-tertiary line-through' : 'text-debt-deep')}>
+                          <span className={clsx('mr-1.5 font-bold', line.struck ? 'text-text-secondary line-through' : 'text-debt-ink')}>
                             {line.impact}
                           </span>
                         )}
@@ -967,6 +828,7 @@ export function PrestamoGrupo() {
               </button>
             )}
           </Card>
+          )}
         </div>
       )}
 
@@ -999,6 +861,7 @@ export function PrestamoGrupo() {
         shares={viewingExpense ? g.sharesByExpense.get(viewingExpense.id) ?? [] : []}
         members={g.members.map((m) => ({ ...m, name: displayName(m) }))}
         category={viewingExpense?.category_id ? categoriesById.get(viewingExpense.category_id) ?? null : null}
+        creador={viewingExpense ? (viewingExpense.user_id === user?.id ? 'tú' : creadorDe(viewingExpense.user_id)?.nombre ?? null) : null}
         {...(() => {
           // Saldar sólo este gasto: la liquidación sale rellenada con quién le
           // paga a quién y cuánto falta, y queda enlazada al gasto para que la

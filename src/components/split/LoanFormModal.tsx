@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
 import { moneyNum } from '@/lib/money'
+import { toKey } from '@/lib/calendar'
+import { diaDelPrestamo } from '@/lib/loanFormat'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import type { NewLoan } from '@/hooks/useLoans'
@@ -35,6 +37,8 @@ export function LoanFormModal({
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
+  /** Día EN QUE OCURRIÓ el préstamo; el de registro es siempre hoy. */
+  const [date, setDate] = useState('')
   const [direction, setDirection] = useState<LoanDirection>(defaultDirection)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -44,6 +48,7 @@ export function LoanFormModal({
       setName(editingLoan?.name ?? '')
       setAmount(editingLoan ? String(editingLoan.amount) : '')
       setNotes(editingLoan?.notes ?? '')
+      setDate(editingLoan ? diaDelPrestamo(editingLoan) : toKey(new Date()))
       setDirection(editingLoan?.direction ?? defaultDirection)
       setFormError('')
     }
@@ -55,6 +60,8 @@ export function LoanFormModal({
     const num = moneyNum(amount)
     if (!name.trim()) { setFormError('Escribe un nombre'); return }
     if (!amount || Number.isNaN(num) || num <= 0) { setFormError('Escribe un monto válido'); return }
+    if (!date) { setFormError('Elige la fecha del préstamo'); return }
+    if (date > toKey(new Date())) { setFormError('La fecha no puede ser futura'); return }
     setSubmitting(true)
     try {
       if (isEdit) {
@@ -63,21 +70,42 @@ export function LoanFormModal({
           amount: num,
           notes: notes.trim() || null,
           direction,
+          loan_date: date,
         })
       } else {
-        await onCreate({ name: name.trim(), amount: num, notes: notes.trim() || null, direction })
+        // Hoy no se envía: es el valor por omisión, y así un préstamo de hoy se
+        // registra igual aunque la migración 034 aún no se haya corrido.
+        await onCreate({
+          name: name.trim(),
+          amount: num,
+          notes: notes.trim() || null,
+          direction,
+          ...(date !== toKey(new Date()) ? { loan_date: date } : {}),
+        })
       }
       onClose()
-    } catch {
-      setFormError('No se pudo guardar')
+    } catch (e) {
+      setFormError(e instanceof Error && /migración/.test(e.message) ? e.message : 'No se pudo guardar')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Editar préstamo' : 'Nuevo préstamo'}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Editar préstamo' : 'Nuevo préstamo'}
+      footer={
+        <div className="flex flex-col gap-2">
+          {formError && <p className="text-xs font-semibold text-debt">• {formError}</p>}
+          <Button type="submit" form="prestamo-form" loading={submitting}>
+            {isEdit ? 'Guardar cambios' : 'Registrar préstamo'}
+          </Button>
+        </div>
+      }
+    >
+      <form id="prestamo-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
         {/* Direction toggle */}
         <div>
           <p className="mb-1.5 text-sm font-medium text-text">Tipo</p>
@@ -130,15 +158,26 @@ export function LoanFormModal({
           </datalist>
         </div>
 
-        <Input
-          label="Monto"
-          type="text"
-          inputMode="decimal"
-          placeholder="0"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min="0.01"
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Monto"
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <div className="min-w-0">
+            <Input
+              label="Fecha"
+              type="date"
+              value={date}
+              max={toKey(new Date())}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full min-w-0"
+            />
+          </div>
+        </div>
 
         <Input
           label="Concepto (opcional)"
@@ -147,11 +186,6 @@ export function LoanFormModal({
           onChange={(e) => setNotes(e.target.value)}
         />
 
-        {formError && <p className="text-xs text-debt">• {formError}</p>}
-
-        <Button type="submit" loading={submitting} className="mt-1">
-          {isEdit ? 'Guardar cambios' : 'Registrar préstamo'}
-        </Button>
       </form>
     </Modal>
   )

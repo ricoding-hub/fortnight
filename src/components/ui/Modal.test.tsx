@@ -130,3 +130,35 @@ describe('con zoom el modal se coloca sobre lo que se ve', () => {
     expect(capa.style.getPropertyValue('--modal-h')).toBe('340px')
   })
 })
+
+describe('pie fijo', () => {
+  it('el pie queda FUERA del área que se desplaza', async () => {
+    // Es lo que evita el recorte: dentro del cuerpo, el botón se iba abajo con el
+    // formulario y con el teclado abierto no se alcanzaba.
+    conArmazon(
+      <Modal open onClose={() => {}} title="Agregar" footer={<button type="button">Guardar</button>}>
+        <p>Campos</p>
+      </Modal>,
+    )
+    await asentar()
+
+    const boton = screen.getByText('Guardar')
+    const cuerpo = screen.getByText('Campos').closest('.overflow-y-auto')
+    expect(cuerpo).toBeTruthy()
+    expect(cuerpo!.contains(boton)).toBe(false)
+    // Y ambos viven dentro del mismo diálogo.
+    const dialogo = document.querySelector('[role="dialog"]')!
+    expect(dialogo.contains(boton)).toBe(true)
+  })
+
+  it('sin pie, el cuerpo conserva su margen de seguridad inferior', async () => {
+    conArmazon(
+      <Modal open onClose={() => {}} title="Agregar">
+        <p>Campos</p>
+      </Modal>,
+    )
+    await asentar()
+    const cuerpo = screen.getByText('Campos').closest('.overflow-y-auto') as HTMLElement
+    expect(cuerpo.className).toContain('safe-area-inset-bottom')
+  })
+})

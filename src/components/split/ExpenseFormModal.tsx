@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { AccountLinkField } from '@/components/split/AccountLinkField'
+import { toKey } from '@/lib/calendar'
 import { computeShares, fromCents, toCents, SplitValidationError } from '@/lib/split'
 import { buildEditInputs } from '@/lib/splitEdit'
 import { categoryIcon, categoryColor } from '@/lib/categories'
@@ -46,6 +47,8 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [paidBy, setPaidBy] = useState('')
+  /** Día EN QUE OCURRIÓ el gasto. Distinto del día en que se registra. */
+  const [date, setDate] = useState('')
   const [categoryId, setCategoryId] = useState<string | null>(null)
   /** Once the user picks a category by hand, stop auto-suggesting over it. */
   const [categoryTouched, setCategoryTouched] = useState(false)
@@ -75,6 +78,7 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
         setDescription(editing.expense.description)
         setAmount(String(Number(editing.expense.amount)))
         setPaidBy(editing.expense.paid_by_member_id)
+        setDate(editing.expense.expense_date.slice(0, 10))
         setCategoryId(editing.expense.category_id)
         setCategoryTouched(true) // keep the saved category; don't overwrite it
         setMethod(state.method)
@@ -84,6 +88,7 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
         setDescription('')
         setAmount('')
         setPaidBy(me?.id ?? members[0]?.id ?? '')
+        setDate(toKey(new Date()))
         setCategoryId(null)
         setCategoryTouched(false)
         setMethod('equal')
@@ -151,6 +156,8 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
     if (!description.trim()) { setFormError('Escribe una descripción'); return }
     if (!amountValid) { setFormError('Escribe un monto válido'); return }
     if (!paidBy) { setFormError('Elige quién pagó'); return }
+    if (!date) { setFormError('Elige la fecha del gasto'); return }
+    if (date > toKey(new Date())) { setFormError('La fecha del gasto no puede ser futura'); return }
     if (!previewShares) {
       setFormError(previewError?.message ?? 'Revisa la repartición')
       return
@@ -170,6 +177,7 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
         }),
         accountId: linkAccount ? (accountId || null) : null,
         categoryId,
+        date,
       })
       onClose()
     } catch {
@@ -205,8 +213,22 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
   const categoriaElegida = pickableCategories.find((c) => c.id === categoryId) ?? null
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Editar gasto' : 'Nuevo gasto compartido'}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Editar gasto' : 'Nuevo gasto compartido'}
+      // El botón vive en el pie fijo: dentro del cuerpo se iba abajo con el
+      // formulario largo y con el teclado abierto no se alcanzaba.
+      footer={
+        <div className="flex flex-col gap-2">
+          {formError && <p className="text-xs font-semibold text-debt">• {formError}</p>}
+          <Button type="submit" form="gasto-compartido-form" loading={submitting} disabled={!previewShares}>
+            {isEdit ? 'Guardar cambios' : 'Registrar gasto'}
+          </Button>
+        </div>
+      }
+    >
+      <form id="gasto-compartido-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
         <Input
           label="Descripción"
           placeholder="Cena, súper, gasolina…"
@@ -215,15 +237,27 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
           autoFocus
         />
 
-        <Input
-          label="Monto total"
-          type="text"
-          inputMode="decimal"
-          placeholder="0"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min="0.01"
-        />
+        {/* Monto y fecha en una fila: dos campos cortos no merecen dos renglones. */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Monto total"
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <div className="min-w-0">
+            <Input
+              label="Fecha del gasto"
+              type="date"
+              value={date}
+              max={toKey(new Date())}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full min-w-0"
+            />
+          </div>
+        </div>
 
         <Select label="Pagó" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
           {members.map((m) => (
@@ -379,11 +413,6 @@ export function ExpenseFormModal({ open, onClose, members, editing = null, onSub
           </p>
         )}
 
-        {formError && <p className="text-xs text-debt">• {formError}</p>}
-
-        <Button type="submit" loading={submitting} disabled={!previewShares} className="mt-1">
-          {isEdit ? 'Guardar cambios' : 'Registrar gasto'}
-        </Button>
       </form>
     </Modal>
   )

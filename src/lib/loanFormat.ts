@@ -1,4 +1,5 @@
 import { formatDateGroupMX } from '@/lib/format'
+import { diaLocal } from '@/lib/movementDates'
 import type { Loan, LoanPayment, SplitMember } from '@/types'
 
 /**
@@ -21,7 +22,7 @@ export function loanDateHint(loan: Loan, payments: LoanPayment[]): string {
   if (loan.paid_at) return `Saldado el ${formatDateGroupMX(loan.paid_at)}`
   const last = payments[payments.length - 1]
   if (last) return `Último abono ${formatDateGroupMX(last.created_at)}`
-  return `Desde el ${formatDateGroupMX(loan.created_at)}`
+  return `Desde el ${formatDateGroupMX(diaDelPrestamo(loan))}`
 }
 
 /** Sort key: most recent activity (settled date, last payment, or creation). */
@@ -50,4 +51,13 @@ export function memberIsMe(m: SplitMember, userId: string | undefined): boolean 
   if (!userId) return false
   if (m.member_user_id != null) return m.member_user_id === userId
   return m.is_me
+}
+
+/**
+ * El día en que ocurrió el préstamo: el que el usuario eligió (`loan_date`) y,
+ * si no hay, el día local en que se registró. Nunca `created_at.slice(0, 10)`,
+ * que en CDMX mueve de día lo que se anota de noche.
+ */
+export function diaDelPrestamo(loan: Pick<Loan, 'loan_date' | 'created_at'>): string {
+  return loan.loan_date ? loan.loan_date.slice(0, 10) : diaLocal(loan.created_at)
 }

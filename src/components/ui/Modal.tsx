@@ -10,6 +10,13 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: ReactNode
+  /**
+   * Pie fijo, fuera del área que se desplaza. Para la acción principal de un
+   * formulario: dentro del cuerpo se iba abajo con el contenido y, con el
+   * teclado abierto o una pantalla baja, quedaba fuera de alcance — "el botón de
+   * agregar se va para abajo y no baja".
+   */
+  footer?: ReactNode
 }
 
 /**
@@ -24,7 +31,7 @@ interface ModalProps {
  *
  * Closes on backdrop click, Escape, or swipe-down (visual only).
  */
-export function Modal({ open, onClose, title, children }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
@@ -89,7 +96,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     <div
       style={estiloDeCapa(rect)}
       className={clsx(
-        'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300',
+        'fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-300 motion-reduce:transition-none',
         // From lg the overlay itself scrolls, so the wheel works anywhere on
         // screen. Scrolling only inside the 480px column left the rest of a
         // desktop screen inert, which is what "no deja bajar" meant.
@@ -111,7 +118,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
           ref={panelRef}
           tabIndex={-1}
           className={clsx(
-            'relative flex w-full max-w-[480px] max-h-[var(--modal-h,90dvh)] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+            'relative flex w-full max-w-[480px] max-h-[var(--modal-h,90dvh)] flex-col rounded-t-2xl bg-bg-elevated shadow-elevated outline-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:transition-none',
             // No inner cap on desktop: the panel grows and the overlay scrolls.
             'lg:max-h-none lg:rounded-2xl',
             // A full slide-up is a sheet gesture; on desktop the dialog rises.
@@ -138,10 +145,24 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             </button>
           </div>
 
-          {/* Body. Scrolls itself on mobile; from lg the overlay does it. */}
-          <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:overflow-visible lg:pb-5">
+          {/* Body. Scrolls itself on mobile; from lg the overlay does it. Con pie,
+              el margen de seguridad del borde inferior lo lleva el pie. */}
+          <div
+            className={clsx(
+              'min-h-0 overflow-y-auto overscroll-contain px-5 lg:overflow-visible',
+              footer
+                ? 'pb-4 lg:pb-4'
+                : 'pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:pb-5',
+            )}
+          >
             {children}
           </div>
+
+          {footer && (
+            <div className="shrink-0 border-t border-border bg-bg-elevated px-5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 lg:rounded-b-2xl lg:pb-4">
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </div>

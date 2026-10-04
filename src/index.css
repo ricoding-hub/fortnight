@@ -107,16 +107,23 @@
   --color-peach: #FFB59E;
   --color-peach-soft: #FFE7DD;
   --color-peach-deep: #E68E73;
+  --color-peach-ink: #9C4A2C;
 
   /* ── Mint — assets / positive / ahead-of-plan ── */
   --color-asset: #2BB673;
   --color-asset-deep: #1F8F58;
   --color-asset-soft: #D7F2E4;
+  /* "Tinta": para TEXTO pequeño sobre superficies claras. Los `-deep` fallan
+     4.5:1 en texto de 10-15px (asset-deep 4.10 sobre blanco; peach-deep sobre
+     peach-soft, 2.09). Medido con la fórmula WCAG; ver AcercaDe v1.12.0. Los
+     `-deep` se quedan para iconos, fondos y cifras grandes. */
+  --color-asset-ink: #167046;
   --color-asset-light: #D7F2E4;
 
   /* ── Coral — debt / overspend / behind-plan ── */
   --color-debt: #FF5A5F;
   --color-debt-deep: #D63D44;
+  --color-debt-ink: #B3303A;
   --color-debt-soft: #FFDCDD;
   --color-debt-light: #FFDCDD;
 

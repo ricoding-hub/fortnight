@@ -121,9 +121,24 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.12.0"
+            date="4 oct 2026"
+            current
+            notes={[
+              'El detalle de una conexión dice tu saldo una sola vez y en grande, con el botón de saldar al lado. Antes la misma cifra salía cinco veces antes de llegar al primer gasto',
+              'Buscador de movimientos: por descripción, persona, monto o fecha ("wings", "$270", "23 sep"). Con filtros Te deben, Debes y Saldados, y una línea que suma lo que ves',
+              'Los movimientos van en una sola lista por día, del más reciente al más antiguo. Un gasto registrado otro día lo avisa: "Registrado 4 oct"',
+              'Ahora eliges la fecha del gasto al registrarlo, y en los préstamos también. El día del gasto y el día del registro ya no se confunden',
+              'Los gastos nuevos aparecen al instante, sin esperar al servidor; si falla, se quitan solos',
+              'Más contraste en el texto pequeño: el gris claro y el verde sobre blanco no llegaban al mínimo de lectura',
+              'Las etiquetas de los campos ahora enfocan su campo al tocarlas y los lectores de pantalla las anuncian',
+              'El botón de guardar de los formularios en ventana queda fijo abajo',
+              'Corregido: la fecha por omisión de un gasto se calculaba en horario UTC y a las 6 pm en CDMX ya salía como mañana',
+            ]}
+          />
+          <VersionRow
             version="1.11.0"
             date="24 sep 2026"
-            current
             notes={[
               'Ya puedes saldar un gasto compartido por separado: ábrelo y toca "Saldar mi parte". La liquidación sale ya rellenada con quién, a quién y cuánto',
               'Un gasto saldado se marca como tal en la lista, y su pago dice qué gasto saldó',

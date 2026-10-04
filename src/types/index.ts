@@ -118,6 +118,8 @@ export interface Loan {
   notes: string | null
   direction: LoanDirection
   created_at: string
+  /** Día EN QUE OCURRIÓ el préstamo (034). Ausente en bases sin migrar: se usa `created_at`. */
+  loan_date?: string | null
   /** Null while active; timestamp once marked paid. */
   paid_at: string | null
   /** Split group this loan belongs to; null for pre-migration legacy rows. */

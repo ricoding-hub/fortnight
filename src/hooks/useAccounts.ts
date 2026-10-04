@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { toKey } from '@/lib/calendar'
 import { useAuth } from '@/hooks/useAuth'
 import type { Account } from '@/types'
 
@@ -229,7 +230,7 @@ export function useAccounts() {
       account_id: account.id,
       amount: diff,
       type: 'adjustment',
-      date: new Date().toISOString().slice(0, 10),
+      date: toKey(new Date()),
     })
 
     if (err) {

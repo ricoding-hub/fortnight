@@ -14,9 +14,11 @@ export interface NewLoan {
   notes?: string | null
   /** Split group to stamp the loan into (direct 2-person group). */
   group_id?: string | null
+  /** Día en que ocurrió el préstamo (`YYYY-MM-DD`). Sin él, el de hoy. */
+  loan_date?: string | null
 }
 
-export type LoanPatch = Partial<Pick<NewLoan, 'name' | 'amount' | 'notes' | 'direction'>>
+export type LoanPatch = Partial<Pick<NewLoan, 'name' | 'amount' | 'notes' | 'direction' | 'loan_date'>>
 
 export interface MarkPaidOpts {
   accountId?: string | null
@@ -122,6 +124,7 @@ export function useLoans() {
       direction: loan.direction ?? 'owed_to_me',
       paid_at: null,
       created_at: now,
+      loan_date: loan.loan_date ?? null,
       amount: loan.amount,
       name: loan.name,
       group_id: loan.group_id ?? null,
@@ -129,7 +132,9 @@ export function useLoans() {
     setData((prev) => [optimistic, ...prev])
     // Omit group_id entirely when absent so the insert still works against a
     // database where migration 021 hasn't been applied yet.
-    const { group_id, ...rest } = loan
+    // `loan_date` sigue la misma regla: sólo viaja cuando el usuario eligió una
+    // fecha. Un préstamo de hoy se registra igual en una base sin la migración 034.
+    const { group_id, loan_date, ...rest } = loan
     const { error: err } = await supabase
       .from('loans')
       .insert({
@@ -137,7 +142,14 @@ export function useLoans() {
         direction: loan.direction ?? 'owed_to_me',
         user_id: user.id,
         ...(group_id ? { group_id } : {}),
+        ...(loan_date ? { loan_date } : {}),
       })
+    if (err && loan_date && /loan_date/.test(err.message ?? '')) {
+      setData((prev) => prev.filter((l) => l.id !== tempId))
+      // Perder en silencio la fecha que el usuario escribió sería peor que fallar:
+      // el préstamo quedaría fechado el día equivocado sin avisar.
+      throw new Error('Para guardar la fecha del préstamo falta correr la migración 034 en Supabase.')
+    }
     if (err) {
       setData((prev) => prev.filter((l) => l.id !== tempId))
       throw err

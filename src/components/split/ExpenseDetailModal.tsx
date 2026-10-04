@@ -3,7 +3,10 @@ import { IconCheck, IconPencil, IconTrash, IconReceipt } from '@tabler/icons-rea
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { categoryIcon, categoryColor } from '@/lib/categories'
+import { format, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { formatMXN, formatDateGroupMX } from '@/lib/format'
+import { registroDistinto } from '@/lib/movementDates'
 import type { Category, SplitExpense, SplitExpenseShare, SplitMember } from '@/types'
 
 interface ExpenseDetailModalProps {
@@ -16,6 +19,8 @@ interface ExpenseDetailModalProps {
   members: SplitMember[]
   /** Resolved category (or null when uncategorized). */
   category: Category | null
+  /** Nombre de quien agregó el gasto, para «Registrado por…». */
+  creador?: string | null
   onEdit: () => void
   onDelete: () => void
   /**
@@ -38,6 +43,7 @@ export function ExpenseDetailModal({
   shares,
   members,
   category,
+  creador = null,
   onEdit,
   onDelete,
   saldar = null,
@@ -47,6 +53,7 @@ export function ExpenseDetailModal({
   const nameOf = (memberId: string) => members.find((m) => m.id === memberId)?.name ?? '—'
   const payer = nameOf(expense.paid_by_member_id)
   const catColor = categoryColor(category)
+  const registrado = registroDistinto(expense.expense_date, expense.created_at)
 
   return (
     <Modal open={open} onClose={onClose} title="Detalle del gasto">
@@ -61,8 +68,8 @@ export function ExpenseDetailModal({
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-extrabold text-text">{expense.description}</p>
-            <p className="text-[11.5px] font-semibold text-text-tertiary">
-              {category ? category.name : 'Sin categoría'} · {formatDateGroupMX(expense.expense_date)}
+            <p className="text-[11.5px] font-semibold text-text-secondary">
+              {category ? category.name : 'Sin categoría'}
             </p>
           </div>
           <span className="shrink-0 font-mono text-[17px] font-extrabold text-text">
@@ -70,15 +77,33 @@ export function ExpenseDetailModal({
           </span>
         </div>
 
-        {/* Paid by */}
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[12.5px] font-semibold text-text-secondary">Pagó</span>
-          <span className="text-[13px] font-bold text-text">{payer}</span>
-        </div>
+        {/* Quién y cuándo. Dos fechas distintas: la del gasto y la del registro. */}
+        <dl className="divide-y divide-border rounded-xl bg-bg-secondary/40 px-3.5">
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-[12.5px] font-semibold text-text-secondary">Pagó</dt>
+            <dd className="text-[13px] font-bold text-text">{payer}</dd>
+          </div>
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-[12.5px] font-semibold text-text-secondary">Fecha del gasto</dt>
+            <dd className="text-[13px] font-bold text-text">{formatDateGroupMX(expense.expense_date)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <dt className="text-[12.5px] font-semibold text-text-secondary">Registrado</dt>
+            <dd className="min-w-0 truncate text-right text-[13px] font-bold text-text">
+              {format(parseISO(expense.created_at), "d MMM, h:mm a", { locale: es })}
+              {creador ? ` · ${creador}` : ''}
+              {registrado && (
+                <span className="ml-1.5 rounded-full bg-peach-soft px-1.5 py-px text-[10px] font-extrabold text-peach-ink">
+                  otro día
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
 
         {/* Per-member breakdown */}
         <div>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-secondary">
             Reparto
           </p>
           <ul className="divide-y divide-border rounded-xl border border-border">
