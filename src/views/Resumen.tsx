@@ -377,7 +377,7 @@ export function Resumen() {
       </header>
 
       {/* ── Payday banner — only fires on payday ── */}
-      <PaydayBanner onApply={() => openAddModal('receive')} />
+      <PaydayBanner onApply={() => openAddModal('ingreso')} />
 
       {/* ── Hero balance — deep-ink card with split bar ── */}
       <section id="tour-hero" className="px-4 pt-1">
@@ -759,7 +759,7 @@ export function Resumen() {
             </div>
             <button
               type="button"
-              onClick={() => openAddModal('spend')}
+              onClick={() => openAddModal('gasto')}
               className="rounded-full bg-debt px-3.5 py-1.5 text-[11.5px] font-extrabold text-white transition-transform active:scale-[0.97]"
             >
               Pagar

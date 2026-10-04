@@ -1,13 +1,18 @@
 import { create } from 'zustand'
 
-export type AddDirection = 'spend' | 'receive'
+import type { AddKind } from '@/components/add/AddSheet'
+
+export type { AddKind }
 
 interface UiState {
   /** The "add transaction" bottom-sheet is open. */
   addModalOpen: boolean
-  /** Direction the modal opens with — switched by callers (FAB vs payday CTA). */
-  addModalDirection: AddDirection
-  openAddModal: (direction?: AddDirection) => void
+  /**
+   * Con qué tipo abre la hoja. `null` = el que se usó la última vez. Lo fijan
+   * quienes saben qué quieren agregar (el CTA de cobro abre en «Ingreso»).
+   */
+  addModalKind: AddKind | null
+  openAddModal: (kind?: AddKind) => void
   closeAddModal: () => void
   /** Pulse signal: FAB on the loans tab sets this; MisPrestamos opens its form then resets it. */
   loanModalOpen: boolean
@@ -29,9 +34,8 @@ interface UiState {
  */
 export const useUiStore = create<UiState>((set) => ({
   addModalOpen: false,
-  addModalDirection: 'spend',
-  openAddModal: (direction = 'spend') =>
-    set({ addModalOpen: true, addModalDirection: direction }),
+  addModalKind: null,
+  openAddModal: (kind) => set({ addModalOpen: true, addModalKind: kind ?? null }),
   closeAddModal: () => set({ addModalOpen: false }),
   loanModalOpen: false,
   openLoanModal: () => set({ loanModalOpen: true }),

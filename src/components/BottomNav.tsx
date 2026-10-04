@@ -44,7 +44,7 @@ export function BottomNav() {
         <button
           type="button"
           onClick={() =>
-            isGroupDetail ? openExpenseModal() : isLoansTab ? openLoanModal() : openAddModal('spend')
+            isGroupDetail ? openExpenseModal() : isLoansTab ? openLoanModal() : openAddModal('gasto')
           }
           aria-label={
             isGroupDetail ? 'Agregar gasto al grupo' : isLoansTab ? 'Agregar préstamo' : 'Agregar movimiento'

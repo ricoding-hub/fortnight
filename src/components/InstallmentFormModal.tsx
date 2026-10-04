@@ -1,41 +1,9 @@
-import { useEffect, useState } from 'react'
-import { useForm, Controller } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { IconCalendarEvent } from '@tabler/icons-react'
-import clsx from 'clsx'
+import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { InstallmentFields } from '@/components/add/InstallmentFields'
 import { useAccounts } from '@/hooks/useAccounts'
-import { useToast } from '@/hooks/useToast'
-import { formatMXN } from '@/lib/format'
 import type { NewInstallment, InstallmentPatch } from '@/hooks/useInstallments'
-import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import type { Installment } from '@/types'
-
-const schema = z
-  .object({
-    name: z.string().min(1, 'Nombre requerido'),
-    total_amount: z.string().refine((v) => isMoneyInput(v), 'Escribe un monto, por ejemplo 574.50'),
-    months_total: z.string().refine((v) => isCountInput(v, 1, 120), 'Entre 1 y 120 meses'),
-    months_paid: z.string().refine((v) => v === '' || isCountInput(v, 0, 120), 'Número inválido'),
-    is_zero_interest: z.boolean(),
-    charge_to_card: z.boolean(),
-    account_id: z.string().optional(),
-    start_date: z.string().optional(),
-  })
-  // Nothing stopped "20 de 12 pagados". It made getInstallmentRemaining
-  // negative, and since v1.7.0 that negative is what gets charged to the
-  // card — the balance would go DOWN when registering a purchase.
-  .refine(
-    (v) => {
-      const paid = parseCountInput(v.months_paid === '' ? '0' : v.months_paid)
-      const total = parseCountInput(v.months_total)
-      return paid == null || total == null || paid <= total
-    },
-    { message: 'No puedes llevar más pagos que meses', path: ['months_paid'] },
-  )
-
-type FormValues = z.infer<typeof schema>
 
 interface InstallmentFormModalProps {
   open: boolean
@@ -45,350 +13,36 @@ interface InstallmentFormModalProps {
   onUpdate?: (id: string, patch: InstallmentPatch) => Promise<void>
 }
 
+/**
+ * Crear o editar un plan a meses desde Cuentas.
+ *
+ * Los campos viven en `InstallmentFields`, que comparte con la hoja «Agregar».
+ * Antes este archivo tenía 394 líneas con todo adentro, y el «Agregar» global no
+ * podía registrar una compra a meses sin duplicarlas.
+ */
 export function InstallmentFormModal({ open, onClose, onSubmit, editingInstallment, onUpdate }: InstallmentFormModalProps) {
-  const isEditing = editingInstallment != null
   const { data: accounts } = useAccounts()
-  const creditAccounts = accounts.filter((a) => a.type === 'credit')
-  const toast = useToast()
-  const [saveError, setSaveError] = useState<string | null>(null)
-
-  const {
-    register,
-    handleSubmit,
-    watch,
-    reset,
-    control,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    // Charging is the default: registering a purchase you just made should
-    // raise the card's debt, which is what actually happened.
-    defaultValues: { months_total: '12', months_paid: '0', is_zero_interest: true, charge_to_card: true },
-  })
-
-  useEffect(() => {
-    if (open) {
-      setSaveError(null)
-      if (editingInstallment) {
-        reset({
-          name: editingInstallment.name,
-          total_amount: String(editingInstallment.total_amount),
-          months_total: String(editingInstallment.months_total),
-          months_paid: String(editingInstallment.months_paid),
-          is_zero_interest: editingInstallment.is_zero_interest,
-          account_id: editingInstallment.account_id ?? '',
-          start_date: editingInstallment.start_date,
-          charge_to_card: false,
-        })
-      } else {
-        reset({ months_total: '12', months_paid: '0', is_zero_interest: true, charge_to_card: true })
-      }
-    }
-  }, [open, editingInstallment, reset])
-
-  const totalAmountStr = watch('total_amount')
-  const monthsTotalStr = watch('months_total')
-  const monthsPaidStr = watch('months_paid')
-  const isZeroInterest = watch('is_zero_interest')
-  const chargeToCard = watch('charge_to_card')
-  const accountId = watch('account_id')
-  // Bare Number() turns "574,5" into NaN, which silently emptied the live
-  // preview and would have written NaN to the row on submit.
-  const totalAmount = moneyOr(totalAmountStr, 0)
-  const monthsTotal = parseCountInput(monthsTotalStr ?? '') ?? 0
-  const monthsPaid = parseCountInput(monthsPaidStr ?? '') ?? 0
-  const monthlyAmount =
-    totalAmount > 0 && monthsTotal > 0
-      ? Math.round((totalAmount / monthsTotal) * 100) / 100
-      : 0
-
-  // What the charge would put on the card: the months still owed, not the
-  // sticker price. Registering a plan with 11 of 18 already paid should move
-  // the seven that are left.
-  const selectedCard = creditAccounts.find((a) => a.id === accountId)
-  const pendingPrincipal = Math.max(0, monthsTotal - monthsPaid) * monthlyAmount
-  const balanceAfter = selectedCard ? Number(selectedCard.balance) + pendingPrincipal : 0
-
-  async function handleFormSubmit(values: FormValues) {
-    setSaveError(null)
-    const monthsPaid = parseCountInput(values.months_paid) ?? 0
-    const mTotal = parseCountInput(values.months_total) ?? 0
-    try {
-      if (isEditing && onUpdate && editingInstallment) {
-        await onUpdate(editingInstallment.id, {
-          name: values.name,
-          total_amount: moneyOr(values.total_amount, 0),
-          monthly_amount: monthlyAmount,
-          months_total: mTotal,
-          months_paid: monthsPaid,
-          is_zero_interest: values.is_zero_interest,
-          account_id: values.account_id || null,
-          start_date: values.start_date || undefined,
-          status: monthsPaid >= mTotal ? 'paid' : 'active',
-        })
-        toast.success('Plan actualizado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
-      } else {
-        await onSubmit({
-          name: values.name,
-          total_amount: moneyOr(values.total_amount, 0),
-          monthly_amount: monthlyAmount,
-          months_total: mTotal,
-          months_paid: monthsPaid,
-          is_zero_interest: values.is_zero_interest,
-          account_id: values.account_id || null,
-          start_date: values.start_date || undefined,
-          charge_to_card: values.charge_to_card,
-        })
-        toast.success('Gasto registrado', `${values.name} — ${monthlyAmount.toLocaleString()}/mes`)
-      }
-      onClose()
-    } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as { message?: string })?.message ?? 'Error desconocido'
-      setSaveError(msg)
-      toast.error('Error al guardar', msg)
-    }
-  }
+  const [footerEl, setFooterEl] = useState<HTMLElement | null>(null)
 
   return (
-    <Modal open={open} onClose={onClose} title={isEditing ? 'Editar plan a meses' : 'Nuevo gasto a meses'}>
-      <form onSubmit={handleSubmit(handleFormSubmit)} className="flex flex-col gap-4">
-        {/* Name */}
-        <div>
-          <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-            Nombre del gasto
-          </label>
-          <input
-            {...register('name')}
-            placeholder="Ej. iPhone 16, Laptop, Mueble..."
-            className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          {errors.name && (
-            <p className="mt-1 text-[11px] text-debt">{errors.name.message}</p>
-          )}
-        </div>
-
-        {/* Total amount + months */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-              Monto total
-            </label>
-            <input
-              {...register('total_amount')}
-              // Deliberately not type="number": its default step of 1 rejects
-              // "574.5" outright, and it drops a decimal comma before we ever
-              // see it. Validation lives in the schema instead.
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="0.00"
-              className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            {errors.total_amount && (
-              <p className="mt-1 text-[11px] text-debt">{errors.total_amount.message}</p>
-            )}
-          </div>
-          <div>
-            <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-              Meses
-            </label>
-            <input
-              {...register('months_total')}
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={120}
-              step={1}
-              placeholder="12"
-              className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            {errors.months_total && (
-              <p className="mt-1 text-[11px] text-debt">{errors.months_total.message}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Pagos ya hechos */}
-        <div>
-          <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-            Pagos ya hechos
-          </label>
-          <input
-            {...register('months_paid')}
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={120}
-            step={1}
-            placeholder="0"
-            className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          {monthsPaid > 0 && monthsTotal > 0 && monthsPaid < monthsTotal && (
-            <p className="mt-1 text-[11px] text-text-tertiary">
-              Quedan {monthsTotal - monthsPaid} meses por pagar
-            </p>
-          )}
-          {errors.months_paid && (
-            <p className="mt-1 text-[11px] text-debt">{errors.months_paid.message}</p>
-          )}
-        </div>
-
-        {/* Monthly preview */}
-        {monthlyAmount > 0 && (
-          <div className="flex items-center gap-2 rounded-xl bg-primary-soft/30 px-3.5 py-2.5">
-            <IconCalendarEvent size={15} className="text-primary-deep" />
-            <span className="text-[12.5px] font-bold text-primary-deep">
-              ${monthlyAmount.toLocaleString()}/mes durante {monthsTotal} meses
-            </span>
-          </div>
-        )}
-
-        {/* ¿Sin interés? toggle */}
-        <Controller
-          control={control}
-          name="is_zero_interest"
-          render={({ field }) => (
-            <div>
-              <p className="mb-1.5 text-[12.5px] font-semibold text-text-secondary">Tipo de plan</p>
-              <div className="flex overflow-hidden rounded-xl border border-border">
-                <button
-                  type="button"
-                  onClick={() => field.onChange(true)}
-                  className={clsx(
-                    'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                    isZeroInterest
-                      ? 'bg-primary text-white'
-                      : 'bg-bg text-text-secondary hover:bg-primary/5',
-                  )}
-                >
-                  MSI 0% (sin interés)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => field.onChange(false)}
-                  className={clsx(
-                    'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                    !isZeroInterest
-                      ? 'bg-debt text-white'
-                      : 'bg-bg text-text-secondary hover:bg-debt/5',
-                  )}
-                >
-                  Con interés
-                </button>
-              </div>
-            </div>
-          )}
-        />
-
-        {/* Account picker */}
-        {creditAccounts.length > 0 && (
-          <div>
-            <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-              Tarjeta asociada (opcional)
-            </label>
-            <select
-              {...register('account_id')}
-              className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="">Sin asociar</option>
-              {creditAccounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Does this amount already sit inside the card's balance?
-            Asking it outright is the whole fix: the app always assumed it did,
-            and nothing ever put it there. Only on create — flipping it after
-            the fact is the ambiguous case, so it isn't offered. */}
-        {!isEditing && selectedCard && (
-          <Controller
-            control={control}
-            name="charge_to_card"
-            render={({ field }) => (
-              <div>
-                <p className="mb-1.5 text-[12.5px] font-semibold text-text-secondary">
-                  ¿Ya está en el saldo de la tarjeta?
-                </p>
-                <div className="flex overflow-hidden rounded-xl border border-border">
-                  <button
-                    type="button"
-                    onClick={() => field.onChange(true)}
-                    className={clsx(
-                      'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                      chargeToCard
-                        ? 'bg-primary text-white'
-                        : 'bg-bg text-text-secondary hover:bg-primary/5',
-                    )}
-                  >
-                    No, cárgalo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => field.onChange(false)}
-                    className={clsx(
-                      'flex-1 py-2.5 text-[12.5px] font-bold transition-colors',
-                      !chargeToCard
-                        ? 'bg-primary text-white'
-                        : 'bg-bg text-text-secondary hover:bg-primary/5',
-                    )}
-                  >
-                    Sí, ya está
-                  </button>
-                </div>
-
-                {pendingPrincipal > 0 && (
-                  <p className="mt-1.5 text-[11.5px] leading-snug text-text-secondary">
-                    {chargeToCard ? (
-                      <>
-                        El saldo de <b className="text-text">{selectedCard.name}</b> pasa de{' '}
-                        <b className="font-mono text-text">{formatMXN(Number(selectedCard.balance))}</b> a{' '}
-                        <b className="font-mono text-text">{formatMXN(balanceAfter)}</b>.
-                      </>
-                    ) : (
-                      <>
-                        No tocamos tu saldo. Úsalo si el saldo que capturaste ya salió
-                        del app del banco y ya incluye esta compra.
-                      </>
-                    )}
-                  </p>
-                )}
-              </div>
-            )}
-          />
-        )}
-
-        {/* Start date */}
-        <div>
-          <label className="mb-1 block text-[12.5px] font-semibold text-text-secondary">
-            Fecha de inicio
-          </label>
-          <input
-            {...register('start_date')}
-            type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-            className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-
-        {saveError && (
-          <p className="rounded-xl bg-debt/8 px-3.5 py-2.5 text-[12px] font-semibold text-debt">
-            {saveError}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-1 rounded-xl bg-primary py-3 text-[13.5px] font-extrabold text-white transition-opacity disabled:opacity-60"
-        >
-          {isSubmitting ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Guardar'}
-        </button>
-      </form>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editingInstallment ? 'Editar plan a meses' : 'Nueva compra a meses'}
+      footer={<div ref={setFooterEl} />}
+    >
+      {/* El Modal desmonta su contenido al cerrarse, así que el formulario nace
+          limpio en cada apertura; la `key` cubre el cambio de un plan a otro. */}
+      <InstallmentFields
+        key={editingInstallment?.id ?? 'nuevo'}
+        formId="plan-meses-form"
+        accounts={accounts}
+        footerTarget={footerEl}
+        editingInstallment={editingInstallment}
+        onSubmit={onSubmit}
+        onUpdate={onUpdate}
+        onDone={onClose}
+      />
     </Modal>
   )
 }

@@ -121,9 +121,23 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.12.0"
+            version="1.13.0"
             date="4 oct 2026"
             current
+            notes={[
+              'Agregar ahora es una sola hoja con cuatro tipos: Gasto, Ingreso, Préstamo y A meses. Antes los préstamos y las compras a meses vivían en otras pantallas',
+              'Se quitó el teclado numérico de pantalla: son campos normales con teclado decimal, listas desplegables para categoría y cuenta, y la fecha',
+              'Ya no se corta: el botón de guardar queda fijo abajo y el resto se desplaza. Probado de 320 a 390 px de ancho, incluso con el teclado abierto',
+              'Recuerda tu última categoría y cuenta, y abre con el cursor en el monto',
+              'Te avisa cuando la cuenta es una tarjeta: el gasto sube la deuda y el ingreso es un pago que la baja',
+              'Compras a meses desde el mismo lugar: el plazo se elige de una lista, y "Pagos ya hechos", el tipo de plan y la fecha de inicio quedan en "Más opciones"',
+              'Al guardar se cierra solo y te avisa con el monto, la cuenta y tus puntos. Sin pantalla extra',
+              'Los gastos e ingresos también llevan fecha, para distinguir el día en que gastaste del día en que lo anotaste',
+            ]}
+          />
+          <VersionRow
+            version="1.12.0"
+            date="4 oct 2026"
             notes={[
               'El detalle de una conexión dice tu saldo una sola vez y en grande, con el botón de saldar al lado. Antes la misma cifra salía cinco veces antes de llegar al primer gasto',
               'Buscador de movimientos: por descripción, persona, monto o fecha ("wings", "$270", "23 sep"). Con filtros Te deben, Debes y Saldados, y una línea que suma lo que ves',

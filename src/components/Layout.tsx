@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { PetCompanion } from '@/components/PetCompanion'
 import { PwaBanner } from '@/components/PwaBanner'
 import { InstallPrompt } from '@/components/InstallPrompt'
-import { TransactionFormModal } from '@/components/TransactionFormModal'
+import { AddSheet } from '@/components/add/AddSheet'
 import { useUiStore } from '@/store/uiStore'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
@@ -43,7 +43,7 @@ export function Layout() {
     scrollRef.current?.scrollTo({ top: 0 })
   }, [pathname])
 
-  const direction = useUiStore((s) => s.addModalDirection)
+  const kind = useUiStore((s) => s.addModalKind)
   const closeAddModal = useUiStore((s) => s.closeAddModal)
 
   return (
@@ -81,13 +81,13 @@ export function Layout() {
 
       {/* Global add-movement modal — driven by uiStore */}
       {!accountsLoading && (
-        <TransactionFormModal
+        <AddSheet
           open={open}
           onClose={closeAddModal}
           accounts={accounts}
           categories={categories}
           onCreate={createTx}
-          initialDirection={direction}
+          initialKind={kind ?? undefined}
         />
       )}
     </div>

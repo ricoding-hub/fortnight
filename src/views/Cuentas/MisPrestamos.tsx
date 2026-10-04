@@ -8,6 +8,7 @@ import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe } from '@/hooks/useSplitGroups'
 import { usePeopleBalances, type BalanceEntry } from '@/hooks/usePeopleBalances'
 import { useLoanActions } from '@/hooks/useLoanActions'
+import { grupoDirectoPorContacto, grupoParaPrestamo, nombresDeContactos } from '@/lib/loanContacts'
 import { BalanceRow } from '@/components/split/BalanceRow'
 import { ContactLoansModal } from '@/components/split/ContactLoansModal'
 import { useAuth } from '@/hooks/useAuth'
@@ -65,22 +66,14 @@ export function MisPrestamos() {
   /** Person sheet for a contact with no split group (works offline). */
   const [contactSheet, setContactSheet] = useState<BalanceEntry | null>(null)
 
-  const allNames = useMemo(() => {
-    const names = new Set([...active, ...paid].map((l) => l.name.trim()))
-    return Array.from(names).sort()
-  }, [active, paid])
+  const allNames = useMemo(() => nombresDeContactos([...active, ...paid]), [active, paid])
 
   // Direct 2-person group per contact (connected or not), for the settle-all
   // breakdown and for keeping a renamed contact in sync with their group.
-  const directGroupByContact = useMemo(() => {
-    const map = new Map<string, (typeof splitGroups)[number]>()
-    for (const g of splitGroups) {
-      if (g.activeMembers.length !== 2) continue
-      const contact = g.activeMembers.find((m) => !memberIsMe(m, user?.id))
-      if (contact) map.set(contact.name.trim().toLowerCase(), g)
-    }
-    return map
-  }, [splitGroups, user?.id])
+  const directGroupByContact = useMemo(
+    () => grupoDirectoPorContacto(splitGroups, user?.id),
+    [splitGroups, user?.id],
+  )
 
   // Unified Splitwise-style balances (people + groups) — the single source for
   // the list AND the KPIs, so the hero can never disagree with the rows.
@@ -106,9 +99,7 @@ export function MisPrestamos() {
     onCreate: async (data) => {
       // Stamp the loan into the contact's existing direct group when there is
       // one and it isn't connected (connected groups keep loans private).
-      const direct = directGroupByContact.get(data.name.trim().toLowerCase())
-      const groupId = direct && !direct.isConnected ? direct.group.id : null
-      await loansApi.create({ ...data, group_id: groupId })
+      await loansApi.create({ ...data, group_id: grupoParaPrestamo(data.name, directGroupByContact) })
     },
     onEdit: async (id, patch) => {
       const before = allLoans.find((l) => l.id === id)
