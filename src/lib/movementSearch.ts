@@ -43,15 +43,23 @@ export function construirTexto(
 }
 
 /**
- * ¿La fila cumple la consulta? Varias palabras = TODAS tienen que aparecer
- * (en cualquier orden), así «wings army» y «army wings» encuentran lo mismo.
- * Un monto escrito con «$» o comas se compara sin ellos.
+ * ¿La fila cumple la consulta?
+ *
+ * Varias palabras = TODAS tienen que aparecer (en cualquier orden), así «wings
+ * army» y «army wings» encuentran lo mismo. Un monto escrito con «$» o comas se
+ * compara sin ellos.
+ *
+ * Cada palabra se compara por su INICIO, no como subcadena. Era subcadena y
+ * «gas» — gasolina, gas LP — devolvía todo lo que pagaste tú, porque «gas» está
+ * dentro de «pa-gas-te». Por inicio de palabra, «gas» encuentra «gas» y
+ * «gasolina» pero no «pagaste»; «270» encuentra «270.00» pero no «1270.00».
  */
 export function coincide(texto: string, consulta: string): boolean {
   const q = normalizar(consulta)
   if (!q) return true
+  const palabras = texto.split(' ')
   return q.split(' ').every((token) => {
     const t = esMonto(token) ? token.replace(/[$,]/g, '') : token
-    return t === '' || texto.includes(t)
+    return t === '' || palabras.some((w) => w.startsWith(t))
   })
 }

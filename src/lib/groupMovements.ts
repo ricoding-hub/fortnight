@@ -80,9 +80,9 @@ export function construirMovimientos(e: EntradaMovimientos): MovimientoDeGrupo[]
           e.nombreDeMiembro(ex.paid_by_member_id),
           e.nombreDeUsuario(ex.user_id),
           e.categoria(ex.category_id),
-          yo?.loPagasteTu ? 'pagaste tu' : null,
-          neto > 0 ? 'te deben' : neto < 0 ? 'debes' : 'no te toca',
-          saldado ? 'saldado' : null,
+          // Sin etiquetas de estado ("te deben", "pagaste tú", "saldado"): para eso
+          // están los chips, y meterlas aquí hacía que buscar "gas" devolviera todo
+          // lo que pagaste tú ("pa-gas-te").
         ],
         [ex.amount, ...(yo && yo.tuParte > 0 ? [yo.tuParte] : []), ...(neto !== 0 ? [neto] : [])],
         [textoDeFecha(dia), ...(registro ? [textoDeFecha(registro)] : [])],
@@ -105,7 +105,7 @@ export function construirMovimientos(e: EntradaMovimientos): MovimientoDeGrupo[]
       registrado: null,
       texto: construirTexto(
         [
-          'liquidacion pago saldo',
+          'liquidacion',
           e.nombreDeMiembro(st.from_member_id),
           e.nombreDeMiembro(st.to_member_id),
           gasto?.description,

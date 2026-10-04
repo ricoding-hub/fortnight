@@ -124,7 +124,7 @@ export function GroupMovements({
               enterKeyHint="search"
               autoComplete="off"
               // text-base (16px): con menos, iOS Safari amplía la página al enfocar.
-              className="h-11 w-full rounded-xl border border-border bg-bg-elevated pl-10 pr-10 text-base text-text placeholder:text-text-secondary focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="h-11 w-full appearance-none rounded-xl border border-border bg-bg-elevated pl-10 pr-10 text-base text-text placeholder:text-text-secondary focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
             />
             {consulta && (
               <button
@@ -141,7 +141,7 @@ export function GroupMovements({
           {/* flex-wrap y no una fila con scroll horizontal: son cuatro chips cortos,
               y una fila que se desplaza es exactamente lo que dejó atrapadas las
               categorías dentro de un modal. */}
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar movimientos">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrar movimientos">
             {FILTROS.map((f) => {
               const on = filtro === f.id
               return (
@@ -151,16 +151,19 @@ export function GroupMovements({
                   aria-pressed={on}
                   onClick={() => setFiltro(f.id)}
                   className={clsx(
-                    'inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold transition-colors active:scale-95',
+                    'inline-flex min-h-[36px] items-center gap-1 rounded-full px-2.5 text-[12.5px] font-bold transition-colors active:scale-95',
                     on
                       ? 'bg-primary-deep text-white'
                       : 'bg-bg-elevated text-text-secondary shadow-card hover:text-text',
                   )}
                 >
                   {f.etiqueta}
-                  <span className={clsx('font-mono text-[11px] tabular-nums', on ? 'text-white/80' : 'text-text-secondary')}>
-                    {cuentas[f.id]}
-                  </span>
+                  {/* Un «0» al lado de «Saldados» no informa y ocupa sitio. */}
+                  {cuentas[f.id] > 0 && (
+                    <span className={clsx('font-mono text-[11px] tabular-nums', on ? 'text-white/80' : 'text-text-secondary')}>
+                      {cuentas[f.id]}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -284,12 +287,16 @@ const FilaGasto = memo(function FilaGasto({ m, categoria, pagador, creadorNombre
           <span className="block truncate text-[14px] font-semibold text-text">{e.description}</span>
           <span className="block truncate text-[12px] text-text-secondary">{pagador}</span>
           {(creadorNombre || m.registrado) && (
-            <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-text-secondary">
+            // `flex-wrap`: si no caben juntos, la etiqueta pasa a otra línea. Antes
+            // cada uno peleaba el mismo renglón y el nombre se quedaba en "A.".
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11.5px] text-text-secondary">
               {creadorNombre && (
-                <>
+                <span className="inline-flex min-w-0 items-center gap-1">
                   <Avatar name={creadorNombre} avatarUrl={creadorAvatar} size={16} />
-                  <span className="truncate font-semibold">Agregó {creadorNombre}</span>
-                </>
+                  <span className="sr-only">Agregado por </span>
+                  {/* Primer nombre: con el avatar basta para ubicar a la persona. */}
+                  <span className="truncate font-semibold">{creadorNombre.split(' ')[0]}</span>
+                </span>
               )}
               {m.registrado && (
                 <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-peach-soft px-1.5 py-px font-bold text-peach-ink">

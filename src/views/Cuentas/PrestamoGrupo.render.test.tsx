@@ -127,8 +127,9 @@ describe('detalle de una conexión 1:1', () => {
 
   it('se ve quién agregó el gasto, y sólo cuando no fuiste tú', { timeout: 20_000 }, async () => {
     await montar()
-    expect(veces('Agregó Alesita')).toBe(1)
-    expect(document.body.textContent).not.toContain('Agregó Richy')
+    // Con su cara y el primer nombre; el texto completo queda para lectores de pantalla.
+    expect(veces('Agregado por Alesita')).toBe(1)
+    expect(document.body.textContent).not.toContain('Agregado por Richy')
   })
 })
 

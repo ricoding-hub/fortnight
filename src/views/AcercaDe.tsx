@@ -121,9 +121,18 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.13.0"
+            version="1.13.1"
             date="4 oct 2026"
             current
+            notes={[
+              'Corregido el buscador de movimientos: buscar "gas" devolvía todo lo que pagaste tú, porque "gas" está dentro de "pagaste". Ahora busca por inicio de palabra: "gas" encuentra gasolina y gas, pero no pagaste',
+              'En la lista, la persona que agregó el gasto se ve con su cara y su nombre, sin cortarse; la etiqueta "Registrado" pasa a otra línea si no cabe',
+              'Los cuatro filtros caben en una sola línea, y se quitó la X duplicada del buscador',
+            ]}
+          />
+          <VersionRow
+            version="1.13.0"
+            date="4 oct 2026"
             notes={[
               'Agregar ahora es una sola hoja con cuatro tipos: Gasto, Ingreso, Préstamo y A meses. Antes los préstamos y las compras a meses vivían en otras pantallas',
               'Se quitó el teclado numérico de pantalla: son campos normales con teclado decimal, listas desplegables para categoría y cuenta, y la fecha',

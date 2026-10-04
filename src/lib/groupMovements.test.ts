@@ -116,6 +116,15 @@ describe('filtrarMovimientos', () => {
     expect(filtrarMovimientos(items, 'debes', 'wings')).toEqual([])
   })
 
+  it('buscar «gas» NO devuelve lo que pagaste tú', () => {
+    // «gas» está dentro de «pa-gas-te». El texto buscable llevaba «pagaste tú»
+    // y cada gasto propio salía al buscar gasolina o gas LP.
+    const ids = filtrarMovimientos(items, 'todos', 'gas').map((m) => m.id)
+    expect(ids).not.toContain('e1') // lo pagué yo: "pa-gas-te" ya no cuenta
+    expect(ids).toContain('e2')     // "Cambio de la gas"
+    expect(ids).toContain('s1')     // el pago que saldó ese gasto también habla de él
+  })
+
   it('busca por monto con símbolos', () => {
     expect(filtrarMovimientos(items, 'todos', '$540').map((m) => m.id)).toEqual(['e1'])
   })

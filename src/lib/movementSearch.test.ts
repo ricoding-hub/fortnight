@@ -56,6 +56,20 @@ describe('coincide', () => {
   it('sin resultados cuando no hay nada', () => {
     expect(coincide(wings, 'zzz')).toBe(false)
   })
+
+  it('compara por INICIO de palabra, no por subcadena', () => {
+    // El fallo real: «gas» devolvía todo lo que pagaste tú, porque «gas» está
+    // dentro de «pa-gas-te».
+    const cena = fila(['Cena', 'Pagaste tu'])
+    expect(coincide(cena, 'gas')).toBe(false)
+    expect(coincide(fila(['Gasolina']), 'gas')).toBe(true)
+    expect(coincide(fila(['Cambio de la gas']), 'gas')).toBe(true)
+  })
+
+  it('un monto coincide por su inicio: 270 encuentra 270.00 pero no 1270.00', () => {
+    expect(coincide(fila(['Cena'], [270]), '270')).toBe(true)
+    expect(coincide(fila(['Cena'], [1270]), '270')).toBe(false)
+  })
 })
 
 describe('textoDeMonto', () => {
