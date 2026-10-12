@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { formatDateGroupMX } from '@/lib/format'
+import { toKey } from '@/lib/calendar'
 import type { Transaction } from '@/types'
 
 /** Splits a date-desc transaction list into consecutive same-date groups. */
@@ -29,7 +30,7 @@ function groupByDate(transactions: Transaction[]) {
 function isoDaysAgo(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() - days)
-  return d.toISOString().slice(0, 10)
+  return toKey(d)
 }
 
 const DEFAULT_FROM = isoDaysAgo(30)

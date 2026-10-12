@@ -110,26 +110,21 @@ function computeDaysUntilPayment(account: AccountRow): number | null {
   today.setHours(0, 0, 0, 0)
 
   if (payment_grace_days != null && cut_day != null) {
+    // Mirrors src/lib/cardCycle.ts: the first due date on or after today,
+    // walking cuts from far enough back to cover long grace periods. The old
+    // version jumped two cycles ahead once this cycle's due date had passed.
     const clamp = (y: number, m: number) => {
       const last = new Date(y, m + 1, 0).getDate()
       return new Date(y, m, Math.min(cut_day, last))
     }
-    let lastCut = clamp(today.getFullYear(), today.getMonth())
-    if (lastCut > today) {
-      lastCut =
-        today.getMonth() === 0
-          ? clamp(today.getFullYear() - 1, 11)
-          : clamp(today.getFullYear(), today.getMonth() - 1)
+    const back = Math.ceil(payment_grace_days / 28) + 1
+    for (let i = -back; i <= 13; i++) {
+      const cut = clamp(today.getFullYear(), today.getMonth() + i)
+      const due = new Date(cut)
+      due.setDate(due.getDate() + payment_grace_days)
+      if (due >= today) return Math.round((due.getTime() - today.getTime()) / 86_400_000)
     }
-    const due = new Date(lastCut)
-    due.setDate(due.getDate() + payment_grace_days)
-    if (due < today) {
-      const nextCut = clamp(today.getFullYear(), today.getMonth() + 1)
-      const nextDue = new Date(nextCut)
-      nextDue.setDate(nextDue.getDate() + payment_grace_days)
-      return Math.round((nextDue.getTime() - today.getTime()) / 86_400_000)
-    }
-    return Math.round((due.getTime() - today.getTime()) / 86_400_000)
+    return null
   }
 
   if (payment_due_day != null) {

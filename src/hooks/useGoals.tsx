@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import type { Goal } from '@/types'
+import { toKey } from '@/lib/calendar'
 
 export interface NewGoal {
   name: string
@@ -162,9 +163,9 @@ function useGoalsState() {
         target: creditDebt,
         saved: 0,
         monthly,
-        deadline: deadline.toISOString().slice(0, 10),
+        deadline: toKey(deadline),
         is_debt: true,
-        started_at: today.toISOString().slice(0, 10),
+        started_at: toKey(today),
       })
       .then(({ error: insErr }) => {
         if (insErr) setError(insErr)

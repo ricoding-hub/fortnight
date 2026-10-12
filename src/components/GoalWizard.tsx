@@ -9,6 +9,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { calcMonthlyDisposable } from '@/lib/projections'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { toKey } from '@/lib/calendar'
 
 interface Props {
   onClose: () => void
@@ -97,9 +98,9 @@ export function GoalWizard({ onClose }: Props) {
           target: targetNum,
           saved: 0,
           monthly: suggestedMonthly,
-          deadline: deadline.toISOString().slice(0, 10),
+          deadline: toKey(deadline),
           is_debt: false,
-          started_at: today.toISOString().slice(0, 10),
+          started_at: toKey(today),
         })
         .select('id')
         .single()

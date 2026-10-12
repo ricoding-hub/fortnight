@@ -1,4 +1,5 @@
 import { differenceInCalendarDays } from 'date-fns'
+import { proximoVencimiento } from '@/lib/cardCycle'
 import type { Account } from '@/types'
 
 /**
@@ -41,29 +42,12 @@ export function daysUntilPayment(account: Account, from: Date = new Date()): num
   const { cut_day, payment_grace_days, payment_due_day } = account
 
   if (payment_grace_days != null && cut_day != null) {
+    // Antes, si la fecha del ciclo ya había pasado, saltaba al corte de dos
+    // meses después. cardCycle busca la siguiente de verdad.
+    const prox = proximoVencimiento(account, from)
+    if (!prox) return null
     const today = new Date(from.getFullYear(), from.getMonth(), from.getDate())
-    const clampDay = (y: number, m: number) => {
-      const last = new Date(y, m + 1, 0).getDate()
-      return new Date(y, m, Math.min(cut_day, last))
-    }
-    // Find the most recent past cut date
-    let lastCut = clampDay(today.getFullYear(), today.getMonth())
-    if (lastCut > today) {
-      lastCut =
-        today.getMonth() === 0
-          ? clampDay(today.getFullYear() - 1, 11)
-          : clampDay(today.getFullYear(), today.getMonth() - 1)
-    }
-    const due = new Date(lastCut)
-    due.setDate(due.getDate() + payment_grace_days)
-    // If due date has already passed this cycle, advance to next cut cycle
-    if (due < today) {
-      const nextCut = clampDay(today.getFullYear(), today.getMonth() + 1)
-      const nextDue = new Date(nextCut)
-      nextDue.setDate(nextDue.getDate() + payment_grace_days)
-      return differenceInCalendarDays(nextDue, today)
-    }
-    return differenceInCalendarDays(due, today)
+    return differenceInCalendarDays(prox.vence, today)
   }
 
   if (payment_due_day != null) {

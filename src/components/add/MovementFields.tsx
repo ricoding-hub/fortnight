@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Select'
 import { FooterPortal } from '@/components/add/FooterPortal'
 import { useGamification, XP_PER_TX } from '@/hooks/useGamification'
 import { useToast } from '@/hooks/useToast'
+import { useOrdenCuentas } from '@/hooks/useOrdenCuentas'
 import { guardarPref, prefValida } from '@/lib/addPrefs'
 import { toKey } from '@/lib/calendar'
 import { formatMXN } from '@/lib/format'
@@ -68,6 +69,10 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
   const intentado = useRef(false)
 
   const cuenta = accounts.find((a) => a.id === accountId)
+  const { orden } = useOrdenCuentas()
+  const gruposDeCuentas = orden
+    .map((tipo) => ({ tipo, cuentas: accounts.filter((a) => a.type === tipo) }))
+    .filter((g) => g.cuentas.length > 0)
   const esCredito = cuenta?.type === 'credit'
   const monto = moneyNum(amount)
   const montoValido = isMoneyInput(amount) && monto > 0
@@ -193,11 +198,20 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
         onChange={(e) => { setAccountId(e.target.value); revalidar({ accountId: e.target.value }) }}
       >
         {accounts.length === 0 && <option value="">Crea una cuenta primero</option>}
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name}{a.type === 'credit' ? ' · tarjeta' : ''}
-          </option>
-        ))}
+        {/* Agrupadas por tipo, en el orden que el usuario eligió en Cuentas. */}
+        {gruposDeCuentas.length > 1
+          ? gruposDeCuentas.map((g) => (
+              <optgroup key={g.tipo} label={g.tipo === 'credit' ? 'Tarjetas de crédito' : 'Débito'}>
+                {g.cuentas.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </optgroup>
+            ))
+          : accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}{a.type === 'credit' ? ' · tarjeta' : ''}
+              </option>
+            ))}
       </Select>
 
       {/* El signo de una tarjeta es el contrario al de una cuenta de débito, y

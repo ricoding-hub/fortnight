@@ -121,9 +121,22 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.14.0"
+            date="12 oct 2026"
+            current
+            notes={[
+              'El enlace para invitar ya se ve: en la ficha de una persona con préstamos hay "Invitar a … a conectarse", al crear un grupo se abre solo, y dentro de un grupo dice quién falta por entrar con su cuenta',
+              'El enlace se muestra escrito, con "Compartir" y "Copiar" por separado. Cancelar la hoja de compartir ya no lo copia a escondidas',
+              'Si abres una invitación y entras con correo y contraseña, ya no se pierde. Y una invitación 1:1 ya no se convierte en un grupo de tres',
+              'Desde tu primer día puedes agregar tarjetas de crédito: Cuentas muestra débito y crédito siempre, y el formulario deja cambiar entre los dos',
+              'Corregido: el límite de crédito con comas ("50,000") se guardaba vacío, y un día de pago escrito y luego oculto dejaba el botón "Crear" sin responder',
+              'En "Reordenar" eliges qué va primero, débito o crédito, y se guarda en todos tus dispositivos. Mover una tarjeta ahora es instantáneo',
+              'Fechas de pago con días de gracia largos (como Plata) ya no se pierden del calendario, y los días que faltan para pagar ya no se saltan un ciclo',
+            ]}
+          />
+          <VersionRow
             version="1.13.1"
             date="4 oct 2026"
-            current
             notes={[
               'Corregido el buscador de movimientos: buscar "gas" devolvía todo lo que pagaste tú, porque "gas" está dentro de "pagaste". Ahora busca por inicio de palabra: "gas" encuentra gasolina y gas, pero no pagaste',
               'En la lista, la persona que agregó el gasto se ve con su cara y su nombre, sin cortarse; la etiqueta "Registrado" pasa a otra línea si no cabe',

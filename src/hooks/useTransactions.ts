@@ -3,6 +3,7 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Transaction, TransactionType } from '@/types'
+import { toKey } from '@/lib/calendar'
 
 export interface TransactionFilters {
   accountId?: string
@@ -91,7 +92,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       category_id: tx.category_id ?? null,
       description: tx.description ?? null,
       type: tx.type ?? 'transaction',
-      date: tx.date ?? now.slice(0, 10),
+      date: tx.date ?? toKey(new Date()),
       created_at: now,
       source: 'manual',
       external_id: null,
@@ -105,7 +106,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       category_id: tx.category_id ?? null,
       description: tx.description ?? null,
       type: tx.type ?? 'transaction',
-      date: tx.date ?? now.slice(0, 10),
+      date: tx.date ?? toKey(new Date()),
       installment_id: tx.installment_id ?? null,
     })
     if (err) {

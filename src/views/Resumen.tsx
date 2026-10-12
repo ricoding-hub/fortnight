@@ -129,7 +129,7 @@ export function Resumen() {
   const trend7d = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 7)
-    const cutoffISO = cutoff.toISOString().slice(0, 10)
+    const cutoffISO = toKey(cutoff)
     return recentTx
       .filter((t) => t.date >= cutoffISO && (t.type === 'transaction' || t.type === 'adjustment'))
       .reduce((s, t) => s + Number(t.amount), 0)
@@ -147,7 +147,7 @@ export function Resumen() {
   const { monthlyIncome, monthlyExpense } = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 30)
-    const iso = cutoff.toISOString().slice(0, 10)
+    const iso = toKey(cutoff)
     let income = 0
     let expense = 0
     for (const t of recentTx) {

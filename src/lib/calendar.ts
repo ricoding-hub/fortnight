@@ -1,6 +1,8 @@
 import { getExigibleEsteCiclo } from '@/lib/debt'
 import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
 import { computePaydays, payFreqOf } from '@/lib/paydays'
+import { corteEn, vencimientosEntre } from '@/lib/cardCycle'
+import { dayInMonth, fromKey, noon, toKey } from '@/lib/localDate'
 
 /**
  * The financial calendar.
@@ -58,34 +60,9 @@ export interface CalendarEvent {
 
 /* ── date helpers ─────────────────────────────────────────────────────────── */
 
-/** Local noon, so DST can never shift the calendar day. */
-export function noon(d: Date): Date {
-  const c = new Date(d)
-  c.setHours(12, 0, 0, 0)
-  return c
-}
-
-/** Local `YYYY-MM-DD` — never via toISOString, which is UTC. */
-export function toKey(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-export function fromKey(key: string): Date {
-  const [y, m, d] = key.split('-').map(Number)
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0, 0)
-}
-
-export function lastDayOfMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate()
-}
-
-/** Clamps a day-of-month to a real day (31 → 30 in November). */
-export function dayInMonth(year: number, month: number, day: number): Date {
-  return new Date(year, month, Math.min(day, lastDayOfMonth(year, month)), 12, 0, 0, 0)
-}
+// Viven en localDate.ts (sin dependencias) y se reexportan aquí: el resto de
+// la app sigue importándolas de `@/lib/calendar`.
+export { noon, toKey, fromKey, lastDayOfMonth, dayInMonth } from '@/lib/localDate'
 
 /**
  * 0 = lunes … 6 = domingo. `Date.getDay()` counts from Sunday, which is the US
@@ -127,47 +104,22 @@ export const WEEKDAYS_ES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'] as const
 /* ── per-source date projections ──────────────────────────────────────────── */
 
 /**
- * Payment due dates for a credit card. Mirrors the precedence in lib/dates.ts:
- * `payment_grace_days` counted from the cut wins over a fixed `payment_due_day`,
- * which is how cards like Plata bill.
+ * Payment due dates for a credit card. `payment_grace_days` counted from the
+ * cut wins over a fixed `payment_due_day`, which is how cards like Plata bill.
+ * The cycle math lives in cardCycle.ts.
  */
 export function cardDueDates(account: Account, from: Date, to: Date): Date[] {
-  if (account.type !== 'credit') return []
-  const out: Date[] = []
-  const start = noon(from)
-  const end = noon(to)
-
-  if (account.payment_grace_days != null && account.cut_day != null) {
-    const cut = account.cut_day
-    const grace = account.payment_grace_days
-    const cur = new Date(start.getFullYear(), start.getMonth() - 1, 1, 12, 0, 0, 0)
-    for (let i = 0; i < 26; i++) {
-      const cutDate = dayInMonth(cur.getFullYear(), cur.getMonth() + i, cut)
-      const due = noon(new Date(cutDate))
-      due.setDate(cutDate.getDate() + grace)
-      if (due >= start && due <= end) out.push(due)
-      if (due > end) break
-    }
-    return out
-  }
-
-  if (account.payment_due_day == null) return []
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1, 12, 0, 0, 0)
-  for (let i = 0; i < 26; i++) {
-    const due = dayInMonth(cur.getFullYear(), cur.getMonth() + i, account.payment_due_day)
-    if (due >= start && due <= end) out.push(due)
-    if (due > end) break
-  }
-  return out
+  return vencimientosEntre(account, from, to).map((v) => v.vence)
 }
 
 export function cardCutDates(account: Account, from: Date, to: Date): Date[] {
-  if (account.type !== 'credit' || account.cut_day == null) return []
+  if (account.type !== 'credit') return []
   const start = noon(from)
   const end = noon(to)
   const out: Date[] = []
   for (let i = 0; i < 26; i++) {
-    const d = dayInMonth(start.getFullYear(), start.getMonth() + i, account.cut_day)
+    const d = corteEn(account, start.getFullYear(), start.getMonth() + i)
+    if (!d) return []
     if (d >= start && d <= end) out.push(d)
     if (d > end) break
   }
