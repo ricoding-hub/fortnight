@@ -1,4 +1,4 @@
-import { getRevolvingBalance, msiDelVencimiento } from '@/lib/debt'
+import { getRevolvingBalance, msiDelVencimiento, msiVencido } from '@/lib/debt'
 import { calendarioDe, type CalendarioMsi, type EstadoMes } from '@/lib/msi'
 import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
 import { computePaydays, payFreqOf } from '@/lib/paydays'
@@ -214,9 +214,10 @@ export function buildCalendarEvents(
     let primero = true
     for (const d of cardDueDates(a, start, end)) {
       const key = toKey(d)
-      const msi = msiDelVencimiento(a, installments, key, hoy)
       const esProximo = primero && key >= hoy
       if (esProximo) primero = false
+      // Lo vencido sin pagar se arrastra al siguiente pago.
+      const msi = msiDelVencimiento(a, installments, key, hoy) + (esProximo ? msiVencido(a, installments, hoy) : 0)
       const buffer = Math.min(Number(a.prepay_buffer ?? 0) || 0, msi)
       const exigible = Math.max(0, (esProximo ? minimo : 0) + msi - (esProximo ? buffer : 0))
       out.push({

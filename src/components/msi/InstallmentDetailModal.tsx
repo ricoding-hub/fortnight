@@ -24,7 +24,7 @@ interface InstallmentDetailModalProps {
 
 const ESTADO: Record<EstadoMes, { texto: string; clase: string }> = {
   pagada: { texto: 'Pagada', clase: 'bg-asset-soft text-asset-ink' },
-  'por-pagar': { texto: 'En tu estado', clase: 'bg-warning/30 text-peach-ink' },
+  'por-pagar': { texto: 'Por pagar', clase: 'bg-warning/30 text-peach-ink' },
   vencida: { texto: 'Vencida', clase: 'bg-debt/10 text-debt-ink' },
   proxima: { texto: 'Próxima', clase: 'bg-bg-secondary text-text-secondary' },
 }
@@ -36,9 +36,9 @@ function porQue(m: MesMsi): string {
     const cuando = m.marcadaEl ? ` el ${fechaCorta(m.marcadaEl)}` : ''
     return m.estado === 'pagada' ? `La marcaste pagada${cuando}` : `Marcaste que no la pagaste${cuando}`
   }
-  if (m.estado === 'pagada') return 'Pasó su fecha límite: la damos por pagada'
-  if (m.estado === 'por-pagar') return 'Ya entró a tu estado de cuenta'
-  return m.corte ? `Entra en el corte del ${fechaCorta(m.corte)}` : 'Aún no toca'
+  if (m.estado === 'pagada') return 'Pagada sola: pasó su fecha límite'
+  if (m.estado === 'por-pagar') return 'Ya está en tu estado de cuenta'
+  return 'Aún no se cobra'
 }
 
 /**
@@ -148,13 +148,15 @@ export function InstallmentDetailModal({
                           <span className="sr-only">Mensualidad {m.n}: </span>
                           Vence {fechaCorta(m.vence)}
                           {m.venceEstimado ? ' (aprox.)' : ''}
-                          {m.corte && <span className="font-normal text-text-secondary"> · corte {fechaCorta(m.corte)}</span>}
                         </p>
-                        <p className="text-[11.5px] text-text-secondary">{porQue(m)}</p>
+                        <p className="text-[11.5px] leading-snug text-text-secondary">
+                          {m.corte ? `Corte ${fechaCorta(m.corte)} · ` : ''}
+                          {porQue(m)}
+                        </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-0.5">
                         <span className="font-mono text-[12.5px] font-bold tabular-nums text-text">{formatMXN(m.monto)}</span>
-                        <span className={clsx('rounded-full px-1.5 py-px text-[10.5px] font-bold', ESTADO[m.estado].clase)}>
+                        <span className={clsx('whitespace-nowrap rounded-full px-1.5 py-px text-[10.5px] font-bold', ESTADO[m.estado].clase)}>
                           {ESTADO[m.estado].texto}
                         </span>
                       </div>

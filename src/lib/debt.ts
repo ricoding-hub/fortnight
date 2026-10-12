@@ -117,6 +117,15 @@ export function getDeudaALaVista(accounts: Account[], installments: Installment[
   return Math.round((tarjetas + sueltos) * 100) / 100
 }
 
+/** Mensualidades de esta tarjeta marcadas como no pagadas después de vencer. */
+export function msiVencido(account: Account, installments: Installment[], hoy = hoyKey()): number {
+  return installments
+    .filter((i) => i.account_id === account.id)
+    .flatMap((i) => calendarioDe(i, account, hoy).meses)
+    .filter((m) => m.estado === 'vencida')
+    .reduce((s, m) => s + m.monto, 0)
+}
+
 /** MSI que se paga en la fecha límite `vence` de esta tarjeta. */
 export function msiDelVencimiento(account: Account, installments: Installment[], vence: string, hoy = hoyKey()): number {
   return installments

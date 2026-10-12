@@ -8,6 +8,7 @@ import {
   montoDeMes,
   nuevoCargo,
   sugerirFechaDeCompra,
+  vivo,
 } from './msi'
 import type { CicloTarjeta } from './cardCycle'
 import type { Installment } from '@/types'
@@ -194,5 +195,24 @@ describe('cargo a la tarjeta al editar', () => {
     const vieja = plan({ start_date: '2026-07-03' })
     expect(cargoObjetivo(vieja, bbva, reg)).toBe(10000) // vencieron 5 ago y 5 sep
     expect(nuevoCargo(12000, [plan(), bbva], [vieja, bbva], reg)).toBe(10000)
+  })
+})
+
+describe('correcciones de la revisión', () => {
+  it('tarjeta con día de pago pero sin corte: las mensualidades caen en sus fechas de pago', () => {
+    const sinCorte: CicloTarjeta = { type: 'credit', cut_day: null, payment_due_day: 20, payment_grace_days: null }
+    const c = calendarioMsi(plan(), sinCorte, '2026-10-03')
+    expect(c.meses[0]).toMatchObject({ corte: null, vence: '2026-11-20', venceEstimado: true })
+  })
+
+  it('un plan viejo editado no confunde meses automáticos con marcas', () => {
+    // Plan viejo (sin marcas) cuyo contador ya trae los meses automáticos.
+    const viejo = plan({ start_date: '2026-03-03', month_status: {}, months_paid: 0 })
+    const v = vivo(viejo, bbva, '2026-10-20')
+    // Recalcular sobre el plan vivo (como hace el formulario de edición) con otra fecha.
+    const movido = calendarioMsi({ ...v, start_date: '2026-09-03' }, bbva, '2026-10-20')
+    // Sólo la del 5 oct pasó su fecha; nada quedó como «marcada de antes».
+    expect(movido.pagadas).toBe(1)
+    expect(movido.meses.some((m) => m.origen === 'anterior')).toBe(false)
   })
 })

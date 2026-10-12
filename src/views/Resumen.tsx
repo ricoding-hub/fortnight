@@ -124,7 +124,12 @@ export function Resumen() {
   // Por fechas: lo que aún no entra a un corte no es exigible todavía. Se
   // calcula tarjeta por tarjeta (antes los planes sin tarjeta se restaban del
   // total de las tarjetas).
-  const msiPorCobrarTotal = activeInstallments.reduce((s, i) => s + i.msi.porFacturar, 0)
+  // Sólo planes de tarjetas que existen: es lo que se resta de «Total tarjetas».
+  const msiEnTarjetas = activeInstallments.filter((i) => creditAccounts.some((a) => a.id === i.account_id))
+  const msiPorCobrarTotal = msiEnTarjetas.reduce((s, i) => s + i.msi.porFacturar, 0)
+  const msiSinTarjeta = activeInstallments
+    .filter((i) => !creditAccounts.some((a) => a.id === i.account_id))
+    .reduce((s, i) => s + i.msi.enEstado, 0)
   const deudaALaVista = getDeudaALaVista(accounts, activeInstallments)
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
@@ -615,7 +620,7 @@ export function Resumen() {
             <HeroInfoBlock
               color="#9B7BFF"
               title="Deuda a la vista"
-              body="Lo que ya está reflejado en tus estados de cuenta y debes atender este ciclo: el saldo libre en tarjetas (lo que no está en un plan MSI) más las cuotas MSI de este mes. La deuda futura de tus planes a meses NO cuenta aquí — aún no ha aparecido en tu estado de cuenta."
+              body="Lo que ya está reflejado en tus estados de cuenta y debes atender este ciclo: el saldo de tus tarjetas menos las mensualidades MSI que todavía no entran a ningún corte. Las que ya entraron a tu estado de cuenta sí cuentan: ya toca pagarlas."
             />
             <HeroInfoBlock
               color="#6366F1"
@@ -641,12 +646,12 @@ export function Resumen() {
             </div>
 
             {/* Menos MSI restante */}
-            {activeInstallments.length > 0 && (
+            {msiEnTarjetas.length > 0 && (
               <>
                 <p className="mb-1 mt-3 text-[11px] font-bold text-text-secondary">
                   Menos: MSI que aún no se cobra
                 </p>
-                {activeInstallments
+                {msiEnTarjetas
                   .filter((i) => i.msi.porFacturar > 0)
                   .map((i) => (
                     <div key={i.id} className="flex items-center justify-between py-1">
@@ -664,6 +669,13 @@ export function Resumen() {
                   Las mensualidades que ya entraron a tu estado de cuenta sí cuentan: ya toca pagarlas.
                 </p>
               </>
+            )}
+
+            {msiSinTarjeta > 0.005 && (
+              <div className="mt-2 flex items-center justify-between py-1">
+                <span className="text-text-secondary">Más: MSI sin tarjeta que ya toca</span>
+                <span className="font-mono font-semibold text-text">+{formatMXN(msiSinTarjeta)}</span>
+              </div>
             )}
 
             {/* Total */}

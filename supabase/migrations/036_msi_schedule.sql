@@ -5,7 +5,7 @@
 --
 --   select id, name, months_total, months_paid
 --     from public.installments
---    where months_total < 1 or months_paid < 0 or months_paid > months_total;
+--    where months_total < 1 or months_total > 120 or months_paid < 0 or months_paid > months_total;
 --
 -- 1) Marcas por mes. Cada mensualidad tiene fecha (corte y fecha de pago de la
 --    tarjeta) y se da por pagada sola cuando pasa su fecha límite. `month_status`
@@ -33,6 +33,7 @@ alter table public.installments
   add column if not exists billing_offset smallint not null default 0;
 
 update public.installments set months_total = 1 where months_total < 1;
+update public.installments set months_total = 120 where months_total > 120;
 update public.installments
    set months_paid = least(greatest(months_paid, 0), months_total)
  where months_paid < 0 or months_paid > months_total;

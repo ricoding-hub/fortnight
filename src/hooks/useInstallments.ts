@@ -12,7 +12,7 @@ import {
   conMarca,
   copiaContador,
   liquidarMarcas,
-  marcasRecortadas,
+  marcasGuardables,
   nuevoCargo,
   registradoEl,
   vivo,
@@ -235,7 +235,7 @@ export function useInstallments() {
     const plano = sinEmbebidos(prev)
     const nuevo: Installment = { ...plano, ...patch, updated_at: ahora } as Installment
     // Recortar el plazo deja marcas de meses que ya no existen.
-    const marcas = patch.months_total != null ? marcasRecortadas(plano, patch.months_total) : null
+    const marcas = migrado ? marcasGuardables(plano, patch.months_total ?? undefined) : null
     if (marcas) nuevo.month_status = marcas
     const cicloAntes = cicloDe(prev)
     const cuentaCambia = patch.account_id !== undefined && patch.account_id !== prev.account_id
@@ -288,8 +288,7 @@ export function useInstallments() {
         if (e) throw e
       } else {
         // Sin ella, editar no mueve saldos: se borra y se vuelve a crear.
-        const { error: e1 } = await supabase.from('transactions').delete().eq('id', cargo.id)
-        if (e1) throw e1
+        // Primero el nuevo: si falla, el viejo sigue ahí y el saldo no se pierde.
         const { error: e2 } = await supabase.from('transactions').insert({
           user_id: prev.user_id,
           account_id: cuentaNueva,
@@ -300,6 +299,8 @@ export function useInstallments() {
           installment_id: id,
         })
         if (e2) throw e2
+        const { error: e1 } = await supabase.from('transactions').delete().eq('id', cargo.id)
+        if (e1) throw e1
       }
     } catch (e) {
       // El plan quedó editado pero el cargo no: se regresa el plan a como estaba

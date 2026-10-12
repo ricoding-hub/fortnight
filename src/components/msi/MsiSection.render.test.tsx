@@ -75,8 +75,8 @@ describe('MSI en Cuentas', () => {
   it('el detalle explica cada mes y deja marcar uno', { timeout: 20_000 }, async () => {
     await montar()
     await clic(screen.getByRole('button', { name: /iPhone: ver mensualidades/ }))
-    expect(screen.getAllByText('Pasó su fecha límite: la damos por pagada')).toHaveLength(3)
-    expect(screen.getByText('Ya entró a tu estado de cuenta')).toBeTruthy()
+    expect(screen.getAllByText(/Pagada sola: pasó su fecha límite/)).toHaveLength(3)
+    expect(screen.getByText(/Ya está en tu estado de cuenta/)).toBeTruthy()
     await clic(screen.getByRole('button', { name: 'Cambiar la mensualidad 4' }))
     await clic(screen.getByRole('button', { name: /Marcar pagada/ }))
     const upd = doble.llamadas.find((l) => l.tabla === 'installments' && l.op === 'update')

@@ -133,6 +133,7 @@ export function AcercaDe() {
               'El calendario pone cada mensualidad en su fecha real, con "Ya la pagué" y "Ver plan". El pago de cada tarjeta lleva sólo las mensualidades de ese estado de cuenta',
               'Pagar tu estado de cuenta antes de la fecha límite ya no dispara el aviso de "falta registrar un gasto"',
               'Borrar el cargo de una compra a meses en Movimientos te explica qué pasa y te lleva al plan',
+              'Ahora puedes editar cualquier movimiento (monto, fecha, cuenta, categoría y nota) sin borrarlo y volver a crearlo. Antes de guardar te dice cómo cambia el saldo; si lo mueves a una tarjeta, el signo se ajusta solo',
             ]}
           />
           <VersionRow

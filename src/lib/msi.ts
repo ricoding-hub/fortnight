@@ -141,6 +141,15 @@ function fechasDeMes(compra: string, ciclo: CicloTarjeta | null, offset: number,
     const { vence, estimado } = venceDelCorte(ciclo, corte)
     return { corte: toKey(corte), vence: toKey(vence), estimado, desde: toKey(corte) }
   }
+  // Tarjeta sin día de corte pero con día de pago: las mensualidades caen en
+  // sus fechas de pago (desde el mes siguiente a la compra), para que el pago
+  // de la tarjeta las lleve. Sin corte, la fecha es aproximada.
+  const diaPago = ciclo && ciclo.type === 'credit' && ciclo.payment_grace_days == null ? Number(ciclo.payment_due_day) : NaN
+  if (Number.isInteger(diaPago) && diaPago >= 1 && diaPago <= 31) {
+    const vence = dayInMonth(c.getFullYear(), c.getMonth() + offset + n, diaPago)
+    const desde = dayInMonth(c.getFullYear(), c.getMonth() + offset + n - 1, diaPago)
+    return { corte: null, vence: toKey(vence), estimado: true, desde: toKey(desde) }
+  }
   const vence = dayInMonth(c.getFullYear(), c.getMonth() + offset + n, c.getDate())
   const desde = dayInMonth(c.getFullYear(), c.getMonth() + offset + n - 1, c.getDate())
   return { corte: null, vence: toKey(vence), estimado: false, desde: toKey(desde) }
@@ -223,6 +232,15 @@ function guardable(marcas: Record<number, MarcaMes>): Record<string, unknown> {
   return out
 }
 
+/**
+ * Las marcas del plan, listas para guardar. Se escriben en TODA edición: si un
+ * plan viejo se guardara con `month_status` vacío y `months_paid` ya con los
+ * meses automáticos, la siguiente lectura los tomaría como marcados a mano.
+ */
+export function marcasGuardables(inst: PlanMsi, nuevoTotal?: number): Record<string, unknown> {
+  return guardable(marcasEfectivas(nuevoTotal != null ? { ...inst, months_total: nuevoTotal } : inst))
+}
+
 /** Marca (o desmarca) una mensualidad. `'auto'` la regresa a lo que digan las fechas. */
 export function conMarca(inst: PlanMsi, n: number, e: 'paid' | 'unpaid' | 'auto', hoy: string): Record<string, unknown> {
   const marcas = { ...marcasEfectivas(inst) }
@@ -237,14 +255,6 @@ export function liquidarMarcas(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: s
   for (const m of calendarioMsi(inst, ciclo, hoy).meses) {
     if (m.estado !== 'pagada') marcas[m.n] = { s: 'paid', at: hoy }
   }
-  return guardable(marcas)
-}
-
-/** Las marcas que sobreviven a un cambio de plazo (las de meses que ya no existen se van). */
-export function marcasRecortadas(inst: PlanMsi, nuevoTotal: number): Record<string, unknown> | null {
-  const crudo = inst.month_status
-  if (!crudo || typeof crudo !== 'object' || Object.keys(crudo).length === 0) return null
-  const marcas = marcasEfectivas({ ...inst, months_total: nuevoTotal })
   return guardable(marcas)
 }
 
@@ -315,7 +325,10 @@ export interface InstallmentVivo extends Installment {
 
 export function vivo(inst: Installment, ciclo: CicloTarjeta | null, hoy: string, cargo: CargoMsi | null = null): InstallmentVivo {
   const cal = calendarioMsi(inst, ciclo, hoy)
-  return { ...inst, ...copiaContador(cal), msi: cal, ciclo, cargo }
+  // `months_paid` se sobrescribe con lo que dicen las fechas, así que las marcas
+  // se guardan ya resueltas: recalcular sobre el plan vivo no confunde los
+  // meses automáticos con marcas «anteriores».
+  return { ...inst, month_status: marcasGuardables(inst), ...copiaContador(cal), msi: cal, ciclo, cargo }
 }
 
 /** El calendario de un plan, ya calculado si viene «vivo». */
