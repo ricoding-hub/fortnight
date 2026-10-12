@@ -6,10 +6,11 @@ import { DayDetailModal } from '@/components/calendar/DayDetailModal'
 import { EVENT_STYLE, KIND_ORDER, PRIMARY_CELL, dominantPrimary } from '@/components/calendar/eventStyle'
 import { DayMarkers } from '@/components/calendar/DayMarkers'
 import {
-  buildCalendarEvents, eventsByDay, eventsInMonth, monthGrid, monthTotals, noon,
+  buildCalendarEvents, fromKey, eventsByDay, eventsInMonth, monthGrid, monthTotals,
   projectDailyBalance, toKey, WEEKDAYS_ES,
   type CalendarEventKind, type CalendarInput,
 } from '@/lib/calendar'
+import { useHoy } from '@/hooks/useHoy'
 import { formatMXN, formatMonthMX } from '@/lib/format'
 
 
@@ -17,6 +18,8 @@ interface FinanceCalendarProps extends CalendarInput {
   /** Liquid cash today — the starting point of the projection. */
   startCash: number
   onOpenAccount?: (accountId: string) => void
+  onMarcarMes?: (installmentId: string, n: number) => Promise<void>
+  onVerPlan?: (installmentId: string) => void
 }
 
 /**
@@ -27,8 +30,10 @@ interface FinanceCalendarProps extends CalendarInput {
  * called out, which is the whole reason to look at money on a calendar
  * instead of a list.
  */
-export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCalendarProps) {
-  const today = useMemo(() => noon(new Date()), [])
+export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPlan, ...data }: FinanceCalendarProps) {
+  // Cambia sola a medianoche: la PWA se queda abierta días.
+  const hoy = useHoy()
+  const today = useMemo(() => fromKey(hoy), [hoy])
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1, 12))
   const [selected, setSelected] = useState<string | null>(null)
   const [hidden, setHidden] = useState<Set<CalendarEventKind>>(new Set())
@@ -39,9 +44,9 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
   const rangeTo = grid[grid.length - 1]
 
   const allEvents = useMemo(
-    () => buildCalendarEvents(data, rangeFrom, rangeTo),
+    () => buildCalendarEvents(data, rangeFrom, rangeTo, hoy),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, rangeFrom, rangeTo],
+    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, rangeFrom, rangeTo, hoy],
   )
   const events = useMemo(
     () => allEvents.filter((e) => !hidden.has(e.kind)),
@@ -233,6 +238,8 @@ export function FinanceCalendar({ startCash, onOpenAccount, ...data }: FinanceCa
         projected={selected ? balances.get(selected) : undefined}
         accounts={data.accounts}
         onOpenAccount={onOpenAccount}
+        onMarcarMes={onMarcarMes}
+        onVerPlan={onVerPlan}
       />
     </Card>
   )

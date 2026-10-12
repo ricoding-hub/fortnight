@@ -1,8 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { getInstallmentRemaining } from '@/lib/debt'
+import { useHoy } from '@/hooks/useHoy'
+import { useTableChannel } from '@/hooks/useTableChannel'
+import { tieneEsquemaMsi } from '@/lib/esquema'
+import { toKey } from '@/lib/localDate'
+import type { CicloTarjeta } from '@/lib/cardCycle'
+import {
+  calendarioMsi,
+  conMarca,
+  copiaContador,
+  liquidarMarcas,
+  marcasRecortadas,
+  nuevoCargo,
+  registradoEl,
+  vivo,
+  type CargoMsi,
+  type InstallmentVivo,
+} from '@/lib/msi'
 import type { Installment } from '@/types'
 
 export interface NewInstallment {
@@ -10,39 +26,89 @@ export interface NewInstallment {
   total_amount: number
   monthly_amount: number
   months_total: number
-  months_paid?: number
   account_id?: string | null
+  /** Fecha de compra. Con ella y el corte de la tarjeta se sabe en qué mensualidad va. */
   start_date?: string
   is_zero_interest?: boolean
+  /** Promos «empieza a pagar en N meses». */
+  billing_offset?: number
   /**
-   * Transient, never stored: put the outstanding principal on the linked card
-   * so `accounts.balance` really contains what `getRevolvingBalance` has
-   * always assumed. Ignored without an `account_id`.
+   * Transient, never stored: put what is still owed on the linked card so
+   * `accounts.balance` really contains it. Ignored without an `account_id`.
    */
   charge_to_card?: boolean
 }
 
-export type InstallmentPatch = Partial<NewInstallment> & { months_paid?: number; status?: 'active' | 'paid' }
+export type InstallmentPatch = Partial<Omit<NewInstallment, 'charge_to_card'>>
 
-const EMPTY: Installment[] = []
+/** La fila tal como llega, con la tarjeta y el cargo embebidos. */
+type Fila = Installment & {
+  cuenta?: CicloTarjeta | null
+  vinculados?: (CargoMsi & { type?: string })[] | null
+}
 
+const EMPTY: InstallmentVivo[] = []
+
+/** El ciclo de una tarjeta, para saber qué mensualidades ya vencieron. */
+async function cicloDeCuenta(accountId: string | null | undefined): Promise<CicloTarjeta | null> {
+  if (!accountId) return null
+  const { data } = await supabase
+    .from('accounts')
+    .select('type, cut_day, payment_due_day, payment_grace_days')
+    .eq('id', accountId)
+    .maybeSingle()
+  return (data as CicloTarjeta | null) ?? null
+}
+const CON_EMBEBIDOS =
+  '*, cuenta:accounts(type, cut_day, payment_due_day, payment_grace_days), vinculados:transactions(id, amount, account_id, date, type)'
+
+function cargoDe(f: Fila): CargoMsi | null {
+  const c = (f.vinculados ?? []).find((t) => t.type === 'installment') ?? null
+  return c ? { id: c.id, amount: Number(c.amount), account_id: c.account_id, date: c.date } : null
+}
+
+function cicloDe(f: Fila): CicloTarjeta | null {
+  return f.account_id && f.cuenta ? f.cuenta : null
+}
+
+/** Sólo las columnas de la tabla, sin lo embebido. */
+function sinEmbebidos(f: Fila): Installment {
+  const { cuenta: _c, vinculados: _v, ...resto } = f
+  void _c
+  void _v
+  return resto
+}
+
+/**
+ * Planes a meses con su calendario.
+ *
+ * Devuelve cada plan «vivo»: con `months_paid` y `status` calculados por fechas
+ * (ver src/lib/msi.ts), su tarjeta y el cargo que lo respalda. «Mensualidad 4
+ * de 12» avanza sola con `useHoy`, y en tiempo real escucha planes y tarjetas
+ * (cambiar el día de corte cambia las fechas).
+ */
 export function useInstallments() {
   const { user } = useAuth()
-  const [data, setData] = useState<Installment[]>([])
+  const hoy = useHoy()
+  const [filas, setFilas] = useState<Fila[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | null>(null)
-  const [channelKey] = useState(() => crypto.randomUUID())
 
   const fetchInstallments = useCallback(async () => {
     if (!user) return
-    const { data: rows, error: err } = await supabase
+    let res = await supabase
       .from('installments')
-      .select('*')
+      .select(CON_EMBEBIDOS)
       .order('created_at', { ascending: false })
-    if (err) setError(err)
+    // Si la consulta con tarjeta y cargo falla (caché de esquema, permisos), los
+    // planes se muestran igual, sin fechas de corte.
+    if (res.error) {
+      res = await supabase.from('installments').select('*').order('created_at', { ascending: false })
+    }
+    if (res.error) setError(res.error)
     else {
       setError(null)
-      setData((rows ?? []) as Installment[])
+      setFilas((res.data ?? []) as Fila[])
     }
     setLoading(false)
   }, [user])
@@ -51,50 +117,62 @@ export function useInstallments() {
     if (!user) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchInstallments()
+  }, [user, fetchInstallments])
 
-    const channel = supabase
-      .channel(`installments:${channelKey}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'installments',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => void fetchInstallments(),
-      )
-      .subscribe()
+  useTableChannel(
+    'installments',
+    user
+      ? [
+          { table: 'installments', filter: `user_id=eq.${user.id}` },
+          // Un cargo nuevo o borrado mueve el saldo de la tarjeta; cambiar el
+          // corte mueve las fechas. Las dos cosas llegan por aquí.
+          { table: 'accounts', filter: `user_id=eq.${user.id}` },
+        ]
+      : null,
+    () => void fetchInstallments(),
+  )
 
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [user, channelKey, fetchInstallments])
+  const data = useMemo(
+    () => filas.map((f) => vivo(sinEmbebidos(f), cicloDe(f), hoy, cargoDe(f))),
+    [filas, hoy],
+  )
+
+  function filaDe(id: string) {
+    return filas.find((f) => f.id === id)
+  }
+
+  function parchar(id: string, cambios: Partial<Fila>) {
+    setFilas((cur) => cur.map((f) => (f.id === id ? { ...f, ...cambios } : f)))
+  }
 
   async function create(inst: NewInstallment): Promise<void> {
     if (!user) throw new Error('Not authenticated')
-    const { charge_to_card: chargeToCard, ...row } = inst
-    const tempId = crypto.randomUUID()
-    const now = new Date().toISOString()
-    const startMonthsPaid = row.months_paid ?? 0
-    const startDate = row.start_date ?? now.slice(0, 10)
-    const status = startMonthsPaid >= row.months_total ? 'paid' : 'active'
-    const optimistic: Installment = {
-      id: tempId,
+    const { charge_to_card: chargeToCard, billing_offset, ...row } = inst
+    const migrado = await tieneEsquemaMsi()
+    const ahora = new Date().toISOString()
+    const hoyLocal = toKey(new Date())
+    const startDate = row.start_date || hoyLocal
+    const base: Installment = {
+      id: crypto.randomUUID(),
       user_id: user.id,
       account_id: row.account_id ?? null,
       name: row.name,
       total_amount: row.total_amount,
       monthly_amount: row.monthly_amount,
       months_total: row.months_total,
-      months_paid: startMonthsPaid,
+      months_paid: 0,
       start_date: startDate,
-      status,
+      status: 'active',
       is_zero_interest: row.is_zero_interest ?? true,
-      created_at: now,
-      updated_at: now,
+      created_at: ahora,
+      updated_at: ahora,
+      month_status: migrado ? { _v: 2 } : undefined,
+      billing_offset: billing_offset ?? 0,
     }
-    setData((prev) => [optimistic, ...prev])
+    // La tarjeta (si ya la tenemos cargada) para saber qué ya venció.
+    const ciclo = await cicloDeCuenta(row.account_id)
+    const cal = calendarioMsi(base, ciclo, hoyLocal)
+    setFilas((prev) => [{ ...base, ...copiaContador(cal) }, ...prev])
 
     // The plan is the source of truth and the charge points back at it, so the
     // plan has to exist first — the foreign key leaves no other order.
@@ -103,25 +181,24 @@ export function useInstallments() {
       .insert({
         ...row,
         user_id: user.id,
-        months_paid: startMonthsPaid,
-        status,
-        is_zero_interest: row.is_zero_interest ?? true,
         start_date: startDate,
+        is_zero_interest: row.is_zero_interest ?? true,
+        ...copiaContador(cal),
+        ...(migrado ? { month_status: { _v: 2 }, billing_offset: billing_offset ?? 0 } : {}),
       })
       .select('id')
       .single()
 
     if (err || !inserted) {
-      setData((prev) => prev.filter((i) => i.id !== tempId))
+      setFilas((prev) => prev.filter((i) => i.id !== base.id))
       throw err ?? new Error('No se pudo guardar el plan')
     }
 
     if (chargeToCard && row.account_id) {
-      // With nothing paid yet, the card took the sticker price. Deriving it
-      // from the rounded monthly instead would charge 574.52 for a 574.50
-      // purchase (143.63 × 4), and those cents never wash out.
-      const amount =
-        startMonthsPaid === 0 ? row.total_amount : getInstallmentRemaining(optimistic)
+      // Lo que falta por pagar: sin pagos es el total exacto (la última
+      // mensualidad absorbe el redondeo). Si la compra es vieja, lo que ya
+      // venció se pagó con estados de cuenta que ya estaban en el saldo.
+      const amount = cal.restante
       if (amount > 0) {
         const { error: chargeErr } = await supabase.from('transactions').insert({
           user_id: user.id,
@@ -136,106 +213,203 @@ export function useInstallments() {
         // exactly the amount we were trying to make visible. Undo it instead.
         if (chargeErr) {
           await supabase.from('installments').delete().eq('id', inserted.id)
-          setData((prev) => prev.filter((i) => i.id !== tempId))
+          setFilas((prev) => prev.filter((i) => i.id !== base.id))
           throw chargeErr
         }
       }
     }
-  }
-
-  /** The charge row backing a plan, if the user asked us to create one. */
-  async function findCharge(installmentId: string) {
-    const { data: rows } = await supabase
-      .from('transactions')
-      .select('id, amount')
-      .eq('installment_id', installmentId)
-      .limit(1)
-    return rows?.[0] ?? null
-  }
-
-  async function update(id: string, patch: InstallmentPatch): Promise<void> {
-    const prev = data.find((i) => i.id === id)
-    const now = new Date().toISOString()
-    setData((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch, updated_at: now } : i)))
-    const { error: err } = await supabase
-      .from('installments')
-      .update({ ...patch, updated_at: now })
-      .eq('id', id)
-    if (err) {
-      if (prev) setData((cur) => cur.map((i) => (i.id === id ? prev : i)))
-      throw err
-    }
-
-    // Only a correction to the plan's SIZE moves the charge. Marking a month
-    // paid must not: that instalment is settled through the card payment, and
-    // shrinking the charge here would take the money off the balance twice.
-    const resized =
-      prev != null &&
-      ((patch.monthly_amount != null && Number(patch.monthly_amount) !== Number(prev.monthly_amount)) ||
-        (patch.months_total != null && Number(patch.months_total) !== Number(prev.months_total)))
-    if (resized) await rechargeCard(id, { ...prev, ...patch } as Installment)
+    await fetchInstallments()
   }
 
   /**
-   * Bring an existing charge in line with a corrected plan.
-   *
-   * It deletes and re-inserts instead of updating the amount, because
-   * `trg_update_balance` only fires on INSERT and DELETE — an UPDATE of
-   * `transactions.amount` would change the row and leave the balance untouched,
-   * with no error to notice.
+   * Editar el plan. El cargo a la tarjeta se ajusta por DIFERENCIA (nunca resta
+   * dos veces lo ya pagado), se mueve a la tarjeta nueva y cambia de fecha con
+   * la compra. Devuelve el cargo antes y después, para avisarlo.
    */
-  async function rechargeCard(installmentId: string, inst: Installment): Promise<void> {
-    const charge = await findCharge(installmentId)
-    if (!charge) return
-    const amount = getInstallmentRemaining(inst)
-    if (Math.abs(Number(charge.amount) - amount) < 0.005) return
+  async function update(id: string, patch: InstallmentPatch): Promise<{ antes: number | null; despues: number | null }> {
+    const prev = filaDe(id)
+    if (!prev) return { antes: null, despues: null }
+    const migrado = await tieneEsquemaMsi()
+    const ahora = new Date().toISOString()
+    const hoyLocal = toKey(new Date())
+    const plano = sinEmbebidos(prev)
+    const nuevo: Installment = { ...plano, ...patch, updated_at: ahora } as Installment
+    // Recortar el plazo deja marcas de meses que ya no existen.
+    const marcas = patch.months_total != null ? marcasRecortadas(plano, patch.months_total) : null
+    if (marcas) nuevo.month_status = marcas
+    const cicloAntes = cicloDe(prev)
+    const cuentaCambia = patch.account_id !== undefined && patch.account_id !== prev.account_id
+    const cicloDespues = cuentaCambia ? await cicloDeCuenta(patch.account_id) : cicloAntes
+    const cal = calendarioMsi(nuevo, cicloDespues, hoyLocal)
 
-    await supabase.from('transactions').delete().eq('id', charge.id)
-    if (amount > 0 && inst.account_id) {
-      await supabase.from('transactions').insert({
-        user_id: inst.user_id,
-        account_id: inst.account_id,
-        amount,
-        description: inst.name,
-        date: inst.start_date,
-        type: 'installment',
-        installment_id: installmentId,
+    const { billing_offset, ...columnas } = patch
+    parchar(id, { ...patch, updated_at: ahora, ...copiaContador(cal), ...(marcas ? { month_status: marcas } : {}) })
+    const { error: err } = await supabase
+      .from('installments')
+      .update({
+        ...columnas,
+        ...copiaContador(cal),
+        updated_at: ahora,
+        ...(migrado ? { ...(billing_offset != null ? { billing_offset } : {}), ...(marcas ? { month_status: marcas } : {}) } : {}),
       })
-    }
-  }
-
-  async function markMonthPaid(id: string): Promise<void> {
-    const inst = data.find((i) => i.id === id)
-    if (!inst) return
-    const newPaid = inst.months_paid + 1
-    const newStatus = newPaid >= inst.months_total ? 'paid' : 'active'
-    await update(id, { months_paid: newPaid, status: newStatus })
-  }
-
-  async function remove(id: string): Promise<void> {
-    const prev = data.find((i) => i.id === id)
-    setData((cur) => cur.filter((i) => i.id !== id))
-
-    // Delete the charge FIRST. The foreign key is `on delete set null`, so
-    // dropping the plan first would orphan the charge and leave the card
-    // permanently inflated by an amount nothing on screen explains any more.
-    const charge = await findCharge(id)
-    if (charge) {
-      const { error: chargeErr } = await supabase.from('transactions').delete().eq('id', charge.id)
-      if (chargeErr) {
-        if (prev) setData((cur) => [prev, ...cur])
-        throw chargeErr
-      }
-    }
-
-    const { error: err } = await supabase.from('installments').delete().eq('id', id)
+      .eq('id', id)
     if (err) {
-      if (prev) setData((cur) => [prev, ...cur])
+      setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
+      throw err
+    }
+
+    const cargo = cargoDe(prev)
+    if (!cargo) {
+      await fetchInstallments()
+      return { antes: null, despues: null }
+    }
+    const reg = registradoEl(plano, hoyLocal)
+    const cuentaNueva = cuentaCambia ? patch.account_id ?? null : prev.account_id
+    const monto = nuevoCargo(cargo.amount, [plano, cicloAntes], [nuevo, cicloDespues], reg)
+
+    try {
+      if (!cuentaNueva || monto <= 0) {
+        // «Sin tarjeta»: el cargo se quita (el formulario lo avisa antes).
+        const { error: e } = await supabase.from('transactions').delete().eq('id', cargo.id)
+        if (e) throw e
+      } else if (
+        Math.abs(monto - cargo.amount) < 0.005 &&
+        cuentaNueva === cargo.account_id &&
+        nuevo.start_date === cargo.date &&
+        nuevo.name === prev.name
+      ) {
+        // Nada que mover.
+      } else if (migrado) {
+        // Con la migración 036 el trigger recalcula el saldo al editar.
+        const { error: e } = await supabase
+          .from('transactions')
+          .update({ amount: monto, account_id: cuentaNueva, date: nuevo.start_date, description: nuevo.name })
+          .eq('id', cargo.id)
+        if (e) throw e
+      } else {
+        // Sin ella, editar no mueve saldos: se borra y se vuelve a crear.
+        const { error: e1 } = await supabase.from('transactions').delete().eq('id', cargo.id)
+        if (e1) throw e1
+        const { error: e2 } = await supabase.from('transactions').insert({
+          user_id: prev.user_id,
+          account_id: cuentaNueva,
+          amount: monto,
+          description: nuevo.name,
+          date: nuevo.start_date,
+          type: 'installment',
+          installment_id: id,
+        })
+        if (e2) throw e2
+      }
+    } catch (e) {
+      // El plan quedó editado pero el cargo no: se regresa el plan a como estaba
+      // para que tarjeta y plan no cuenten historias distintas.
+      await supabase
+        .from('installments')
+        .update({
+          name: prev.name,
+          total_amount: prev.total_amount,
+          monthly_amount: prev.monthly_amount,
+          months_total: prev.months_total,
+          account_id: prev.account_id,
+          start_date: prev.start_date,
+          is_zero_interest: prev.is_zero_interest,
+          months_paid: prev.months_paid,
+          status: prev.status,
+          ...(migrado ? { month_status: prev.month_status ?? { _v: 2 }, billing_offset: prev.billing_offset ?? 0 } : {}),
+        })
+        .eq('id', id)
+      setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
+      throw e
+    }
+    await fetchInstallments()
+    return { antes: cargo.amount, despues: cuentaNueva && monto > 0 ? monto : 0 }
+  }
+
+  /** Marcar una mensualidad pagada, no pagada, o regresarla a lo que digan las fechas. */
+  async function marcarMes(id: string, n: number, e: 'paid' | 'unpaid' | 'auto'): Promise<void> {
+    const prev = filaDe(id)
+    if (!prev) return
+    const migrado = await tieneEsquemaMsi()
+    const hoyLocal = toKey(new Date())
+    const plano = sinEmbebidos(prev)
+
+    if (!migrado) {
+      // Sin la migración sólo existe el contador: se mueve si la marca es la
+      // siguiente (o la última, para deshacer).
+      const actual = Number(plano.months_paid) || 0
+      const pagados = e === 'paid' && n === actual + 1 ? actual + 1 : e !== 'paid' && n === actual ? actual - 1 : null
+      if (pagados == null) throw new Error('Corre la migración 036 para marcar meses sueltos')
+      const status = pagados >= plano.months_total ? 'paid' : 'active'
+      parchar(id, { months_paid: pagados, status })
+      const { error: err } = await supabase.from('installments').update({ months_paid: pagados, status }).eq('id', id)
+      if (err) {
+        setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
+        throw err
+      }
+      return
+    }
+
+    const month_status = conMarca(plano, n, e, hoyLocal)
+    const cal = calendarioMsi({ ...plano, month_status }, cicloDe(prev), hoyLocal)
+    const cambios = { month_status, ...copiaContador(cal), updated_at: new Date().toISOString() }
+    parchar(id, cambios)
+    const { error: err } = await supabase.from('installments').update(cambios).eq('id', id)
+    if (err) {
+      setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
       throw err
     }
   }
 
-  const active = data.filter((i) => i.status === 'active')
+  /** «Liquidar el resto»: todas las mensualidades que faltan quedan pagadas hoy. */
+  async function liquidar(id: string): Promise<void> {
+    const prev = filaDe(id)
+    if (!prev) return
+    const migrado = await tieneEsquemaMsi()
+    const hoyLocal = toKey(new Date())
+    const plano = sinEmbebidos(prev)
+    const cambios = migrado
+      ? (() => {
+          const month_status = liquidarMarcas(plano, cicloDe(prev), hoyLocal)
+          return { month_status, months_paid: Number(plano.months_total), status: 'paid' as const }
+        })()
+      : { months_paid: Number(plano.months_total), status: 'paid' as const }
+    parchar(id, cambios)
+    const { error: err } = await supabase
+      .from('installments')
+      .update({ ...cambios, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (err) {
+      setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
+      throw err
+    }
+  }
+
+  /**
+   * Borrar el plan. Por omisión el cargo se quita sólo si no se ha pagado nada:
+   * con pagos hechos, esos pagos ya bajaron el saldo, y quitar el cargo
+   * completo lo dejaba por debajo de lo real.
+   */
+  async function remove(id: string, opciones: { quitarCargo: boolean }): Promise<void> {
+    const prev = filaDe(id)
+    setFilas((cur) => cur.filter((i) => i.id !== id))
+    const cargo = prev ? cargoDe(prev) : null
+    // El cargo va primero: la llave foránea es `on delete set null`.
+    if (cargo && opciones.quitarCargo) {
+      const { error: chargeErr } = await supabase.from('transactions').delete().eq('id', cargo.id)
+      if (chargeErr) {
+        if (prev) setFilas((cur) => [prev, ...cur])
+        throw chargeErr
+      }
+    }
+    const { error: err } = await supabase.from('installments').delete().eq('id', id)
+    if (err) {
+      if (prev) setFilas((cur) => [prev, ...cur])
+      throw err
+    }
+  }
+
+  const active = useMemo(() => data.filter((i) => i.status === 'active'), [data])
 
   return {
     data: user ? data : EMPTY,
@@ -244,7 +418,8 @@ export function useInstallments() {
     error,
     create,
     update,
-    markMonthPaid,
+    marcarMes,
+    liquidar,
     remove,
   }
 }

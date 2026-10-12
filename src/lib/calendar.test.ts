@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCalendarEvents, cardCutDates, cardDueDates, dayInMonth,
-  eventsByDay, fromKey, installmentDates, monthGrid, monthTotals, projectDailyBalance,
+  eventsByDay, fromKey, monthGrid, monthTotals, projectDailyBalance,
   startOfWeekMx, subscriptionDates, toKey, weekdayIndex, type CalendarEvent,
 } from '@/lib/calendar'
 import type { Account, Installment, Subscription, UserConfig } from '@/types'
@@ -147,16 +147,46 @@ describe('suscripciones', () => {
 })
 
 describe('mensualidades', () => {
-  it('projects only the months still owed', () => {
-    // 12 meses, 2 pagados -> quedan 10, empezando en el mes 2 desde enero
-    const got = installmentDates(msi(), d('2026-01-01'), d('2027-12-31')).map(toKey)
-    expect(got).toHaveLength(10)
-    expect(got[0]).toBe('2026-03-05')
+  const tarjeta = account({ cut_day: 1, payment_due_day: 15 })
+  const solo = (inst: Installment, accounts = [tarjeta], hoy = '2026-09-01') =>
+    buildCalendarEvents(
+      { accounts, installments: [inst], subscriptions: [], transactions: [], goals: [], config: null },
+      d('2026-01-01'), d('2027-12-31'), hoy,
+    ).filter((e) => e.kind === 'installment')
+
+  it('cada mensualidad cae en la fecha de pago de su corte, con su número', () => {
+    // Compra 5 ene, corte día 1 → la 1ª entra en el corte del 1 feb y vence el 15.
+    const ev = solo(msi({ months_paid: 0 }))
+    expect(ev).toHaveLength(12)
+    expect(ev[0]).toMatchObject({ date: '2026-02-15', mes: { n: 1, de: 12 } })
+    expect(ev[0].tags).toContain('1 de 12')
+    expect(ev[11].date).toBe('2027-01-15')
   })
 
-  it('ignores a finished plan', () => {
-    expect(installmentDates(msi({ status: 'paid' }), d('2026-01-01'), d('2027-12-31'))).toEqual([])
-    expect(installmentDates(msi({ months_paid: 12 }), d('2026-01-01'), d('2027-12-31'))).toEqual([])
+  it('las que ya pasaron salen como pagadas, y el plan terminado no se borra del historial', () => {
+    const ev = solo(msi({ months_paid: 0 }), [tarjeta], '2026-09-20')
+    expect(ev.find((e) => e.date === '2026-08-15')?.mes?.estado).toBe('pagada')
+    expect(ev.find((e) => e.date === '2026-09-15')?.mes?.estado).toBe('pagada')
+    expect(ev.find((e) => e.date === '2026-10-15')?.mes?.estado).toBe('proxima')
+  })
+
+  it('un MSI sin tarjeta sí sale de tu efectivo el día que vence', () => {
+    const ev = solo(msi({ account_id: null, months_paid: 0 }), [], '2026-01-05')
+    expect(ev[0]).toMatchObject({ date: '2026-02-05', countsToCash: true })
+  })
+
+  it('el pago de la tarjeta lleva sólo las mensualidades de ese estado de cuenta', () => {
+    const corto = msi({ months_total: 3, total_amount: 3000, months_paid: 0 })
+    const ev = buildCalendarEvents(
+      { accounts: [account({ cut_day: 1, payment_due_day: 15, balance: 3000 })], installments: [corto], subscriptions: [], transactions: [], goals: [], config: null },
+      d('2026-02-01'), d('2026-06-30'), '2026-02-01',
+    ).filter((e) => e.kind === 'card_due')
+    const porFecha = Object.fromEntries(ev.map((e) => [e.date, -e.amount]))
+    // Feb–abr: una mensualidad cada uno. Mayo y junio: el plan ya terminó.
+    expect(porFecha['2026-03-15']).toBe(1000)
+    expect(porFecha['2026-04-15']).toBe(1000)
+    expect(porFecha['2026-05-15']).toBe(0)
+    expect(porFecha['2026-06-15']).toBe(0)
   })
 })
 

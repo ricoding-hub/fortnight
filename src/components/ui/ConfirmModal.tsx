@@ -1,10 +1,13 @@
+import type { ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
 interface ConfirmModalProps {
   open: boolean
   title: string
-  message: string
+  message: ReactNode
+  /** Opciones extra entre el mensaje y los botones (p. ej. «quitar también el cargo»). */
+  children?: ReactNode
   confirmLabel?: string
   cancelLabel?: string
   destructive?: boolean
@@ -21,10 +24,14 @@ export function ConfirmModal({
   destructive = false,
   onConfirm,
   onClose,
+  children,
 }: ConfirmModalProps) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
-      <p className="mb-5 text-[13px] leading-relaxed text-text-secondary">{message}</p>
+      <div className="mb-5 flex flex-col gap-3">
+        <p className="text-[13px] leading-relaxed text-text-secondary">{message}</p>
+        {children}
+      </div>
       <div className="flex gap-2">
         <Button
           variant="secondary"

@@ -1,165 +1,119 @@
 import { useState } from 'react'
-import { IconCalendarEvent, IconCheck } from '@tabler/icons-react'
+import { IconCalendarEvent, IconCheck, IconChevronRight } from '@tabler/icons-react'
+import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { formatMXN } from '@/lib/format'
-import { getInstallmentRemaining } from '@/lib/debt'
+import { lineaDeEstado } from '@/lib/msiTexto'
 import { bankLogoUrl } from '@/lib/banks'
-import type { Account, Installment } from '@/types'
+import type { InstallmentVivo } from '@/lib/msi'
+import type { Account } from '@/types'
 
 interface InstallmentCardProps {
-  installment: Installment
+  installment: InstallmentVivo
   linkedAccount?: Account
-  onMarkPaid?: () => void
-  onDelete?: () => void
-  onEdit?: () => void
+  /** Abre el detalle mes por mes. */
+  onOpen: () => void
+  /** «Ya la pagué»: sólo cuando la mensualidad en curso ya está en el estado de cuenta. */
+  onPagarActual?: () => void
 }
 
-export function InstallmentCard({ installment: inst, linkedAccount, onMarkPaid, onDelete, onEdit }: InstallmentCardProps) {
+/**
+ * Un plan a meses de un vistazo: en qué mensualidad vas, qué toca y cuándo.
+ *
+ * Antes era un contador («3/12 meses») con un botón «Marcar mes pagado» que
+ * había que acordarse de tocar cada mes. Ahora el avance sale de las fechas de
+ * la tarjeta, y el detalle (al tocarla) deja corregir cualquier mes.
+ */
+export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPagarActual }: InstallmentCardProps) {
   const [logoFailed, setLogoFailed] = useState(false)
-  const remaining = inst.months_total - inst.months_paid
-  const progress = inst.months_total > 0 ? inst.months_paid / inst.months_total : 0
-  const isDone = inst.status === 'paid'
-  const remainingAmount = getInstallmentRemaining(inst)
+  const { msi } = inst
+  const M = msi.meses.length
+  const enEstado = msi.meses.filter((m) => m.estado === 'por-pagar' || m.estado === 'vencida').length
+  const linea = lineaDeEstado(inst)
   const showLogo = !!linkedAccount?.logo_domain && !logoFailed
+  const puedePagar =
+    onPagarActual && msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
 
   return (
-    <Card className="p-3.5">
-      <div className="flex items-start gap-3">
+    <Card className="p-0">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`${inst.name}: ver mensualidades`}
+        className="flex w-full items-start gap-3 p-3.5 text-left transition-transform active:scale-[0.99] motion-reduce:transition-none"
+      >
         <div
-          className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl"
-          style={{
-            background: showLogo
-              ? 'white'
-              : isDone
-                ? 'var(--color-asset-soft)'
-                : 'var(--color-primary-soft)',
-          }}
+          className={clsx(
+            'grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl',
+            showLogo ? 'bg-white' : msi.terminado ? 'bg-asset-soft' : 'bg-primary-soft',
+          )}
         >
           {showLogo ? (
             <img
               src={bankLogoUrl(linkedAccount!.logo_domain!)}
-              alt={linkedAccount!.name}
+              alt=""
               className="h-6 w-6 object-contain"
               onError={() => setLogoFailed(true)}
             />
           ) : (
-            <IconCalendarEvent
-              size={18}
-              stroke={1.75}
-              color={isDone ? 'var(--color-asset-deep)' : 'var(--color-primary-deep)'}
-            />
+            <IconCalendarEvent size={18} stroke={1.75} className={msi.terminado ? 'text-asset-deep' : 'text-primary-deep'} />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate text-[13px] font-bold text-text">{inst.name}</p>
-            {isDone ? (
-              <span className="shrink-0 rounded-full bg-asset-soft px-2 py-0.5 text-[10px] font-extrabold text-asset-deep">
-                Completado
-              </span>
-            ) : (
-              <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-extrabold text-primary-deep">
-                {remaining} mes{remaining === 1 ? '' : 'es'} restante{remaining === 1 ? '' : 's'}
-              </span>
-            )}
-            {inst.is_zero_interest ? (
-              <span className="shrink-0 rounded-full bg-asset/10 px-2 py-0.5 text-[10px] font-extrabold text-asset-deep">
-                Sin interés
-              </span>
-            ) : (
-              <span className="shrink-0 rounded-full bg-debt/10 px-2 py-0.5 text-[10px] font-extrabold text-debt-deep">
-                Con interés
-              </span>
-            )}
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 truncate text-[13.5px] font-bold text-text">{inst.name}</p>
+            <span
+              className={clsx(
+                'shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-extrabold',
+                msi.terminado ? 'bg-asset-soft text-asset-ink' : 'bg-primary-soft text-primary-deep',
+              )}
+            >
+              {msi.terminado ? 'Terminado' : `Mensualidad ${msi.actual?.n ?? M} de ${M}`}
+            </span>
           </div>
-          <p className="mt-0.5 font-mono text-[12px] font-semibold text-text-secondary">
-            {formatMXN(inst.monthly_amount)}/mes
-            {!isDone && (
-              <span className="ml-1.5 text-text-tertiary">· restante {formatMXN(remainingAmount)}</span>
+          <p
+            className={clsx(
+              'mt-0.5 text-[12px] leading-snug',
+              linea.tono === 'alerta' ? 'font-semibold text-debt-ink' : linea.tono === 'listo' ? 'text-asset-ink' : 'text-text-secondary',
             )}
-            {isDone && (
-              <span className="ml-1.5 text-text-tertiary">· total {formatMXN(inst.total_amount)}</span>
-            )}
+          >
+            {linea.texto}
           </p>
 
-          {/* Progress bar */}
-          <div className="mt-2">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-text-tertiary">
-                {inst.months_paid}/{inst.months_total} meses
-              </span>
-              <span className="text-[10px] font-bold text-primary-deep">
-                {Math.round(progress * 100)}%
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-bg-secondary">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${progress * 100}%`,
-                  background: isDone
-                    ? 'linear-gradient(90deg, #2BB673, #5DD296)'
-                    : 'linear-gradient(90deg, #6366F1, #9B7BFF)',
-                }}
-              />
-            </div>
+          {/* Pagadas · en estado de cuenta · por cobrar */}
+          <div
+            className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-bg-secondary"
+            role="img"
+            aria-label={`${msi.pagadas} pagadas, ${enEstado} en estado de cuenta, ${M - msi.pagadas - enEstado} por cobrar`}
+          >
+            <span className="h-full bg-asset" style={{ width: `${(msi.pagadas / M) * 100}%` }} />
+            <span className="h-full bg-warning" style={{ width: `${(enEstado / M) * 100}%` }} />
           </div>
+          <p className="mt-1.5 flex flex-wrap gap-x-2 text-[11.5px] text-text-secondary">
+            <span className="font-mono font-bold tabular-nums text-text">{formatMXN(msi.actual?.monto ?? Number(inst.monthly_amount))}/mes</span>
+            <span>·</span>
+            <span>
+              {msi.terminado ? `Total ${formatMXN(Number(inst.total_amount))}` : `Resta ${formatMXN(msi.restante)}`}
+            </span>
+            {!inst.is_zero_interest && (
+              <>
+                <span>·</span>
+                <span>Con interés</span>
+              </>
+            )}
+          </p>
         </div>
-      </div>
-
-      {/* Actions */}
-      {!isDone && (
-        <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
-          {onMarkPaid && (
-            <button
-              type="button"
-              onClick={onMarkPaid}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary-soft py-1.5 text-[12px] font-bold text-primary-deep transition-colors active:bg-primary-soft/60"
-            >
-              <IconCheck size={13} stroke={2.5} />
-              Marcar mes pagado
-            </button>
-          )}
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-text-secondary transition-colors hover:text-text active:scale-95"
-            >
-              Editar
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-text-tertiary transition-colors hover:text-debt active:scale-95"
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
-      )}
-      {isDone && (
-        <div className="mt-2 flex items-center justify-end gap-3 border-t border-border pt-2">
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="text-[11.5px] font-bold text-text-secondary hover:text-text"
-            >
-              Editar
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="text-[11.5px] font-bold text-text-tertiary hover:text-debt"
-            >
-              Eliminar
-            </button>
-          )}
+        <IconChevronRight size={16} className="mt-2.5 shrink-0 text-text-secondary" />
+      </button>
+      {puedePagar && (
+        <div className="border-t border-border px-3.5 py-2">
+          <button
+            type="button"
+            onClick={onPagarActual}
+            className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-bold text-asset-ink transition-colors hover:bg-asset-soft/60"
+          >
+            <IconCheck size={14} stroke={2.5} /> Ya pagué la mensualidad {msi.actual!.n}
+          </button>
         </div>
       )}
     </Card>

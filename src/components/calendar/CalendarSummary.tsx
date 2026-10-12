@@ -9,6 +9,7 @@ import {
   buildCalendarEvents, eventsByDay, fromKey, noon, startOfWeekMx, toKey,
   weekdayIndex, WEEKDAYS_ES, type CalendarInput,
 } from '@/lib/calendar'
+import { useHoy } from '@/hooks/useHoy'
 import { formatMXN } from '@/lib/format'
 
 interface CalendarSummaryProps extends CalendarInput {
@@ -20,7 +21,9 @@ interface CalendarSummaryProps extends CalendarInput {
 const DAY_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
 
 export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryProps) {
-  const today = useMemo(() => noon(new Date()), [])
+  // Cambia sola a medianoche: la PWA se queda abierta días.
+  const hoy = useHoy()
+  const today = useMemo(() => fromKey(hoy), [hoy])
   const accountById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a])), [data.accounts])
 
   const { week, byDay, upcoming } = useMemo(() => {
@@ -30,7 +33,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
     const to = noon(new Date(today))
     to.setDate(today.getDate() + 45)
 
-    const all = buildCalendarEvents(data, monday, to)
+    const all = buildCalendarEvents(data, monday, to, hoy)
     const todayKey = toKey(today)
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = noon(new Date(monday))

@@ -44,7 +44,7 @@ import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
-import { getInstallmentRemaining } from '@/lib/debt'
+import { getDeudaALaVista } from '@/lib/debt'
 import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
 import { useDebtFreeMonth } from '@/hooks/useDebtFreeMonth'
 import { startOfWeekMx, toKey } from '@/lib/calendar'
@@ -121,9 +121,11 @@ export function Resumen() {
   const creditDebt = creditAccounts.reduce((s, a) => s + a.balance, 0)
   const net = debitTotal - creditDebt
 
-  const msiMonthlyTotal = activeInstallments.reduce((s, i) => s + i.monthly_amount, 0)
-  const msiPrincipalTotal = activeInstallments.reduce((s, i) => s + getInstallmentRemaining(i), 0)
-  const deudaALaVista = Math.max(0, creditDebt - msiPrincipalTotal) + msiMonthlyTotal
+  // Por fechas: lo que aún no entra a un corte no es exigible todavía. Se
+  // calcula tarjeta por tarjeta (antes los planes sin tarjeta se restaban del
+  // total de las tarjetas).
+  const msiPorCobrarTotal = activeInstallments.reduce((s, i) => s + i.msi.porFacturar, 0)
+  const deudaALaVista = getDeudaALaVista(accounts, activeInstallments)
 
   // 7-day trend — includes both transactions and adjustments (real money moves).
   const trend7d = useMemo(() => {
@@ -641,38 +643,26 @@ export function Resumen() {
             {/* Menos MSI restante */}
             {activeInstallments.length > 0 && (
               <>
-                <p className="mb-1 mt-3 text-[10.5px] font-extrabold uppercase tracking-wide text-text-tertiary">
-                  Menos: deuda futura MSI (no exigible aún)
+                <p className="mb-1 mt-3 text-[11px] font-bold text-text-secondary">
+                  Menos: MSI que aún no se cobra
                 </p>
-                {activeInstallments.map((i) => (
-                  <div key={i.id} className="flex items-center justify-between py-1">
-                    <span className="text-text-secondary">{i.name}</span>
-                    <span className="font-mono font-semibold text-debt">
-                      -{formatMXN(getInstallmentRemaining(i))}
-                    </span>
-                  </div>
-                ))}
+                {activeInstallments
+                  .filter((i) => i.msi.porFacturar > 0)
+                  .map((i) => (
+                    <div key={i.id} className="flex items-center justify-between py-1">
+                      <span className="min-w-0 truncate text-text-secondary">
+                        {i.name} · {i.msi.meses.filter((m) => m.estado === 'proxima').length} mens.
+                      </span>
+                      <span className="font-mono font-semibold text-debt-ink">-{formatMXN(i.msi.porFacturar)}</span>
+                    </div>
+                  ))}
                 <div className="my-1.5 flex items-center justify-between border-t border-border pt-1.5 font-bold">
-                  <span className="text-text">MSI restante</span>
-                  <span className="font-mono text-debt">-{formatMXN(msiPrincipalTotal)}</span>
+                  <span className="text-text">MSI por cobrar</span>
+                  <span className="font-mono text-debt-ink">-{formatMXN(msiPorCobrarTotal)}</span>
                 </div>
-
-                {/* Más cuota mensual */}
-                <p className="mb-1 mt-3 text-[10.5px] font-extrabold uppercase tracking-wide text-text-tertiary">
-                  Más: cuota MSI este mes
+                <p className="text-[11.5px] leading-snug text-text-secondary">
+                  Las mensualidades que ya entraron a tu estado de cuenta sí cuentan: ya toca pagarlas.
                 </p>
-                {activeInstallments.map((i) => (
-                  <div key={i.id} className="flex items-center justify-between py-1">
-                    <span className="text-text-secondary">{i.name}</span>
-                    <span className="font-mono font-semibold text-asset-deep">
-                      +{formatMXN(i.monthly_amount)}
-                    </span>
-                  </div>
-                ))}
-                <div className="my-1.5 flex items-center justify-between border-t border-border pt-1.5 font-bold">
-                  <span className="text-text">Mensualidades</span>
-                  <span className="font-mono text-asset-deep">+{formatMXN(msiMonthlyTotal)}</span>
-                </div>
               </>
             )}
 

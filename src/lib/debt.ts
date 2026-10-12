@@ -1,6 +1,18 @@
 import { addMonths, format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import type { Account, Installment } from '@/types'
+import { calendarioDe, cuentaEnSuFecha, type CalendarioMsi } from '@/lib/msi'
+import { proximoVencimiento } from '@/lib/cardCycle'
+import { fromKey, toKey } from '@/lib/localDate'
+import type { Account, Installment as InstallmentRow } from '@/types'
+
+/**
+ * Un plan, crudo o «vivo» (con su calendario). Las cuentas de abajo usan el
+ * calendario por fechas (src/lib/msi.ts) cuando lo tienen o lo pueden calcular
+ * con la tarjeta; si no, caen al contador `months_paid` de siempre.
+ */
+type Installment = InstallmentRow & { msi?: CalendarioMsi }
+
+const hoyKey = () => toKey(new Date())
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +53,7 @@ function costType(account: Account): 'con_costo' | 'sin_costo' {
 
 /** Principal still owed on an installment plan. */
 export function getInstallmentRemaining(inst: Installment): number {
+  if (inst.msi) return inst.msi.restante
   const total = safeNum(inst.months_total)
   const paid = safeNum(inst.months_paid)
   const monthly = safeNum(inst.monthly_amount)
@@ -53,13 +66,18 @@ export function getInstallmentRemaining(inst: Installment): number {
  * Result is clamped to ≥ 0: if MSI principal exceeds balance the card is in a
  * prepaid state which is captured by prepay_buffer instead.
  */
-export function getRevolvingBalance(account: Account, installments: Installment[]): number {
+export function getRevolvingBalance(account: Account, installments: Installment[], hoy = hoyKey()): number {
   if (account.type !== 'credit') return 0
-  const msiForAccount = installments.filter(
-    (i) => i.account_id === account.id && i.status === 'active',
-  )
-  const msiPrincipal = msiForAccount.reduce((s, i) => s + getInstallmentRemaining(i), 0)
+  const msiPrincipal = deLaTarjeta(account, installments, hoy).reduce((s, c) => s + c.restante, 0)
   return Math.max(0, safeNum(account.balance) - msiPrincipal)
+}
+
+/** Calendarios de los planes activos de esta tarjeta, con sus fechas de corte. */
+function deLaTarjeta(account: Account, installments: Installment[], hoy: string): CalendarioMsi[] {
+  return installments
+    .filter((i) => i.account_id === account.id)
+    .map((i) => calendarioDe(i, account, hoy))
+    .filter((c) => !c.terminado)
 }
 
 /**
@@ -71,12 +89,41 @@ export function getRevolvingBalance(account: Account, installments: Installment[
  * each other — a plan saying $2,976 is owed on a card saying $0 — and the
  * clamp was hiding it. This exposes the gap so the UI can say so out loud.
  */
-export function getMsiUncovered(account: Account, installments: Installment[]): number {
+export function getMsiUncovered(account: Account, installments: Installment[], hoy = hoyKey()): number {
   if (account.type !== 'credit') return 0
-  const msiPrincipal = installments
-    .filter((i) => i.account_id === account.id && i.status === 'active')
-    .reduce((s, i) => s + getInstallmentRemaining(i), 0)
-  return Math.max(0, msiPrincipal - safeNum(account.balance))
+  // Sólo lo que aún NO entra a un corte: lo ya facturado se puede pagar antes de
+  // la fecha límite, y eso bajaba el saldo y disparaba una alerta falsa.
+  const sinFacturar = deLaTarjeta(account, installments, hoy).reduce((s, c) => s + c.porFacturar, 0)
+  return Math.max(0, Math.round((sinFacturar - safeNum(account.balance)) * 100) / 100)
+}
+
+/**
+ * Deuda «a la vista» de todas las tarjetas: el saldo menos el MSI que todavía
+ * no se cobra, tarjeta por tarjeta. Los planes sin tarjeta suman sólo lo que ya
+ * toca pagar. Antes se restaba todo el capital MSI (incluidos los planes sin
+ * tarjeta) del total de las tarjetas.
+ */
+export function getDeudaALaVista(accounts: Account[], installments: Installment[], hoy = hoyKey()): number {
+  const tarjetas = accounts
+    .filter((a) => a.type === 'credit')
+    .reduce((s, a) => {
+      const sinFacturar = deLaTarjeta(a, installments, hoy).reduce((t, c) => t + c.porFacturar, 0)
+      return s + Math.max(0, safeNum(a.balance) - sinFacturar)
+    }, 0)
+  const ids = new Set(accounts.map((a) => a.id))
+  const sueltos = installments
+    .filter((i) => !i.account_id || !ids.has(i.account_id))
+    .reduce((s, i) => s + calendarioDe(i, null, hoy).enEstado, 0)
+  return Math.round((tarjetas + sueltos) * 100) / 100
+}
+
+/** MSI que se paga en la fecha límite `vence` de esta tarjeta. */
+export function msiDelVencimiento(account: Account, installments: Installment[], vence: string, hoy = hoyKey()): number {
+  return installments
+    .filter((i) => i.account_id === account.id)
+    .flatMap((i) => calendarioDe(i, account, hoy).meses)
+    .filter((m) => m.vence === vence && cuentaEnSuFecha(m))
+    .reduce((s, m) => s + m.monto, 0)
 }
 
 /**
@@ -84,17 +131,23 @@ export function getMsiUncovered(account: Account, installments: Installment[]): 
  * = min-revolving-payment + Σ MSI monthly amounts − prepay buffer used.
  * Result is clamped to ≥ 0 (buffer can make it $0).
  */
-export function getExigibleEsteCiclo(account: Account, installments: Installment[]): number {
+export function getExigibleEsteCiclo(account: Account, installments: Installment[], hoy = hoyKey()): number {
   if (account.type !== 'credit') return 0
-  const revolvingBal = getRevolvingBalance(account, installments)
+  const revolvingBal = getRevolvingBalance(account, installments, hoy)
   const pct = safeNum(account.min_payment_pct, 1.5)
   const minRevolving =
     costType(account) === 'con_costo' ? Math.max(0, revolvingBal) * (pct / 100) : 0
 
-  const activeForAccount = installments.filter(
-    (i) => i.account_id === account.id && i.status === 'active',
-  )
-  const msiMonthly = activeForAccount.reduce((s, i) => s + safeNum(i.monthly_amount), 0)
+  // Lo de MSI que toca en el próximo pago: lo vencido sin pagar y lo que vence
+  // en esa fecha. Sin fechas de la tarjeta, una mensualidad por plan activo.
+  const prox = proximoVencimiento(account, fromKey(hoy))
+  const calendarios = deLaTarjeta(account, installments, hoy)
+  const msiMonthly = prox
+    ? calendarios
+        .flatMap((c) => c.meses)
+        .filter((m) => m.estado === 'vencida' || (m.vence === toKey(prox.vence) && cuentaEnSuFecha(m)))
+        .reduce((s, m) => s + m.monto, 0)
+    : calendarios.reduce((s, c) => s + (c.actual?.monto ?? 0), 0)
   const bufferUsed = Math.min(safeNum(account.prepay_buffer), msiMonthly)
   return Math.max(0, minRevolving + msiMonthly - bufferUsed)
 }
@@ -134,14 +187,25 @@ export function getMensualidadesComprometidas(
       return s + getRevolvingBalance(a, installments) * (pct / 100)
     }, 0)
 
-  const activeInstallments = installments.filter((i) => i.status === 'active')
+  const hoy = toKey(now)
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
+  // Cada mensualidad cae en el mes de su fecha límite; las pagadas a mano antes
+  // de tiempo ya no se deben.
+  const porMes = new Map<string, number>()
+  for (const i of installments) {
+    const ciclo = i.account_id ? accountById.get(i.account_id) ?? null : null
+    for (const mes of calendarioDe(i, ciclo, hoy).meses) {
+      if (mes.estado === 'pagada') continue
+      const clave = mes.vence.slice(0, 7)
+      porMes.set(clave, (porMes.get(clave) ?? 0) + mes.monto)
+    }
+  }
 
   const points: CommittedPoint[] = []
   for (let m = 0; m < horizon; m++) {
-    const label = format(addMonths(now, m), 'LLL', { locale: es })
-    const msi = activeInstallments
-      .filter((i) => safeNum(i.months_total) - safeNum(i.months_paid) > m)
-      .reduce((s, i) => s + safeNum(i.monthly_amount), 0)
+    const fecha = addMonths(now, m)
+    const label = format(fecha, 'LLL', { locale: es })
+    const msi = Math.round((porMes.get(toKey(fecha).slice(0, 7)) ?? 0) * 100) / 100
 
     points.push({ month: label, msi, revolving: flatRevolving, total: msi + flatRevolving })
   }

@@ -121,9 +121,23 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.14.0"
+            version="1.15.0"
             date="12 oct 2026"
             current
+            notes={[
+              'Los meses sin intereses avanzan solos: cada mensualidad entra en un corte de tu tarjeta y vence en su fecha de pago. Cuando pasa la fecha límite, cuenta como pagada. Ya no hay que tocar "Marcar mes pagado"',
+              'Cada plan dice en cuál vas ("Mensualidad 4 de 12"), si ya está en tu estado de cuenta y cuándo vence. Se actualiza solo, aunque la app se quede abierta',
+              'Toca un plan para verlo mes por mes, con el porqué de cada uno, y corrige cualquiera: marcar pagada, "no la pagué" o volver a lo que digan las fechas. También puedes liquidar el resto',
+              'En vez de "pagos ya hechos" ahora capturas la fecha de compra, y la vista previa te dice la primera mensualidad, en cuál vas y cuándo termina',
+              'Editar un plan ajusta el cargo de la tarjeta por la diferencia (ya no resta dos veces lo pagado), y te avisa antes de guardar. Borrar un plan con pagos ya no baja el saldo de más',
+              'El calendario pone cada mensualidad en su fecha real, con "Ya la pagué" y "Ver plan". El pago de cada tarjeta lleva sólo las mensualidades de ese estado de cuenta',
+              'Pagar tu estado de cuenta antes de la fecha límite ya no dispara el aviso de "falta registrar un gasto"',
+              'Borrar el cargo de una compra a meses en Movimientos te explica qué pasa y te lleva al plan',
+            ]}
+          />
+          <VersionRow
+            version="1.14.0"
+            date="12 oct 2026"
             notes={[
               'El enlace para invitar ya se ve: en la ficha de una persona con préstamos hay "Invitar a … a conectarse", al crear un grupo se abre solo, y dentro de un grupo dice quién falta por entrar con su cuenta',
               'El enlace se muestra escrito, con "Compartir" y "Copiar" por separado. Cancelar la hoja de compartir ya no lo copia a escondidas',

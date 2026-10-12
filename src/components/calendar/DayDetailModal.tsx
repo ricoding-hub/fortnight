@@ -17,11 +17,15 @@ interface DayDetailModalProps {
   /** Configured accounts, so events can show their bank's logo. */
   accounts?: Account[]
   onOpenAccount?: (accountId: string) => void
+  /** Mensualidad de un MSI: marcarla pagada desde aquí. */
+  onMarcarMes?: (installmentId: string, n: number) => Promise<void>
+  /** Abrir el plan a meses, mes por mes. */
+  onVerPlan?: (installmentId: string) => void
 }
 
 /** Everything happening on one day, and what it leaves you with. */
 export function DayDetailModal({
-  open, onClose, dayKey, events, projected, accounts = [], onOpenAccount,
+  open, onClose, dayKey, events, projected, accounts = [], onOpenAccount, onMarcarMes, onVerPlan,
 }: DayDetailModalProps) {
   if (!dayKey) return null
   const accountById = new Map(accounts.map((a) => [a.id, a]))
@@ -98,6 +102,28 @@ export function DayDetailModal({
                       </span>
                     )}
                   </button>
+                  {e.installmentId && e.mes && (onMarcarMes || onVerPlan) && (
+                    <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
+                      {onMarcarMes && e.mes.estado !== 'pagada' && (
+                        <button
+                          type="button"
+                          onClick={() => void onMarcarMes(e.installmentId!, e.mes!.n)}
+                          className="inline-flex min-h-[36px] items-center rounded-full border border-border bg-bg px-3 text-[12px] font-bold text-asset-ink"
+                        >
+                          Ya la pagué
+                        </button>
+                      )}
+                      {onVerPlan && (
+                        <button
+                          type="button"
+                          onClick={() => onVerPlan(e.installmentId!)}
+                          className="inline-flex min-h-[36px] items-center rounded-full border border-border bg-bg px-3 text-[12px] font-bold text-primary-deep"
+                        >
+                          Ver plan
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </li>
               )
             })}

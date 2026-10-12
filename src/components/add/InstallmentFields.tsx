@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { IconCalendarEvent, IconChevronDown } from '@tabler/icons-react'
@@ -13,31 +13,26 @@ import { useToast } from '@/hooks/useToast'
 import { toKey } from '@/lib/calendar'
 import { formatMXN } from '@/lib/format'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
+import { fechaCorta } from '@/lib/movementDates'
+import { calendarioMsi, nuevoCargo, registradoEl, type InstallmentVivo } from '@/lib/msi'
 import type { InstallmentPatch, NewInstallment } from '@/hooks/useInstallments'
 import type { Account, Installment } from '@/types'
 
-const schema = z
-  .object({
-    name: z.string().trim().min(1, 'Escribe qué compraste'),
-    total_amount: z.string().refine((v) => isMoneyInput(v), 'Escribe un monto, por ejemplo 574.50'),
-    months_total: z.string().refine((v) => isCountInput(v, 1, 120), 'Entre 1 y 120 meses'),
-    months_paid: z.string().refine((v) => v === '' || isCountInput(v, 0, 120), 'Número inválido'),
-    is_zero_interest: z.boolean(),
-    charge_to_card: z.boolean(),
-    account_id: z.string().optional(),
-    start_date: z.string().optional(),
-  })
-  // Nada impedía "20 de 12 pagados". Hacía negativo getInstallmentRemaining y,
-  // desde v1.7.0, ese negativo es lo que se carga a la tarjeta: el saldo BAJARÍA
-  // al registrar una compra.
-  .refine(
-    (v) => {
-      const paid = parseCountInput(v.months_paid === '' ? '0' : v.months_paid)
-      const total = parseCountInput(v.months_total)
-      return paid == null || total == null || paid <= total
-    },
-    { message: 'No puedes llevar más pagos que meses', path: ['months_paid'] },
-  )
+const schema = z.object({
+  name: z.string().trim().min(1, 'Escribe qué compraste'),
+  total_amount: z.string().refine((v) => isMoneyInput(v), 'Escribe un monto, por ejemplo 574.50'),
+  months_total: z.string().refine((v) => isCountInput(v, 1, 120), 'Entre 1 y 120 meses'),
+  is_zero_interest: z.boolean(),
+  charge_to_card: z.boolean(),
+  account_id: z.string().optional(),
+  // La fecha de compra decide en qué mensualidad vas: es lo que antes se
+  // capturaba a mano como «pagos ya hechos».
+  start_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha de compra')
+    .refine((v) => v <= toKey(new Date()), 'La compra no puede ser en el futuro'),
+  billing_offset: z.string(),
+})
 
 type FormValues = z.infer<typeof schema>
 
@@ -50,9 +45,9 @@ interface InstallmentFieldsProps {
   accounts: Account[]
   /** Contenedor del pie fijo donde va el botón. Sin él, el botón va en línea. */
   footerTarget?: HTMLElement | null
-  editingInstallment?: Installment
+  editingInstallment?: InstallmentVivo
   onSubmit: (data: NewInstallment) => Promise<void>
-  onUpdate?: (id: string, patch: InstallmentPatch) => Promise<void>
+  onUpdate?: (id: string, patch: InstallmentPatch) => Promise<unknown>
   /** Tras guardar: cerrar el modal o la hoja. */
   onDone: () => void
 }
@@ -64,10 +59,10 @@ interface InstallmentFieldsProps {
  * "¿ya está en el saldo?", la vista previa — sirva en el modal de editar un plan
  * y en la hoja «Agregar», en lugar de existir dos veces y divergir.
  *
- * Lo común queda a la vista (qué, cuánto, cuántos meses, tarjeta, si ya está en
- * el saldo). «Pagos ya hechos», el tipo de plan y la fecha de inicio van en
- * «Más opciones», cerrado por defecto: el caso normal es registrar algo que
- * acabas de comprar.
+ * Lo común queda a la vista: qué, cuánto, cuántos meses, tarjeta y fecha de
+ * compra. Con la fecha y el corte de la tarjeta, la vista previa dice cuándo
+ * entra la primera mensualidad y en cuál vas — antes eso se capturaba a mano
+ * como «pagos ya hechos», y se desfasaba con cada mes que pasaba.
  */
 export function InstallmentFields({
   formId,
@@ -88,8 +83,6 @@ export function InstallmentFields({
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
     control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -101,76 +94,112 @@ export function InstallmentFields({
           name: editingInstallment.name,
           total_amount: String(editingInstallment.total_amount),
           months_total: String(editingInstallment.months_total),
-          months_paid: String(editingInstallment.months_paid),
           is_zero_interest: editingInstallment.is_zero_interest,
           account_id: editingInstallment.account_id ?? '',
-          start_date: editingInstallment.start_date,
+          start_date: String(editingInstallment.start_date ?? '').slice(0, 10) || toKey(new Date()),
+          billing_offset: String(editingInstallment.billing_offset ?? 0),
           charge_to_card: false,
         }
       : {
           name: '',
           total_amount: '',
           months_total: '12',
-          months_paid: '0',
           is_zero_interest: true,
           charge_to_card: true,
           account_id: '',
           start_date: toKey(new Date()),
+          billing_offset: '0',
         },
   })
 
-  const totalAmountStr = watch('total_amount')
-  const monthsTotalStr = watch('months_total')
-  const monthsPaidStr = watch('months_paid')
-  const isZeroInterest = watch('is_zero_interest')
-  const chargeToCard = watch('charge_to_card')
-  const accountId = watch('account_id')
+  const [totalAmountStr, monthsTotalStr, isZeroInterest, chargeToCard, accountId, startDate, offsetStr] = useWatch({
+    control,
+    name: ['total_amount', 'months_total', 'is_zero_interest', 'charge_to_card', 'account_id', 'start_date', 'billing_offset'],
+  })
 
   // `Number()` a secas convierte "574,5" en NaN, que vaciaba la vista previa en
   // silencio y habría escrito NaN en la fila al guardar.
   const totalAmount = moneyOr(totalAmountStr, 0)
   const monthsTotal = parseCountInput(monthsTotalStr ?? '') ?? 0
-  const monthsPaid = parseCountInput(monthsPaidStr ?? '') ?? 0
+  const offset = parseCountInput(offsetStr ?? '0') ?? 0
   const monthlyAmount =
     totalAmount > 0 && monthsTotal > 0 ? Math.round((totalAmount / monthsTotal) * 100) / 100 : 0
 
-  // Lo que el cargo pondría en la tarjeta: los meses que faltan, no el precio de
-  // etiqueta. Registrar un plan con 11 de 18 pagados mueve los siete que quedan.
   const selectedCard = creditAccounts.find((a) => a.id === accountId)
-  const pendingPrincipal = Math.max(0, monthsTotal - monthsPaid) * monthlyAmount
+  const hoy = toKey(new Date())
+  const fechaValida = /^\d{4}-\d{2}-\d{2}$/.test(startDate ?? '') && (startDate ?? '') <= hoy
+
+  // El plan como quedaría, para la vista previa: en qué corte entra, en cuál
+  // mensualidad vas, cuándo termina y cuánto se carga a la tarjeta.
+  const borrador: Installment | null =
+    monthlyAmount > 0 && fechaValida
+      ? {
+          ...(editingInstallment ?? {
+            id: 'borrador', user_id: '', name: '', status: 'active', months_paid: 0,
+            created_at: new Date().toISOString(), updated_at: '', month_status: { _v: 2 },
+          }),
+          total_amount: totalAmount,
+          monthly_amount: monthlyAmount,
+          months_total: monthsTotal,
+          account_id: accountId || null,
+          start_date: startDate!,
+          is_zero_interest: isZeroInterest,
+          billing_offset: offset,
+        } as Installment
+      : null
+  const cal = borrador ? calendarioMsi(borrador, selectedCard ?? null, hoy) : null
+  const primera = cal?.meses[0] ?? null
+  const pendingPrincipal = cal?.restante ?? 0
   const balanceAfter = selectedCard ? Number(selectedCard.balance) + pendingPrincipal : 0
 
-  // Al acortar el plazo, los pagos hechos no pueden quedarse por encima.
-  useEffect(() => {
-    if (monthsTotal > 0 && monthsPaid > monthsTotal) setValue('months_paid', String(monthsTotal))
-  }, [monthsTotal, monthsPaid, setValue])
+  // Al editar, lo que le pasa al cargo de la tarjeta, dicho antes de guardar.
+  const cargo = editingInstallment?.cargo ?? null
+  let efectoCargo: string | null = null
+  if (isEditing && cargo && borrador && editingInstallment) {
+    const nuevaTarjeta = accountId || null
+    if (!nuevaTarjeta) {
+      efectoCargo = `Se quita el cargo de ${formatMXN(cargo.amount)} de la tarjeta.`
+    } else {
+      const monto = nuevoCargo(
+        cargo.amount,
+        [editingInstallment, editingInstallment.ciclo],
+        [borrador, selectedCard ?? null],
+        registradoEl(editingInstallment, hoy),
+      )
+      const mueve = nuevaTarjeta !== cargo.account_id
+      if (mueve) efectoCargo = `El cargo de ${formatMXN(monto)} se mueve a ${selectedCard?.name ?? 'la otra tarjeta'}.`
+      else if (Math.abs(monto - cargo.amount) >= 0.005) {
+        efectoCargo = `El cargo en ${selectedCard?.name ?? 'la tarjeta'} pasa de ${formatMXN(cargo.amount)} a ${formatMXN(monto)}.`
+      }
+    }
+  }
 
   // Un error en un campo que está dentro de «Más opciones» no se puede quedar
   // escondido: se abre para que se vea.
   useEffect(() => {
-    if (errors.months_paid || errors.start_date) setMasOpciones(true)
-  }, [errors.months_paid, errors.start_date])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (errors.billing_offset) setMasOpciones(true)
+  }, [errors.billing_offset])
 
   // El plazo actual puede no estar en la lista (un plan viejo de 10 meses).
   const plazos = [...new Set<number>([...PLAZOS, ...(monthsTotal > 0 ? [monthsTotal] : [])])].sort((a, b) => a - b)
 
   async function guardar(values: FormValues) {
     setSaveError(null)
-    const pagados = parseCountInput(values.months_paid) ?? 0
     const mTotal = parseCountInput(values.months_total) ?? 0
     const base = {
       name: values.name.trim(),
       total_amount: moneyOr(values.total_amount, 0),
       monthly_amount: monthlyAmount,
       months_total: mTotal,
-      months_paid: pagados,
       is_zero_interest: values.is_zero_interest,
       account_id: values.account_id || null,
-      start_date: values.start_date || undefined,
+      start_date: values.start_date,
+      billing_offset: parseCountInput(values.billing_offset) ?? 0,
     }
     try {
       if (isEditing && onUpdate && editingInstallment) {
-        await onUpdate(editingInstallment.id, { ...base, status: pagados >= mTotal ? 'paid' : 'active' })
+        await onUpdate(editingInstallment.id, base)
         toast.success('Plan actualizado', `${base.name} · ${formatMXN(monthlyAmount)}/mes`)
       } else {
         await onSubmit({ ...base, charge_to_card: values.charge_to_card })
@@ -228,15 +257,6 @@ export function InstallmentFields({
         </Select>
       </div>
 
-      {monthlyAmount > 0 && (
-        <div className="flex items-center gap-2 rounded-xl bg-primary-soft/50 px-3.5 py-2.5">
-          <IconCalendarEvent size={16} className="shrink-0 text-primary-deep" />
-          <span className="text-[13px] font-bold text-primary-deep">
-            {formatMXN(monthlyAmount)}/mes durante {monthsTotal} meses
-          </span>
-        </div>
-      )}
-
       {creditAccounts.length > 0 && (
         <Select label="Tarjeta" {...register('account_id')}>
           <option value="">Sin asociar</option>
@@ -246,6 +266,50 @@ export function InstallmentFields({
             </option>
           ))}
         </Select>
+      )}
+
+      <Input
+        label="Fecha de compra"
+        type="date"
+        max={hoy}
+        className="w-full min-w-0"
+        error={errors.start_date?.message}
+        {...register('start_date')}
+      />
+
+      {cal && primera && (
+        <div className="flex gap-2.5 rounded-xl bg-primary-soft/50 px-3.5 py-3" aria-live="polite">
+          <IconCalendarEvent size={17} className="mt-0.5 shrink-0 text-primary-deep" />
+          <div className="flex min-w-0 flex-col gap-0.5 text-[13px] leading-snug text-primary-deep">
+            <span className="font-bold">
+              {formatMXN(monthlyAmount)}/mes durante {monthsTotal} meses
+            </span>
+            {cal.terminado ? (
+              <span>Según las fechas, ya la terminaste de pagar.</span>
+            ) : (
+              <>
+                <span>
+                  1ª mensualidad:{' '}
+                  {primera.corte ? `corte del ${fechaCorta(primera.corte)} · ` : ''}vence el {fechaCorta(primera.vence)}
+                  {primera.venceEstimado ? ' (aprox.)' : ''}
+                </span>
+                {cal.pagadas > 0 && cal.actual && (
+                  <span>
+                    Vas en la mensualidad {cal.actual.n} de {monthsTotal} · {cal.pagadas} ya pagada{cal.pagadas === 1 ? '' : 's'}
+                  </span>
+                )}
+                <span>Termina el {fechaCorta(cal.termina)}</span>
+              </>
+            )}
+            {!selectedCard && accountId === '' && creditAccounts.length > 0 && (
+              <span className="text-[12px] text-text-secondary">Elige la tarjeta para usar sus fechas de corte y pago.</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {efectoCargo && (
+        <p className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[12.5px] text-text-secondary">{efectoCargo}</p>
       )}
 
       {/* ¿Esto ya está dentro del saldo de la tarjeta? Preguntarlo es el arreglo
@@ -297,21 +361,6 @@ export function InstallmentFields({
 
       {masOpciones && (
         <div className="flex animate-[fade-in_160ms_ease-out] flex-col gap-3 motion-reduce:animate-none">
-          <Select
-            label="Pagos ya hechos"
-            error={errors.months_paid?.message}
-            {...register('months_paid')}
-          >
-            {Array.from({ length: Math.max(monthsTotal, 1) + 1 }, (_, i) => (
-              <option key={i} value={i}>
-                {i === 0 ? 'Ninguno todavía' : `${i} ${i === 1 ? 'pago' : 'pagos'}`}
-              </option>
-            ))}
-          </Select>
-          {monthsPaid > 0 && monthsTotal > monthsPaid && (
-            <p className="-mt-1.5 text-[12px] text-text-secondary">Quedan {monthsTotal - monthsPaid} meses por pagar</p>
-          )}
-
           <div>
             <p className="mb-1.5 text-[13px] font-medium text-text">Tipo de plan</p>
             <Controller
@@ -334,7 +383,16 @@ export function InstallmentFields({
             )}
           </div>
 
-          <Input label="Fecha de inicio" type="date" max={toKey(new Date())} className="w-full min-w-0" {...register('start_date')} />
+          {selectedCard?.cut_day != null && (
+            <Select label="Primera mensualidad" error={errors.billing_offset?.message} {...register('billing_offset')}>
+              <option value="0">En el siguiente corte</option>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n} {n === 1 ? 'corte' : 'cortes'} después (promoción)
+                </option>
+              ))}
+            </Select>
+          )}
         </div>
       )}
 

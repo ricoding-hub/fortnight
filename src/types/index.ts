@@ -483,4 +483,11 @@ export interface Installment {
   is_zero_interest: boolean
   created_at: string
   updated_at: string
+  /**
+   * Excepciones por mensualidad (migración 036): `{"4": {"s":"paid","at":"2026-10-12"}}`.
+   * Ausente antes de la migración. Ver src/lib/msi.ts.
+   */
+  month_status?: Record<string, unknown> | null
+  /** Meses que se recorre la primera mensualidad (promos «empieza a pagar en…»). */
+  billing_offset?: number | null
 }

@@ -282,9 +282,12 @@ describe('compra a meses', () => {
     expect(screen.getByLabelText('Monto total')).toBeTruthy()
     expect(screen.getByLabelText('Meses').tagName).toBe('SELECT')
     expect(screen.getByLabelText('Tarjeta').tagName).toBe('SELECT')
+    // La fecha de compra está a la vista: con ella se sabe en qué mensualidad vas.
+    expect(screen.getByLabelText('Fecha de compra')).toBeTruthy()
     expect(screen.queryByLabelText('Pagos ya hechos')).toBeNull()
+    expect(screen.queryByText('Tipo de plan')).toBeNull()
     await pulsar(/Más opciones/)
-    expect(screen.getByLabelText('Pagos ya hechos')).toBeTruthy()
+    expect(screen.getByText('Tipo de plan')).toBeTruthy()
   })
 
   it('calcula la mensualidad en vivo', { timeout: 20_000 }, async () => {

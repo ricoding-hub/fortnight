@@ -1,4 +1,5 @@
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -6,6 +7,7 @@ import {
   IconArrowsLeftRight,
   IconBuildingBank,
   IconCalendar,
+  IconCalendarEvent,
   IconCategory,
   IconHash,
   IconNote,
@@ -14,6 +16,7 @@ import {
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/hooks/useToast'
 import { categoryIcon, categoryColor } from '@/lib/categories'
 import { formatMXN } from '@/lib/format'
@@ -73,7 +76,10 @@ export function TransactionDetailModal({
   onDelete,
 }: TransactionDetailModalProps) {
   const toast = useToast()
+  const navigate = useNavigate()
+  const [confirmar, setConfirmar] = useState(false)
   const isAdjustment = transaction.type === 'adjustment'
+  const esCargoMsi = transaction.type === 'installment' && !!transaction.installment_id
 
   // Same net-worth sign convention used by TransactionRow so the detail
   // matches what the user tapped on.
@@ -86,8 +92,14 @@ export function TransactionDetailModal({
     ? 'Ajuste de saldo'
     : (category?.name ?? 'Sin categoría')
 
+  // Lo que pasa al borrarlo, dicho antes: el trigger revierte el saldo.
+  const consecuencia = account
+    ? `El saldo de ${account.name} ${
+        transaction.amount > 0 ? 'baja' : 'sube'
+      } ${formatMXN(Math.abs(transaction.amount))}${esCargoMsi ? ' y el plan a meses se queda sin cargo' : ''}.`
+    : 'Se borra del historial.'
+
   async function handleDelete() {
-    if (!window.confirm('¿Eliminar este movimiento?')) return
     try {
       await onDelete(transaction.id)
       toast.success('Movimiento eliminado', 'El registro ha sido borrado')
@@ -177,10 +189,30 @@ export function TransactionDetailModal({
           )}
         </div>
 
+        {esCargoMsi && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-primary-soft/40 px-3.5 py-3">
+            <IconCalendarEvent size={16} className="mt-0.5 shrink-0 text-primary-deep" />
+            <div className="min-w-0 flex-1 text-[12.5px] leading-snug text-text">
+              Es el cargo de una compra a meses: subió la deuda de la tarjeta por lo que faltaba pagar. Las
+              mensualidades, el plazo y este cargo se cambian desde el plan.
+              <button
+                type="button"
+                onClick={() => {
+                  onClose()
+                  void navigate(`/cuentas/mis?msi=${transaction.installment_id}`)
+                }}
+                className="mt-1.5 block min-h-[36px] font-bold text-primary-deep"
+              >
+                Ver plan
+              </button>
+            </div>
+          </div>
+        )}
+
         {transaction.source !== 'syncfy' && (
           <button
             type="button"
-            onClick={() => void handleDelete()}
+            onClick={() => setConfirmar(true)}
             className="mt-4 flex items-center justify-center gap-1.5 rounded-xl border border-debt/20 bg-debt/5 py-2.5 text-sm font-semibold text-debt transition-colors hover:bg-debt/10"
           >
             <IconTrash size={16} /> Eliminar movimiento
@@ -192,6 +224,15 @@ export function TransactionDetailModal({
           </p>
         )}
       </div>
+      <ConfirmModal
+        open={confirmar}
+        title="Eliminar movimiento"
+        destructive
+        confirmLabel="Eliminar"
+        message={consecuencia}
+        onClose={() => setConfirmar(false)}
+        onConfirm={() => void handleDelete()}
+      />
     </Modal>
   )
 }

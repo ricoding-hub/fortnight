@@ -3,14 +3,14 @@ import { Modal } from '@/components/ui/Modal'
 import { InstallmentFields } from '@/components/add/InstallmentFields'
 import { useAccounts } from '@/hooks/useAccounts'
 import type { NewInstallment, InstallmentPatch } from '@/hooks/useInstallments'
-import type { Installment } from '@/types'
+import type { InstallmentVivo } from '@/lib/msi'
 
 interface InstallmentFormModalProps {
   open: boolean
   onClose: () => void
   onSubmit: (data: NewInstallment) => Promise<void>
-  editingInstallment?: Installment
-  onUpdate?: (id: string, patch: InstallmentPatch) => Promise<void>
+  editingInstallment?: InstallmentVivo
+  onUpdate?: (id: string, patch: InstallmentPatch) => Promise<unknown>
 }
 
 /**

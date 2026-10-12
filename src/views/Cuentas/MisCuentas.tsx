@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  IconCalendarEvent,
   IconPlus,
   IconArrowsLeftRight,
   IconArrowsSort,
@@ -11,7 +10,6 @@ import {
 } from '@tabler/icons-react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
-import { useInstallments } from '@/hooks/useInstallments'
 import { useOrdenCuentas } from '@/hooks/useOrdenCuentas'
 import { AccountCard } from '@/components/AccountCard'
 import {
@@ -22,15 +20,12 @@ import { AddAccountChooserModal } from '@/components/AddAccountChooserModal'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
 import { ComingSoonBadge } from '@/components/ComingSoonBadge'
 import { BANK_LINKING_ENABLED } from '@/lib/features'
-import { InstallmentCard } from '@/components/InstallmentCard'
-import { MsiGapAlert } from '@/components/MsiGapAlert'
-import { InstallmentFormModal } from '@/components/InstallmentFormModal'
 import { Segmented } from '@/components/ui/Segmented'
+import { MsiSection } from '@/components/msi/MsiSection'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
-import { getInstallmentRemaining, getMsiUncovered } from '@/lib/debt'
 import type { Account, AccountType } from '@/types'
 
 interface SectionProps {
@@ -119,7 +114,6 @@ export function MisCuentas() {
     move,
   } = useAccounts()
   const { data: credentials, sync } = useSyncedCredentials()
-  const { data: installments, markMonthPaid, remove: removeInstallment, create: createInstallment, update: updateInstallment } = useInstallments()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
   // Abierto y tipo van separados: al cerrar, el tipo se queda y el texto del
   // selector no cambia a «débito» durante la animación de salida.
@@ -129,8 +123,6 @@ export function MisCuentas() {
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
-  const [installmentFormOpen, setInstallmentFormOpen] = useState(false)
-  const [editingInstallment, setEditingInstallment] = useState<import('@/types').Installment | null>(null)
   const toast = useToast()
 
   const syncableCredentials = credentials.filter((c) => c.status !== 'disabled' && c.status !== 'error')
@@ -345,98 +337,8 @@ export function MisCuentas() {
             </div>
           )}
 
-          {/* Meses sin intereses */}
-          <section id="tour-cuentas-msi" className="px-4 pb-2 pt-2">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">
-                Meses sin intereses
-              </h2>
-              <button
-                type="button"
-                onClick={() => setInstallmentFormOpen(true)}
-                className="flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-bold text-primary-deep transition-colors active:scale-95"
-              >
-                <IconPlus size={12} stroke={2.5} /> Agregar
-              </button>
-            </div>
-            {installments.length === 0 ? (
-              <button
-                type="button"
-                onClick={() => setInstallmentFormOpen(true)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-3 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
-              >
-                <IconCalendarEvent size={15} />
-                Registrar gasto a meses
-              </button>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {(() => {
-                  const active = installments.filter((i) => i.status === 'active')
-                  if (active.length === 0) return null
-                  const totalRestante = active.reduce((s, i) => s + getInstallmentRemaining(i), 0)
-                  const totalMensual = active.reduce((s, i) => s + i.monthly_amount, 0)
-                  return (
-                    <div className="flex items-stretch gap-2 rounded-xl bg-primary-soft/25 px-3.5 py-3">
-                      <div className="flex-1">
-                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">Deuda restante</p>
-                        <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">{formatMXN(totalRestante)}</p>
-                      </div>
-                      <div className="w-px bg-primary/15" />
-                      <div className="flex-1 pl-3">
-                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-primary-deep/70">Mensualidad total</p>
-                        <p className="mt-0.5 font-mono text-[15px] font-extrabold text-primary-deep">{formatMXN(totalMensual)}</p>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Cards whose balance can't possibly contain the MSI principal
-                    the plans claim. Not a preference — arithmetic: a plan owing
-                    $2,976 on a card reading $0 means one of the two is wrong.
-                    getRevolvingBalance used to flatten this with Math.max(0,…). */}
-                {credit
-                  .map((a) => ({ account: a, gap: getMsiUncovered(a, installments) }))
-                  .filter(({ gap }) => gap > 0.005)
-                  .map(({ account, gap }) => (
-                    <MsiGapAlert
-                      key={account.id}
-                      account={account}
-                      gap={gap}
-                      onAgregar={async (nuevoSaldo) => {
-                        await updateBalance(account, nuevoSaldo)
-                        toast.success('Saldo actualizado', `${account.name} quedó en ${formatMXN(nuevoSaldo)}`)
-                      }}
-                    />
-                  ))}
-                {installments.map((inst) => (
-                  <InstallmentCard
-                    key={inst.id}
-                    installment={inst}
-                    linkedAccount={accounts.find((a) => a.id === inst.account_id)}
-                    onMarkPaid={() => void markMonthPaid(inst.id).catch(() => toast.error('Error', 'No se pudo actualizar'))}
-                    onDelete={() => void removeInstallment(inst.id).catch(() => toast.error('Error', 'No se pudo eliminar'))}
-                    onEdit={() => setEditingInstallment(inst)}
-                  />
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setInstallmentFormOpen(true)}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
-                >
-                  <IconPlus size={16} /> Agregar otro
-                </button>
-              </div>
-            )}
-          </section>
+          <MsiSection accounts={accounts} updateBalance={updateBalance} />
       </>
-
-      <InstallmentFormModal
-        open={installmentFormOpen || editingInstallment != null}
-        onClose={() => { setInstallmentFormOpen(false); setEditingInstallment(null) }}
-        onSubmit={createInstallment}
-        editingInstallment={editingInstallment ?? undefined}
-        onUpdate={updateInstallment}
-      />
 
       <AddAccountChooserModal
         open={chooserOpen}

@@ -1,7 +1,8 @@
-import { getExigibleEsteCiclo } from '@/lib/debt'
+import { getRevolvingBalance, msiDelVencimiento } from '@/lib/debt'
+import { calendarioDe, type CalendarioMsi, type EstadoMes } from '@/lib/msi'
 import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
 import { computePaydays, payFreqOf } from '@/lib/paydays'
-import { corteEn, vencimientosEntre } from '@/lib/cardCycle'
+import { corteEn, tieneVencimiento, vencimientosEntre } from '@/lib/cardCycle'
 import { dayInMonth, fromKey, noon, toKey } from '@/lib/localDate'
 
 /**
@@ -54,6 +55,9 @@ export interface CalendarEvent {
   accountId?: string
   /** Proveedor del cargo (CFE, Telmex…), para pintar su logo en el marcador. */
   brandId?: string
+  /** Mensualidad de un plan a meses: qué plan, cuál de cuántas y en qué estado. */
+  installmentId?: string
+  mes?: { n: number; de: number; estado: EstadoMes }
   /** Short labels shown on the day detail. */
   tags: string[]
 }
@@ -154,41 +158,23 @@ export function subscriptionDates(sub: Subscription, from: Date, to: Date): Date
   return out
 }
 
-/** Remaining MSI payments, one per month from the next one until the term ends. */
-export function installmentDates(inst: Installment, from: Date, to: Date): Date[] {
-  if (inst.status !== 'active') return []
-  const remaining = Math.max(0, inst.months_total - inst.months_paid)
-  if (remaining === 0) return []
-  const startDate = inst.start_date ? fromKey(inst.start_date.slice(0, 10)) : noon(from)
-  const day = startDate.getDate()
-  const start = noon(from)
-  const end = noon(to)
-
-  const out: Date[] = []
-  for (let i = 0; i < remaining; i++) {
-    const d = dayInMonth(
-      startDate.getFullYear(),
-      startDate.getMonth() + inst.months_paid + i,
-      day,
-    )
-    if (d >= start && d <= end) out.push(d)
-    if (d > end) break
-  }
-  return out
-}
-
 /* ── event building ───────────────────────────────────────────────────────── */
 
 export interface CalendarInput {
   accounts: Account[]
-  installments: Installment[]
+  installments: (Installment & { msi?: CalendarioMsi })[]
   subscriptions: Subscription[]
   transactions: Transaction[]
   goals: Goal[]
   config: UserConfig | null
 }
 
-export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date): CalendarEvent[] {
+export function buildCalendarEvents(
+  input: CalendarInput,
+  from: Date,
+  to: Date,
+  hoy: string = toKey(new Date()),
+): CalendarEvent[] {
   const { accounts, installments, subscriptions, transactions, goals, config } = input
   const out: CalendarEvent[] = []
   const start = noon(from)
@@ -215,16 +201,30 @@ export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date):
   const accountById = new Map(accounts.map((a) => [a.id, a]))
 
   for (const a of accounts.filter((x) => x.type === 'credit')) {
-    // The amount already folds in the MSI due this cycle, so instalments below
-    // are markers only — otherwise the same money would be counted twice.
-    const exigible = getExigibleEsteCiclo(a, installments)
+    // The amount already folds in the MSI due on that date, so instalments below
+    // are markers only — otherwise the same money would be counted twice. Each
+    // due date carries ITS statement's mensualidades (it used to repeat one
+    // figure forever, even after a plan ended); the revolving minimum goes on
+    // the next payment only.
+    const pct = a.min_payment_pct == null ? 1.5 : Number(a.min_payment_pct)
+    const minimo =
+      (a.cost_type ?? 'con_costo') === 'con_costo'
+        ? getRevolvingBalance(a, installments, hoy) * ((Number.isFinite(pct) ? pct : 1.5) / 100)
+        : 0
+    let primero = true
     for (const d of cardDueDates(a, start, end)) {
+      const key = toKey(d)
+      const msi = msiDelVencimiento(a, installments, key, hoy)
+      const esProximo = primero && key >= hoy
+      if (esProximo) primero = false
+      const buffer = Math.min(Number(a.prepay_buffer ?? 0) || 0, msi)
+      const exigible = Math.max(0, (esProximo ? minimo : 0) + msi - (esProximo ? buffer : 0))
       out.push({
         id: `due:${a.id}:${toKey(d)}`,
         kind: 'card_due',
         date: toKey(d),
         title: `Pago ${a.name}`,
-        amount: -exigible,
+        amount: -Math.round(exigible * 100) / 100,
         countsToCash: true,
         estimated: true,
         accountId: a.id,
@@ -271,18 +271,35 @@ export function buildCalendarEvents(input: CalendarInput, from: Date, to: Date):
     }
   }
 
+  const ESTADO: Record<EstadoMes, string> = {
+    pagada: 'Pagada',
+    'por-pagar': 'En tu estado de cuenta',
+    vencida: 'Vencida',
+    proxima: 'Próxima',
+  }
+  const desde = toKey(start)
+  const hasta = toKey(end)
   for (const inst of installments) {
-    for (const d of installmentDates(inst, start, end)) {
+    const tarjeta = inst.account_id ? accountById.get(inst.account_id) ?? null : null
+    const cal = calendarioDe(inst, tarjeta, hoy)
+    // Con una tarjeta con fecha de pago, el pago de la tarjeta ya la lleva. Sin
+    // ella (o sin tarjeta), sale de tu efectivo el día que vence.
+    const porTarjeta = tieneVencimiento(tarjeta)
+    const M = cal.meses.length
+    for (const m of cal.meses) {
+      if (m.vence < desde || m.vence > hasta) continue
       out.push({
-        id: `msi:${inst.id}:${toKey(d)}`,
+        id: `msi:${inst.id}:${m.n}`,
         kind: 'installment',
-        date: toKey(d),
+        date: m.vence,
         title: inst.name,
-        amount: -Number(inst.monthly_amount ?? 0),
-        // Paid through the card; the card's due event already carries it.
-        countsToCash: false,
+        amount: -m.monto,
+        countsToCash: !porTarjeta && m.estado !== 'pagada',
+        estimated: m.venceEstimado,
         accountId: inst.account_id ?? undefined,
-        tags: ['MSI', 'En tu tarjeta'],
+        installmentId: inst.id,
+        mes: { n: m.n, de: M, estado: m.estado },
+        tags: ['MSI', `${m.n} de ${M}`, ESTADO[m.estado]],
       })
     }
   }

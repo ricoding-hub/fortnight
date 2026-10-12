@@ -24,6 +24,7 @@ import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
+import { useToast } from '@/hooks/useToast'
 import { useInstallments } from '@/hooks/useInstallments'
 import { useMonthlyDisposable } from '@/hooks/useMonthlyDisposable'
 import { Card } from '@/components/ui/Card'
@@ -64,13 +65,14 @@ import { FinanceCalendar } from '@/components/calendar/FinanceCalendar'
 export function Proyeccion() {
   const { monthlyIncome } = useOutletContext<PlanContext>()
   const navigate = useNavigate()
+  const toast = useToast()
   const { data: plan } = useBudgetPlan()
   const { data: goals, loading } = useGoals()
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
-  const { data: installments, active: activeInstallments } = useInstallments()
+  const { data: installments, active: activeInstallments, marcarMes } = useInstallments()
   const [debtMode, setDebtMode] = useState<'all' | 'con_costo'>('all')
 
   /**
@@ -348,6 +350,15 @@ export function Proyeccion() {
           goals={goals}
           config={config}
           startCash={liquidCash}
+          onMarcarMes={async (id, n) => {
+            try {
+              await marcarMes(id, n, 'paid')
+              toast.success('Mensualidad pagada', `La ${n} quedó marcada`)
+            } catch (e) {
+              toast.error('No se pudo marcar', e instanceof Error ? e.message : 'Inténtalo de nuevo')
+            }
+          }}
+          onVerPlan={(id) => void navigate(`/cuentas/mis?msi=${id}`)}
           onOpenAccount={() => void navigate('/cuentas/mis')}
         />
       </div>

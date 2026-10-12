@@ -103,7 +103,7 @@ export function MsiGapAlert({ account, gap, onAgregar }: MsiGapAlertProps) {
         type="button"
         onClick={() => setPorQue((v) => !v)}
         aria-expanded={porQue}
-        className="mt-1.5 flex w-full items-center justify-center gap-1 text-[11px] font-semibold text-text-tertiary transition-colors hover:text-text-secondary"
+        className="mt-1.5 flex w-full items-center justify-center gap-1 text-[11.5px] font-semibold text-text-secondary transition-colors hover:text-text-secondary"
       >
         ¿Por qué aparece esto?
         <IconChevronDown size={12} className={clsx('transition-transform', porQue && 'rotate-180')} />
@@ -111,11 +111,12 @@ export function MsiGapAlert({ account, gap, onAgregar }: MsiGapAlertProps) {
 
       {porQue && (
         <p className="mt-1.5 text-[11px] leading-relaxed text-text-secondary">
-          Al dar de alta el plan a meses elegiste «Sí, ya está» en el saldo de la
-          tarjeta, pero el saldo guardado no da para cubrirlo. O la compra nunca
-          llegó a cargarse, o el saldo se actualizó después con una cifra vieja.
-          Agregarlo deja registrado el ajuste en tus movimientos, así que no se
-          pierde el rastro de por qué cambió.
+          Las mensualidades que todavía no entran a ningún corte siguen siendo
+          deuda dentro de la tarjeta, y el saldo guardado no alcanza para ellas.
+          Lo que ya entró a tu estado de cuenta no cuenta aquí: pagarlo antes de
+          la fecha límite no dispara este aviso. Suele pasar cuando la compra
+          nunca llegó a cargarse, o cuando el saldo se actualizó con una cifra
+          vieja. Agregarlo deja el ajuste en tus movimientos, con su rastro.
         </p>
       )}
     </div>
