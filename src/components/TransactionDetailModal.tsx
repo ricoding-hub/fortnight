@@ -11,6 +11,7 @@ import {
   IconCategory,
   IconHash,
   IconNote,
+  IconPencil,
   IconTrash,
   IconWallet,
 } from '@tabler/icons-react'
@@ -28,6 +29,8 @@ interface TransactionDetailModalProps {
   category?: Category
   onClose: () => void
   onDelete: (id: string) => Promise<void>
+  /** Abrir la edición. Ausente para el cargo de un MSI (se edita desde su plan). */
+  onEdit?: () => void
 }
 
 const TYPE_LABEL: Record<Transaction['type'], string> = {
@@ -74,6 +77,7 @@ export function TransactionDetailModal({
   category,
   onClose,
   onDelete,
+  onEdit,
 }: TransactionDetailModalProps) {
   const toast = useToast()
   const navigate = useNavigate()
@@ -209,18 +213,28 @@ export function TransactionDetailModal({
           </div>
         )}
 
+        {onEdit && !esCargoMsi && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="mt-4 flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-border bg-bg-elevated text-sm font-semibold text-text transition-colors hover:bg-bg-secondary"
+          >
+            <IconPencil size={16} /> Editar movimiento
+          </button>
+        )}
+
         {transaction.source !== 'syncfy' && (
           <button
             type="button"
             onClick={() => setConfirmar(true)}
-            className="mt-4 flex items-center justify-center gap-1.5 rounded-xl border border-debt/20 bg-debt/5 py-2.5 text-sm font-semibold text-debt transition-colors hover:bg-debt/10"
+            className="mt-2 flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-debt/20 bg-debt/5 text-sm font-semibold text-debt-ink transition-colors hover:bg-debt/10"
           >
             <IconTrash size={16} /> Eliminar movimiento
           </button>
         )}
         {transaction.source === 'syncfy' && (
           <p className="mt-4 text-center text-[11px] text-text-tertiary">
-            Los movimientos sincronizados se gestionan desde tu banco.
+            Los movimientos sincronizados no se borran: vienen de tu banco.
           </p>
         )}
       </div>

@@ -6,6 +6,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { TransactionRow } from '@/components/TransactionRow'
 import { TransactionDetailModal } from '@/components/TransactionDetailModal'
+import { TransactionEditModal } from '@/components/TransactionEditModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
@@ -44,12 +45,14 @@ export function Movimientos() {
   const [from, setFrom] = useState(DEFAULT_FROM)
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<Transaction | null>(null)
+  const [editando, setEditando] = useState<Transaction | null>(null)
 
   const {
     data: transactions,
     loading,
     error,
     deleteTransaction,
+    update,
   } = useTransactions({
     accountId: account || undefined,
     categoryId: category || undefined,
@@ -224,6 +227,20 @@ export function Movimientos() {
           }
           onClose={() => setSelected(null)}
           onDelete={deleteTransaction}
+          onEdit={() => {
+            setEditando(selected)
+            setSelected(null)
+          }}
+        />
+      )}
+
+      {editando && (
+        <TransactionEditModal
+          transaction={editando}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setEditando(null)}
+          onSave={update}
         />
       )}
     </div>

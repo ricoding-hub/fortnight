@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Transaction, TransactionType } from '@/types'
 import { toKey } from '@/lib/calendar'
+import { tieneEsquemaMsi } from '@/lib/esquema'
 
 export interface TransactionFilters {
   accountId?: string
@@ -22,6 +23,11 @@ export interface NewTransaction {
   /** Only for the `type='installment'` charge that links a plan to its card. */
   installment_id?: string | null
 }
+
+export type TransactionPatch = Partial<Pick<Transaction, 'amount' | 'date' | 'description' | 'category_id' | 'account_id'>>
+
+/** Sin la migración 036, editar monto o cuenta no movería el saldo. */
+export const MIGRACION_PARA_EDITAR = 'Para cambiar el monto o la cuenta, corre la migración 036 en Supabase.'
 
 const EMPTY: Transaction[] = []
 
@@ -128,11 +134,32 @@ export function useTransactions(filters: TransactionFilters = {}) {
     }
   }
 
+  /**
+   * Editar un movimiento. Con la migración 036 el trigger recalcula el saldo al
+   * cambiar monto o cuenta; antes de ella sólo se pueden cambiar categoría,
+   * nota y fecha (que no mueven saldos), y se dice por qué.
+   */
+  async function update(id: string, patch: TransactionPatch) {
+    const prev = data.find((t) => t.id === id)
+    const mueveSaldo =
+      prev != null &&
+      ((patch.amount !== undefined && Number(patch.amount) !== Number(prev.amount)) ||
+        (patch.account_id !== undefined && patch.account_id !== prev.account_id))
+    if (mueveSaldo && !(await tieneEsquemaMsi())) throw new Error(MIGRACION_PARA_EDITAR)
+    setData((cur) => cur.map((t) => (t.id === id ? { ...t, ...patch } : t)))
+    const { error: err } = await supabase.from('transactions').update(patch).eq('id', id)
+    if (err) {
+      if (prev) setData((cur) => cur.map((t) => (t.id === id ? prev : t)))
+      throw err
+    }
+  }
+
   return {
     data: user ? data : EMPTY,
     loading: user ? loading : false,
     error,
     create,
+    update,
     deleteTransaction,
   }
 }
