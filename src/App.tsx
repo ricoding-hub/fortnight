@@ -70,8 +70,10 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 function PublicOnlyRoute({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth()
+  const { session, loading, isRecovery } = useAuth()
   if (loading) return <Splash label="Cargando…" />
+  // Una sesión de recuperación sólo sirve para elegir contraseña nueva.
+  if (session && isRecovery) return <Navigate to="/auth/reset" replace />
   // Entrar con contraseña pasa por aquí, no por AuthCallback: sin esto, una
   // invitación abierta antes de iniciar sesión se perdía.
   return session ? <Navigate to={destinoPendiente() ?? '/'} replace /> : <>{children}</>

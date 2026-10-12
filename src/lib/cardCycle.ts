@@ -38,7 +38,8 @@ function corteDia(c: CicloTarjeta): number | null {
 }
 function gracia(c: CicloTarjeta): number | null {
   const g = num(c.payment_grace_days)
-  return g != null && g >= 1 ? g : null
+  // 0 es válido en filas viejas: se paga el mismo día del corte.
+  return g != null && g >= 0 ? g : null
 }
 function diaDePago(c: CicloTarjeta): number | null {
   const d = num(c.payment_due_day)
@@ -70,9 +71,13 @@ export function venceDelCorte(c: CicloTarjeta, corte: Date): { vence: Date; esti
   if (g != null) return { vence: addDays(corte, g), estimado: false }
   const dia = diaDePago(c)
   if (dia != null) {
-    // El primer día de pago estrictamente después del corte.
-    const mismoMes = dayInMonth(corte.getFullYear(), corte.getMonth(), dia)
-    const vence = mismoMes > corte ? mismoMes : dayInMonth(corte.getFullYear(), corte.getMonth() + 1, dia)
+    // El día de pago después del corte. Se comparan los días configurados, no
+    // los recortados: en febrero, un corte 29 y pago 30 se recortan los dos al
+    // 28, y comparar fechas mandaba el pago a marzo (marzo con dos, febrero sin).
+    const cut = corteDia(c) ?? corte.getDate()
+    const vence = dia > cut
+      ? dayInMonth(corte.getFullYear(), corte.getMonth(), dia)
+      : dayInMonth(corte.getFullYear(), corte.getMonth() + 1, dia)
     return { vence, estimado: false }
   }
   return { vence: addDays(corte, DIAS_PAGO_SUPUESTOS), estimado: true }

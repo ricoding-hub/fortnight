@@ -99,3 +99,16 @@ describe('proximoVencimiento', () => {
     expect(k(proximoVencimiento(c, fromKey('2026-11-05'))?.vence)).toBe('2026-11-05')
   })
 })
+
+describe('día fijo con corte, en febrero', () => {
+  it('una fecha de pago por mes aunque febrero recorte corte y pago', () => {
+    const c = tarjeta({ cut_day: 29, payment_due_day: 30 })
+    const fechas = vencimientosEntre(c, fromKey('2027-01-01'), fromKey('2027-04-30')).map((v) => k(v.vence))
+    expect(fechas).toEqual(['2027-01-30', '2027-02-28', '2027-03-30', '2027-04-30'])
+  })
+
+  it('gracia 0 (filas viejas): se paga el día del corte', () => {
+    const c = tarjeta({ cut_day: 10, payment_grace_days: 0 })
+    expect(k(proximoVencimiento(c, fromKey('2026-10-05'))?.vence)).toBe('2026-10-10')
+  })
+})

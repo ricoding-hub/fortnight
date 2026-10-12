@@ -64,7 +64,7 @@ const accountSchema = z
       falla('balance', 'Monto inválido')
     }
     if (v.tipo !== 'credit') return
-    if (!vacio(v.credit_limit) && !isMoneyInput(v.credit_limit)) falla('credit_limit', 'Monto inválido')
+    if (!vacio(v.credit_limit) && !isMoneyInput(v.credit_limit, { allowZero: true })) falla('credit_limit', 'Monto inválido')
     if (!vacio(v.cut_day) && !isDay(v.cut_day)) falla('cut_day', 'Día entre 1 y 31')
     if (v.modo_pago === 'fixed_day' && !vacio(v.payment_due_day) && !isDay(v.payment_due_day)) {
       falla('payment_due_day', 'Día entre 1 y 31')
