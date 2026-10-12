@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   IconCalendarEvent,
   IconPlus,
-  IconWallet,
   IconArrowsLeftRight,
   IconArrowsSort,
   IconChevronRight,
@@ -13,6 +12,7 @@ import {
 import { useAccounts } from '@/hooks/useAccounts'
 import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
 import { useInstallments } from '@/hooks/useInstallments'
+import { useOrdenCuentas } from '@/hooks/useOrdenCuentas'
 import { AccountCard } from '@/components/AccountCard'
 import {
   AccountFormModal,
@@ -25,7 +25,7 @@ import { BANK_LINKING_ENABLED } from '@/lib/features'
 import { InstallmentCard } from '@/components/InstallmentCard'
 import { MsiGapAlert } from '@/components/MsiGapAlert'
 import { InstallmentFormModal } from '@/components/InstallmentFormModal'
-import { EmptyState } from '@/components/ui/EmptyState'
+import { Segmented } from '@/components/ui/Segmented'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
@@ -70,8 +70,10 @@ function Section({
       </div>
       <Card className="px-4 py-1">
         {accounts.length === 0 ? (
-          <p className="py-4 text-xs text-text-secondary">
-            Sin cuentas de {title.toLowerCase()}.
+          <p className="py-4 text-[13px] text-text-secondary">
+            {type === 'credit'
+              ? 'Aún no tienes tarjetas de crédito. Agrégalas para ver tu deuda, tu corte y tu fecha de pago.'
+              : 'Aún no tienes cuentas de débito. Agrega dónde tienes tu dinero: nómina, ahorro, efectivo.'}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -98,7 +100,7 @@ function Section({
           onClick={() => onAdd(type)}
           className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-primary transition-all hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]"
         >
-          <IconPlus size={16} /> Agregar cuenta
+          <IconPlus size={16} /> {type === 'credit' ? 'Agregar tarjeta de crédito' : 'Agregar cuenta de débito'}
         </button>
       )}
     </section>
@@ -119,7 +121,11 @@ export function MisCuentas() {
   const { data: credentials, sync } = useSyncedCredentials()
   const { data: installments, markMonthPaid, remove: removeInstallment, create: createInstallment, update: updateInstallment } = useInstallments()
   const [formMode, setFormMode] = useState<AccountFormMode | null>(null)
-  const [chooserType, setChooserType] = useState<AccountType | null>(null)
+  // Abierto y tipo van separados: al cerrar, el tipo se queda y el texto del
+  // selector no cambia a «débito» durante la animación de salida.
+  const [chooserOpen, setChooserOpen] = useState(false)
+  const [chooserType, setChooserType] = useState<AccountType>('debit')
+  const { orden, primero, setPrimero } = useOrdenCuentas()
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
@@ -164,15 +170,22 @@ export function MisCuentas() {
 
   function openChooser(type: AccountType) {
     setChooserType(type)
+    setChooserOpen(true)
   }
   function pickBank() {
-    setChooserType(null)
+    setChooserOpen(false)
     setBankModalOpen(true)
   }
   function pickManual() {
-    const type = chooserType ?? 'debit'
-    setChooserType(null)
-    setFormMode({ kind: 'create', type })
+    setChooserOpen(false)
+    setFormMode({ kind: 'create', type: chooserType })
+  }
+  async function cambiarPrimero(v: AccountType) {
+    try {
+      await setPrimero(v)
+    } catch {
+      toast.error('Error', 'No se pudo guardar el orden')
+    }
   }
 
   if (loading) {
@@ -270,25 +283,36 @@ export function MisCuentas() {
         </div>
       )}
 
-      {!hasAccounts ? (
-        <EmptyState
-          icon={IconWallet}
-          title="Sin cuentas aún"
-          description="Agrega tu primera cuenta para empezar a controlar tus finanzas."
-          action={
-            <button
-              type="button"
-              onClick={() => openChooser('debit')}
-              className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-text-inverse shadow-card transition-all hover:bg-primary-deep active:scale-[0.97]"
-            >
-              <IconPlus size={16} /> Agregar cuenta
-            </button>
-          }
-        />
-      ) : (
-        <>
-          <Section id="tour-cuentas-debito" title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
-          <Section id="tour-cuentas-credito" title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
+      {!hasAccounts && (
+        <p className="px-4 pb-1 pt-2 text-[13px] leading-snug text-text-secondary">
+          Empieza por tus cuentas: débito para tu dinero, crédito para tus tarjetas.
+        </p>
+      )}
+
+      {reorderMode && (
+        <div className="flex flex-col gap-1.5 px-4 pb-1 pt-2">
+          <p className="text-[12px] font-semibold text-text-secondary">Mostrar primero</p>
+          <Segmented
+            ariaLabel="Qué cuentas mostrar primero"
+            value={primero}
+            onChange={(v) => void cambiarPrimero(v)}
+            options={[
+              { value: 'debit', label: 'Débito' },
+              { value: 'credit', label: 'Crédito' },
+            ]}
+          />
+        </div>
+      )}
+
+      {orden.map((tipo) =>
+        tipo === 'debit' ? (
+          <Section key="debit" id="tour-cuentas-debito" title="Débito" type="debit" accounts={debit} total={debitTotal} reorderMode={reorderMode} {...sectionProps} />
+        ) : (
+          <Section key="credit" id="tour-cuentas-credito" title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
+        ),
+      )}
+
+      <>
           {!reorderMode && (
             <div className="px-4 pb-2">
               {BANK_LINKING_ENABLED && hasConnectedBanks ? (
@@ -404,8 +428,7 @@ export function MisCuentas() {
               </div>
             )}
           </section>
-        </>
-      )}
+      </>
 
       <InstallmentFormModal
         open={installmentFormOpen || editingInstallment != null}
@@ -416,9 +439,9 @@ export function MisCuentas() {
       />
 
       <AddAccountChooserModal
-        open={chooserType !== null}
-        type={chooserType ?? 'debit'}
-        onClose={() => setChooserType(null)}
+        open={chooserOpen}
+        type={chooserType}
+        onClose={() => setChooserOpen(false)}
         onPickBank={pickBank}
         onPickManual={pickManual}
       />

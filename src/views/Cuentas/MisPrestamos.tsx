@@ -44,6 +44,7 @@ export function MisPrestamos() {
     profiles,
     recentContacts,
     ready: splitReady,
+    multiUserReady,
     displayName,
     createGroup,
     ensureDirectGroup,
@@ -447,6 +448,15 @@ export function MisPrestamos() {
           onEdit={loanActions.openEdit}
           onDelete={loanActions.openDelete}
           onUnmarkPaid={loanActions.openDetail}
+          onInvitar={
+            multiUserReady
+              ? async () => {
+                  const id = await ensureDirectGroup(contactSheet.contactName ?? contactSheet.name)
+                  setContactSheet(null)
+                  void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
+                }
+              : undefined
+          }
         />
       )}
 
@@ -487,7 +497,8 @@ export function MisPrestamos() {
               ? `${name} · ${linked} contacto${linked === 1 ? '' : 's'} conectado${linked === 1 ? '' : 's'} ya lo ve${linked === 1 ? '' : 'n'}`
               : `${name} · ${memberDrafts.length + 1} personas`,
           )
-          void navigate(`/cuentas/prestamos/${id}`)
+          // El formulario promete el enlace: se abre al llegar al grupo.
+          void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
         }}
       />
     </div>

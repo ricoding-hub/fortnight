@@ -374,6 +374,8 @@ export interface UserConfig {
   pet_floating: boolean
   /** Cloud-synced manual order of the loans list (migration 026). */
   loan_order: LoanOrder | null
+  /** Qué sección de cuentas va primero (migración 035). `null` = débito. */
+  accounts_first?: AccountType | null
 }
 
 /** Pinned order of the loans list; keys not present fall back to recency. */

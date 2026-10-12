@@ -193,9 +193,12 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
     coveredContactKeys.add(key)
   }
 
-  // 2) Connected 1:1 relationships without loans of their own.
+  // 2) 1:1 relationships without loans of their own — connected or not. An
+  //    unconnected one used to be skipped, so a connection created to invite
+  //    someone vanished from the list (and its invite link with it) as soon as
+  //    you left its screen.
   for (const g of splitGroups) {
-    if (g.activeMembers.length !== 2 || !g.isConnected) continue
+    if (g.activeMembers.length !== 2) continue
     const contact = g.activeMembers.find((m) => !memberIsMe(m, userId))
     if (!contact || coveredContactKeys.has(norm(contact.name))) continue
     entries.push({

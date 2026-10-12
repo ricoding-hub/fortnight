@@ -7,6 +7,7 @@ import { BudgetPlanProvider } from '@/hooks/useBudgetPlan'
 import { useAutoSync } from '@/hooks/useAutoSync'
 import { useUiStore } from '@/store/uiStore'
 import { hadSession } from '@/lib/dataCache'
+import { destinoPendiente } from '@/lib/pendingRedirect'
 import { Layout } from '@/components/Layout'
 import { Login } from '@/views/auth/Login'
 import { AuthCallback } from '@/views/auth/AuthCallback'
@@ -71,7 +72,9 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function PublicOnlyRoute({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth()
   if (loading) return <Splash label="Cargando…" />
-  return session ? <Navigate to="/" replace /> : <>{children}</>
+  // Entrar con contraseña pasa por aquí, no por AuthCallback: sin esto, una
+  // invitación abierta antes de iniciar sesión se perdía.
+  return session ? <Navigate to={destinoPendiente() ?? '/'} replace /> : <>{children}</>
 }
 
 export default function App() {

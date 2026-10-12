@@ -75,7 +75,13 @@ export function Resumen() {
   const { data: accounts, loading, error } = useAccounts()
   const loansApi = useLoans()
   const { active: activeLoans, paid: paidLoans, data: allLoans, paymentsByLoan } = loansApi
-  const { groups: splitGroups, profiles: splitProfiles, displayName: memberDisplayName } = useSplitGroups({ loans: allLoans, paymentsByLoan })
+  const {
+    groups: splitGroups,
+    profiles: splitProfiles,
+    displayName: memberDisplayName,
+    multiUserReady,
+    ensureDirectGroup,
+  } = useSplitGroups({ loans: allLoans, paymentsByLoan })
   const balances = usePeopleBalances({
     active: activeLoans,
     paid: paidLoans,
@@ -914,6 +920,15 @@ export function Resumen() {
           onEdit={loanActions.openEdit}
           onDelete={loanActions.openDelete}
           onUnmarkPaid={loanActions.openDetail}
+          onInvitar={
+            multiUserReady
+              ? async () => {
+                  const id = await ensureDirectGroup(contactSheet.contactName ?? contactSheet.name)
+                  setContactSheet(null)
+                  void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
+                }
+              : undefined
+          }
         />
       )}
     </div>

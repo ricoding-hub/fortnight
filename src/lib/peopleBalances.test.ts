@@ -203,3 +203,13 @@ describe('derivePeopleBalances — balance made of shared expenses', () => {
     expect(Array.isArray(r.entries[0].movements)).toBe(true)
   })
 })
+
+describe('derivePeopleBalances — conexiones 1:1 sin préstamos', () => {
+  it('una conexión recién creada, aún sin conectar, sigue en la lista', () => {
+    const g = { ...connectedGroup(), isConnected: false, expenses: [], mySplitNet: 0 } as unknown as GroupComputed
+    const r = derivePeopleBalances(input({ active: [], paid: [], splitGroups: [g] }))
+    expect(r.entries).toHaveLength(1)
+    expect(r.entries[0].groupId).toBe('g1')
+    expect(r.entries[0].net).toBe(0)
+  })
+})

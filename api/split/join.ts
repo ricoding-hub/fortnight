@@ -10,6 +10,12 @@
  *   can pick "I am X" (an unlinked local member) or join as a new person.
  * - claim:   link an unlinked member slot to the caller's account.
  * - new:     add the caller as a brand-new linked member.
+ *
+ * The owner's own slot (`is_me`) is never claimable: groups created before the
+ * multi-user migration have it with `member_user_id` null, which made it look
+ * free. A 2-person group is a 1:1 connection: whoever opens its link IS the
+ * other person, so `new` is refused there — it used to turn the connection
+ * into a 3-person group.
  */
 
 import { isResponse, json, requireUser } from '../_lib/auth.js'
@@ -39,10 +45,14 @@ export async function POST(req: Request): Promise<Response> {
 
     const { data: members } = await admin
       .from('split_members')
-      .select('id, name, member_user_id, left_at')
+      .select('id, name, member_user_id, left_at, is_me')
       .eq('group_id', group.id)
     const activeMembers = (members ?? []).filter((m) => m.left_at == null)
-    const alreadyMember = activeMembers.some((m) => m.member_user_id === user.id)
+    const alreadyMember =
+      group.user_id === user.id || activeMembers.some((m) => m.member_user_id === user.id)
+    const libre = (m: { member_user_id: string | null; is_me: boolean | null }) =>
+      m.member_user_id == null && !m.is_me
+    const esConexion = activeMembers.length === 2
 
     if (action === 'preview') {
       return json({
@@ -53,7 +63,7 @@ export async function POST(req: Request): Promise<Response> {
         members: activeMembers.map((m) => ({
           id: m.id,
           name: m.name,
-          linked: m.member_user_id != null,
+          linked: !libre(m),
         })),
       })
     }
@@ -64,7 +74,7 @@ export async function POST(req: Request): Promise<Response> {
     if (action === 'claim') {
       const slot = activeMembers.find((m) => m.id === body.memberId)
       if (!slot) return json({ error: 'member_not_found' }, 404)
-      if (slot.member_user_id) return json({ error: 'member_already_linked' }, 409)
+      if (!libre(slot)) return json({ error: 'member_already_linked' }, 409)
       const { error: uErr } = await admin
         .from('split_members')
         .update({ member_user_id: user.id })
@@ -78,6 +88,12 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     // action === 'new'
+    if (esConexion) {
+      return json(
+        { error: activeMembers.some(libre) ? 'claim_required' : 'connection_full' },
+        409,
+      )
+    }
     const { data: profile } = await admin
       .from('profiles')
       .select('display_name, email')

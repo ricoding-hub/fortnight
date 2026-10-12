@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { IconBuildingBank, IconCheck, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
@@ -7,15 +7,18 @@ import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Segmented } from '@/components/ui/Segmented'
 import { useToast } from '@/hooks/useToast'
 import { BANK_PRESETS, bankLogoUrl } from '@/lib/banks'
-import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
+import { isCountInput, isMoneyInput, moneyOr, parseCountInput, parseMoneyInput } from '@/lib/money'
 import type { Account, AccountType } from '@/types'
 import type { NewAccount, AccountPatch } from '@/hooks/useAccounts'
 
 /**
- * Add a new account (`type` fixed by which section opened the form) or edit
- * an existing one's details. Balance is edited inline on the card, not here.
+ * Add a new account or edit an existing one's details. On create, the section
+ * that opened the form only picks the starting type: the user can switch
+ * between débito and crédito right here (a brand-new user had no way to reach
+ * a credit form at all). Balance is edited inline on the card, not here.
  */
 export type AccountFormMode =
   | { kind: 'create'; type: AccountType }
@@ -30,27 +33,46 @@ interface AccountFormModalProps {
 }
 
 const isDay = (v: string) => isCountInput(v, 1, 31)
-
-/** A balance of zero is legitimate: a card you just finished paying. */
-const isMoney = (v: string) => isMoneyInput(v, { allowZero: true })
-
 const isGraceDays = (v: string) => isCountInput(v, 1, 365)
+const vacio = (v: string) => v.trim() === ''
 
-// The form holds raw strings; values are coerced to the schema's types on submit.
-const accountSchema = z.object({
-  name: z.string().trim().min(1, 'Escribe un nombre'),
-  balance: z.string().refine(isMoney, 'Monto inválido'),
-  credit_limit: z
-    .string()
-    .refine((v) => v === '' || isMoney(v), 'Monto inválido'),
-  cut_day: z.string().refine((v) => v === '' || isDay(v), 'Día entre 1 y 31'),
-  payment_due_day: z
-    .string()
-    .refine((v) => v === '' || isDay(v), 'Día entre 1 y 31'),
-  payment_grace_days: z
-    .string()
-    .refine((v) => v === '' || isGraceDays(v), 'Entre 1 y 365 días'),
-})
+// The form holds raw strings; values are coerced on submit. `tipo`, `modo_pago`
+// and `crear` live in the form too, so validation only checks what is on
+// screen. Before, a due day typed and then hidden by switching to «días de
+// gracia» stayed invalid and invisible, and «Crear cuenta» silently did nothing.
+const accountSchema = z
+  .object({
+    tipo: z.enum(['debit', 'credit']),
+    modo_pago: z.enum(['fixed_day', 'grace_days']),
+    crear: z.boolean(),
+    name: z.string().trim().min(1, 'Escribe un nombre'),
+    balance: z.string(),
+    credit_limit: z.string(),
+    cut_day: z.string(),
+    payment_due_day: z.string(),
+    payment_grace_days: z.string(),
+  })
+  .superRefine((v, ctx) => {
+    const falla = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message })
+    // Empty is $0 (a card you just paid off). A credit balance can be negative:
+    // money in your favor after overpaying. Only shown, so only checked, on create.
+    if (
+      v.crear &&
+      !vacio(v.balance) &&
+      !isMoneyInput(v.balance, { allowZero: true, allowNegative: v.tipo === 'credit' })
+    ) {
+      falla('balance', 'Monto inválido')
+    }
+    if (v.tipo !== 'credit') return
+    if (!vacio(v.credit_limit) && !isMoneyInput(v.credit_limit)) falla('credit_limit', 'Monto inválido')
+    if (!vacio(v.cut_day) && !isDay(v.cut_day)) falla('cut_day', 'Día entre 1 y 31')
+    if (v.modo_pago === 'fixed_day' && !vacio(v.payment_due_day) && !isDay(v.payment_due_day)) {
+      falla('payment_due_day', 'Día entre 1 y 31')
+    }
+    if (v.modo_pago === 'grace_days' && !vacio(v.payment_grace_days) && !isGraceDays(v.payment_grace_days)) {
+      falla('payment_grace_days', 'Entre 1 y 365 días')
+    }
+  })
 
 type AccountFormValues = z.infer<typeof accountSchema>
 
@@ -77,8 +99,6 @@ export function AccountFormModal({
 }: AccountFormModalProps) {
   const toast = useToast()
   const isCreate = mode.kind === 'create'
-  const type: AccountType = isCreate ? mode.type : mode.account.type
-  const isCredit = type === 'credit'
   const isSynced = mode.kind === 'edit' && mode.account.source === 'syncfy'
   const [submitError, setSubmitError] = useState(false)
   const [logoPickerOpen, setLogoPickerOpen] = useState(false)
@@ -90,20 +110,22 @@ export function AccountFormModal({
     mode.kind === 'edit' ? mode.account.logo_domain : null,
   )
 
-  // Due date mode: 'fixed_day' uses payment_due_day; 'grace_days' uses cut_day + payment_grace_days
-  const [dueDateMode, setDueDateMode] = useState<'fixed_day' | 'grace_days'>(
-    mode.kind === 'edit' && mode.account.payment_grace_days != null ? 'grace_days' : 'fixed_day',
-  )
-
   const {
     register,
     handleSubmit,
+    control,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
     defaultValues:
       mode.kind === 'create'
         ? {
+            tipo: mode.type,
+            // Due date mode: 'fixed_day' uses payment_due_day; 'grace_days'
+            // uses cut_day + payment_grace_days.
+            modo_pago: 'fixed_day',
+            crear: true,
             name: '',
             balance: '',
             credit_limit: '',
@@ -112,6 +134,9 @@ export function AccountFormModal({
             payment_grace_days: '',
           }
         : {
+            tipo: mode.account.type,
+            modo_pago: mode.account.payment_grace_days != null ? 'grace_days' : 'fixed_day',
+            crear: false,
             name: mode.account.name,
             balance: String(mode.account.balance),
             credit_limit:
@@ -131,12 +156,19 @@ export function AccountFormModal({
           },
   })
 
+  const type: AccountType = useWatch({ control, name: 'tipo' })
+  const isCredit = type === 'credit'
+  const dueDateMode = useWatch({ control, name: 'modo_pago' })
+
   const num = (s: string) => (s.trim() === '' ? null : parseCountInput(s))
+  // A limit is money, not a count: «50,000» and «45000.50» used to be saved as
+  // null because they went through the whole-number parser.
+  const dinero = (s: string) => (s.trim() === '' ? null : parseMoneyInput(s))
 
   async function onSubmit(values: AccountFormValues) {
     setSubmitError(false)
     const creditFields = {
-      credit_limit: isCredit ? num(values.credit_limit) : null,
+      credit_limit: isCredit ? dinero(values.credit_limit) : null,
       cut_day: isCredit ? num(values.cut_day) : null,
       payment_due_day: isCredit && dueDateMode === 'fixed_day' ? num(values.payment_due_day) : null,
       payment_grace_days: isCredit && dueDateMode === 'grace_days' ? num(values.payment_grace_days) : null,
@@ -185,13 +217,28 @@ export function AccountFormModal({
     }
   }
 
-  const title = isCreate
-    ? `Nueva cuenta de ${isCredit ? 'crédito' : 'débito'}`
-    : 'Editar cuenta'
+  const title = isCreate ? (isCredit ? 'Nueva tarjeta de crédito' : 'Nueva cuenta de débito') : 'Editar cuenta'
+
+  // Safety net: a field the user can't see must never leave the button mute.
+  function onInvalid() {
+    toast.error('Revisa los datos', 'Hay un campo con un valor que no es válido')
+  }
 
   return (
     <Modal open title={title} onClose={onClose}>
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="flex flex-col gap-3">
+        {isCreate && (
+          <Segmented
+            ariaLabel="Tipo de cuenta"
+            value={type}
+            onChange={(t) => setValue('tipo', t, { shouldValidate: false })}
+            options={[
+              { value: 'debit', label: 'Débito' },
+              { value: 'credit', label: 'Crédito' },
+            ]}
+          />
+        )}
+
         {isSynced && mode.kind === 'edit' && mode.account.institution_name && (
           <div className="flex items-start gap-2 rounded-xl bg-primary/5 p-3">
             <IconBuildingBank size={16} className="mt-0.5 shrink-0 text-primary" />
@@ -377,23 +424,15 @@ export function AccountFormModal({
               <p className="mb-1.5 text-[12px] font-semibold text-text-secondary">
                 Fecha límite de pago
               </p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['fixed_day', 'grace_days'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setDueDateMode(m)}
-                    className={
-                      'rounded-xl py-2.5 text-[12px] font-bold transition-all ' +
-                      (dueDateMode === m
-                        ? 'bg-primary text-white shadow-[0_4px_10px_rgba(42,75,255,0.3)]'
-                        : 'bg-bg-secondary text-text-secondary')
-                    }
-                  >
-                    {m === 'fixed_day' ? 'Día fijo' : 'Días de gracia'}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                ariaLabel="Cómo se calcula la fecha límite de pago"
+                value={dueDateMode}
+                onChange={(m) => setValue('modo_pago', m)}
+                options={[
+                  { value: 'fixed_day', label: 'Día fijo' },
+                  { value: 'grace_days', label: 'Días de gracia' },
+                ]}
+              />
             </div>
 
             {dueDateMode === 'fixed_day' ? (

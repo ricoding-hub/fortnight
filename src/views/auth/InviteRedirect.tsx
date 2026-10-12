@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { guardarInvitacionPendiente, olvidarInvitacionPendiente } from '@/lib/pendingRedirect'
 
 /**
  * /invite/:token — consumes a group invitation link.
@@ -21,13 +22,13 @@ export function InviteRedirect() {
     if (loading || !token || firedRef.current) return
 
     if (!session) {
-      localStorage.setItem('fortnight_pending_invite', token)
+      guardarInvitacionPendiente(token)
       navigate('/login', { replace: true })
       return
     }
 
     firedRef.current = true
-    localStorage.removeItem('fortnight_pending_invite')
+    olvidarInvitacionPendiente()
 
     void (async () => {
       try {

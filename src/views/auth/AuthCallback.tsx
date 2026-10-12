@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { IconAlertTriangle } from '@tabler/icons-react'
 import { useAuth } from '@/hooks/useAuth'
+import { destinoPendiente } from '@/lib/pendingRedirect'
 
 /**
  * Magic link return target. The supabase-js client auto-detects the token in
@@ -30,14 +31,9 @@ export function AuthCallback() {
       return
     }
     if (session) {
-      const pendingJoin = localStorage.getItem('fortnight_pending_join')
-      if (pendingJoin) {
-        navigate(`/join/${pendingJoin}`, { replace: true })
-        return
-      }
-      const pendingInvite = localStorage.getItem('fortnight_pending_invite')
-      if (pendingInvite) {
-        navigate(`/invite/${pendingInvite}`, { replace: true })
+      const pendiente = destinoPendiente()
+      if (pendiente) {
+        navigate(pendiente, { replace: true })
         return
       }
     }

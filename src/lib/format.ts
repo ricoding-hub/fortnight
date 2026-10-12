@@ -37,3 +37,17 @@ export function formatMonthMX(date: string | Date): string {
   const d = typeof date === 'string' ? parseISO(date) : date
   return format(d, 'LLL yyyy', { locale: es })
 }
+
+/**
+ * «Ana», «Ana y Luis», «Ana, Luis y 2 más». Para listas cortas de personas en
+ * una línea: después de `max` nombres sólo se cuenta el resto.
+ */
+export function enumerarNombres(nombres: readonly string[], max = 2): string {
+  const limpios = nombres.map((n) => n.trim()).filter(Boolean)
+  if (limpios.length <= 1) return limpios[0] ?? ''
+  if (limpios.length <= max) {
+    return `${limpios.slice(0, -1).join(', ')} y ${limpios[limpios.length - 1]}`
+  }
+  const resto = limpios.length - max
+  return `${limpios.slice(0, max).join(', ')} y ${resto} más`
+}

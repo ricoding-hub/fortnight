@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -46,12 +46,17 @@ import { ImageViewerModal } from '@/components/ui/ImageViewerModal'
 import { useCategories } from '@/hooks/useCategories'
 import { activityLabel } from '@/lib/splitActivity'
 import { nameColorClass } from '@/lib/avatarColors'
-import { formatMXN } from '@/lib/format'
+import { enumerarNombres, formatMXN } from '@/lib/format'
 import type { Loan, SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
 export function PrestamoGrupo() {
   const { groupId } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  /** Llegar con `state.invitar` (grupo recién creado, «Invitar a X» desde un
+   *  contacto) abre la invitación en cuanto el enlace existe. Es estado
+   *  derivado: al cerrarla se limpia el `state` de la navegación. */
+  const pedirInvitacion = (location.state as { invitar?: boolean } | null)?.invitar === true
   const toast = useToast()
   const { user } = useAuth()
   const loans = useLoans()
@@ -319,6 +324,19 @@ export function PrestamoGrupo() {
   const contactProfile = contact?.member_user_id ? profiles.get(contact.member_user_id) : undefined
   const contactName = contact ? displayName(contact) : g.group.name
   const noun = isDirect ? 'conexión' : 'grupo'
+  /** Quiénes ya entraron con su cuenta. Tú cuentas siempre. */
+  const sinConectar = g.activeMembers.filter(
+    (m) => !memberIsMe(m, user?.id) && m.member_user_id == null,
+  )
+  const conectados = g.activeMembers.length - sinConectar.length
+  // En 1:1 sólo se invita mientras la otra persona no se haya conectado; en un
+  // grupo siempre se puede invitar a alguien más.
+  const puedeInvitar = !!inviteLink && (!isDirect || !g.isConnected)
+  const invitacionAbierta = addMemberOpen || (pedirInvitacion && puedeInvitar)
+  function cerrarInvitacion() {
+    setAddMemberOpen(false)
+    if (pedirInvitacion) void navigate(location.pathname, { replace: true, state: null })
+  }
 
   /** Liquidaciones enlazadas a cada gasto (migración 033). */
   const liquidacionesPorGasto = new Map<string, NonNullable<typeof g>['settlements']>()
@@ -540,7 +558,7 @@ export function PrestamoGrupo() {
                 }
               : undefined
           }
-          onInvitar={isDirect && !g.isConnected && inviteLink ? () => setAddMemberOpen(true) : undefined}
+          onInvitar={isDirect && puedeInvitar ? () => setAddMemberOpen(true) : undefined}
         />
         {unsyncedLoans.length > 0 && (
           <button
@@ -560,6 +578,37 @@ export function PrestamoGrupo() {
           </button>
         )}
       </div>
+
+      {/* Grupos: quién ya entró con su cuenta y a quién falta invitar. Antes el
+          único camino al enlace vivía dentro de la sección plegada de abajo. */}
+      {!isDirect && (
+        <div className="px-4">
+          <div className="flex items-center gap-3 rounded-xl bg-bg-elevated px-4 py-2.5 shadow-card">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-lavender-soft text-lavender-deep">
+              <IconUsers size={17} stroke={2} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-bold text-text">
+                {conectados} de {g.activeMembers.length} con cuenta
+              </p>
+              <p className="truncate text-[12px] text-text-secondary">
+                {sinConectar.length === 0
+                  ? 'Todos ven el grupo en su app'
+                  : `Falta${sinConectar.length === 1 ? '' : 'n'} ${enumerarNombres(sinConectar.map((m) => displayName(m)))}`}
+              </p>
+            </div>
+            {inviteLink && (
+              <button
+                type="button"
+                onClick={() => setAddMemberOpen(true)}
+                className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-xl px-2.5 text-[12.5px] font-bold text-primary-deep transition-colors hover:bg-primary-soft/50"
+              >
+                <IconUserPlus size={15} /> Invitar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Grupos de 3+: quién debe a quién. En 1:1 esto era un espejo del bloque de
           arriba (+190.96 / −190.96), así que sólo existe donde aporta algo. */}
@@ -636,25 +685,6 @@ export function PrestamoGrupo() {
               )
             })}
           </ul>
-          {/* 3+ groups can add people. A 1:1 connection never grows — it only
-              invites THAT one person to connect their account. */}
-          {!isDirect ? (
-            <button
-              type="button"
-              onClick={() => setAddMemberOpen(true)}
-              className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-[12.5px] font-semibold text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              <IconUserPlus size={14} /> Agregar persona
-            </button>
-          ) : !g.isConnected && inviteLink ? (
-            <button
-              type="button"
-              onClick={() => setAddMemberOpen(true)}
-              className="mb-2 mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-soft/50 py-2.5 text-[12.5px] font-bold text-primary-deep transition-colors hover:bg-primary-soft"
-            >
-              <IconLink size={14} /> Invitar a {contactName} a conectarse
-            </button>
-          ) : null}
         </Card>
       </div>
 
@@ -917,8 +947,8 @@ export function PrestamoGrupo() {
       )}
 
       <AddMemberModal
-        open={addMemberOpen}
-        onClose={() => setAddMemberOpen(false)}
+        open={invitacionAbierta}
+        onClose={cerrarInvitacion}
         groupName={g.group.name}
         inviteLink={inviteLink}
         recentContacts={addableContacts}

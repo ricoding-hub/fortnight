@@ -25,6 +25,19 @@ export type AccountPatch = Partial<NewAccount>
 
 const EMPTY: Account[] = []
 
+/**
+ * The same order the query uses: `sort_order` ascending with nulls last, then
+ * creation date. Kept in one place so optimistic updates can't drift from it.
+ */
+export function ordenarCuentas(cuentas: Account[]): Account[] {
+  const clave = (a: Account) => (a.sort_order == null ? Number.POSITIVE_INFINITY : Number(a.sort_order))
+  return [...cuentas].sort((a, b) => {
+    const d = clave(a) - clave(b)
+    if (d !== 0 && !Number.isNaN(d)) return d
+    return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+  })
+}
+
 export function useAccounts() {
   const { user } = useAuth()
   const [data, setData] = useState<Account[]>([])
@@ -74,10 +87,8 @@ export function useAccounts() {
 
   async function create(account: NewAccount) {
     if (!user) throw new Error('Not authenticated')
-    const maxSort = data.reduce(
-      (max, a) => ((a.sort_order ?? 0) > max ? (a.sort_order ?? 0) : max),
-      0,
-    )
+    // Number(): `numeric` comes back as a string, and "10" + 1 is "101".
+    const maxSort = data.reduce((max, a) => Math.max(max, Number(a.sort_order ?? 0) || 0), 0)
     const tempId = crypto.randomUUID()
     const now = new Date().toISOString()
     const optimistic: Account = {
@@ -148,7 +159,8 @@ export function useAccounts() {
     if (!acc) return
     // Sort nulls last so they remain at the end while the user reorders.
     const SORT_END = Number.MAX_SAFE_INTEGER
-    const sortKey = (a: Account) => a.sort_order ?? SORT_END
+    // `numeric` arrives from PostgREST as a string: coerce before any math.
+    const sortKey = (a: Account) => (a.sort_order == null ? SORT_END : Number(a.sort_order))
     const group = data
       .filter((a) => a.type === acc.type)
       .sort((a, b) => sortKey(a) - sortKey(b))
@@ -159,16 +171,22 @@ export function useAccounts() {
     // Ensure both rows have concrete sort values. Backfill nulls based on
     // their current visual position so the move feels stable.
     const baseStamp = Math.floor(Date.now() / 1000)
-    const accSort = acc.sort_order ?? baseStamp + idx
-    const swapSort = swapWith.sort_order ?? baseStamp + idx + direction
+    const accSort = acc.sort_order != null ? Number(acc.sort_order) : baseStamp + idx
+    let swapSort = swapWith.sort_order != null ? Number(swapWith.sort_order) : baseStamp + idx + direction
+    // Two rows with the same value would "swap" into the same order.
+    if (swapSort === accSort) swapSort = accSort + direction * 0.5
 
-    // Optimistic local swap so the UI doesn't lag the network roundtrip.
+    // Optimistic local swap so the UI doesn't lag the network roundtrip. The
+    // list is re-sorted too: views render in array order, so changing only
+    // `sort_order` left the card in place until the realtime refetch landed.
     setData((prev) =>
-      prev.map((a) => {
-        if (a.id === acc.id) return { ...a, sort_order: swapSort }
-        if (a.id === swapWith.id) return { ...a, sort_order: accSort }
-        return a
-      }),
+      ordenarCuentas(
+        prev.map((a) => {
+          if (a.id === acc.id) return { ...a, sort_order: swapSort }
+          if (a.id === swapWith.id) return { ...a, sort_order: accSort }
+          return a
+        }),
+      ),
     )
 
     const results = await Promise.all([
@@ -186,12 +204,13 @@ export function useAccounts() {
     if (err) {
       // Revert on failure — realtime would correct it anyway but this is faster.
       setData((prev) =>
-        prev.map((a) => {
-          if (a.id === acc.id) return { ...a, sort_order: acc.sort_order }
-          if (a.id === swapWith.id)
-            return { ...a, sort_order: swapWith.sort_order }
-          return a
-        }),
+        ordenarCuentas(
+          prev.map((a) => {
+            if (a.id === acc.id) return { ...a, sort_order: acc.sort_order }
+            if (a.id === swapWith.id) return { ...a, sort_order: swapWith.sort_order }
+            return a
+          }),
+        ),
       )
       throw err
     }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { IconCheck, IconCopy, IconLink, IconShare, IconUserPlus } from '@tabler/icons-react'
+import { IconUserPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { InviteLinkPanel } from '@/components/split/InviteLinkPanel'
 import type { RecentContact } from '@/components/split/GroupFormModal'
 
 interface AddMemberModalProps {
@@ -34,7 +35,6 @@ export function AddMemberModal({
   const connectMode = connectName != null
   const [name, setName] = useState('')
   const [busyKey, setBusyKey] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [formError, setFormError] = useState('')
 
   useEffect(() => {
@@ -42,7 +42,6 @@ export function AddMemberModal({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setName('')
       setBusyKey(null)
-      setCopied(false)
       setFormError('')
     }
   }, [open])
@@ -59,70 +58,25 @@ export function AddMemberModal({
     }
   }
 
-  const canNativeShare = typeof navigator !== 'undefined' && 'share' in navigator
-
-  async function shareLink() {
-    if (!inviteLink) return
-    if (canNativeShare) {
-      try {
-        await navigator.share({
-          title: connectMode
-            ? `Conéctate conmigo en Fortnight`
-            : `Únete a "${groupName}" en Fortnight`,
-          url: inviteLink,
-        })
-        return
-      } catch {
-        // user cancelled the share sheet — fall through to copy
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(inviteLink)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setFormError('No se pudo copiar el enlace')
-    }
-  }
-
   return (
-    <Modal open={open} onClose={onClose} title={connectMode ? `Conectar con ${connectName}` : 'Agregar personas'}>
+    <Modal open={open} onClose={onClose} title={connectMode ? `Invitar a ${connectName}` : 'Invitar al grupo'}>
       <div className="flex flex-col gap-3">
-        {connectMode && (
-          <p className="flex items-start gap-2 rounded-xl bg-primary-soft/30 px-3.5 py-3 text-[12px] leading-snug text-text-secondary">
-            <IconLink size={15} className="mt-0.5 shrink-0 text-primary" />
-            <span>
-              Comparte este enlace para que <b className="text-text">{connectName}</b> conecte su
-              cuenta. Cuando se una, los dos verán el mismo saldo en tiempo real.
-            </span>
+        {inviteLink ? (
+          <InviteLinkPanel
+            link={inviteLink}
+            tituloCompartir={
+              connectMode ? 'Conéctate conmigo en Fortnight' : `Únete a «${groupName}» en Fortnight`
+            }
+            explicacion={
+              connectMode
+                ? `Cuando ${connectName} lo abra e inicie sesión, los dos verán el mismo saldo en tiempo real.`
+                : 'Quien lo abra inicia sesión y elige quién es en el grupo, o entra como persona nueva.'
+            }
+          />
+        ) : (
+          <p className="rounded-xl bg-bg-secondary px-3.5 py-3 text-[12px] text-text-secondary">
+            Preparando el enlace de invitación…
           </p>
-        )}
-
-        {/* Share invite link — the Splitwise way */}
-        {inviteLink && (
-          <button
-            type="button"
-            onClick={() => void shareLink()}
-            className="flex items-center gap-3 rounded-xl bg-primary-soft/40 px-3.5 py-3 text-left transition-all active:scale-[0.98]"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
-              {copied ? <IconCheck size={17} stroke={2.5} /> : canNativeShare ? <IconShare size={17} /> : <IconCopy size={17} />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-bold text-text">
-                {copied
-                  ? '¡Enlace copiado!'
-                  : connectMode
-                    ? `Compartir enlace con ${connectName}`
-                    : 'Compartir enlace de invitación'}
-              </span>
-              <span className="block text-[11px] leading-snug text-text-secondary">
-                {connectMode
-                  ? 'Al abrirlo, se conecta contigo con su propia cuenta.'
-                  : 'Quien lo abra elige quién es en el grupo o se agrega como persona nueva.'}
-              </span>
-            </span>
-          </button>
         )}
 
         {/* Recent contacts */}
@@ -160,7 +114,7 @@ export function AddMemberModal({
         {!connectMode && (
         <div>
           <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
-            Persona nueva (la administras tú)
+            O agrégala sin cuenta (la administras tú)
           </p>
           <div className="flex items-center gap-2">
             <input
