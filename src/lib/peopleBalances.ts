@@ -112,15 +112,22 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
   // Direct 2-person groups keyed by every name the OTHER member goes by: the
   // local label and the visible name. Whoever didn't create the connection sees
   // the other person labeled «Yo», which matches none of their loans.
+  //
+  // Si dos conexiones comparten un nombre, gana la etiqueta local (la que tú
+  // escribiste) sobre el nombre visible: primero se registran todas las
+  // etiquetas y después sólo los nombres visibles que quedaron libres.
   const directByContact = new Map<string, GroupComputed>()
-  /** Las claves de cada conexión, para no repetir a la persona en el paso 2. */
-  const clavesPorGrupo = new Map<string, string[]>()
-  for (const g of splitGroups) {
-    const contact = contactoDe(g, userId)
-    if (!contact) continue
-    const claves = clavesDeContacto(contact, displayName(contact))
-    clavesPorGrupo.set(g.group.id, claves)
-    for (const k of claves) directByContact.set(k, g)
+  const conexiones = splitGroups
+    .map((g) => ({ g, contact: contactoDe(g, userId) }))
+    .filter((x): x is { g: GroupComputed; contact: SplitMember } => x.contact != null)
+  for (const { g, contact } of conexiones) {
+    const [etiqueta] = clavesDeContacto(contact, '')
+    if (etiqueta && !directByContact.has(etiqueta)) directByContact.set(etiqueta, g)
+  }
+  for (const { g, contact } of conexiones) {
+    for (const k of clavesDeContacto(contact, displayName(contact))) {
+      if (!directByContact.has(k)) directByContact.set(k, g)
+    }
   }
 
   /** Shared expenses + settlements of a group, from my point of view. */
@@ -165,25 +172,37 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
   }
 
   const entries: BalanceEntry[] = []
-  const coveredContactKeys = new Set<string>()
+  /** Conexiones que ya tienen tarjeta, por id: un nombre no basta para saberlo. */
+  const coveredGroupIds = new Set<string>()
 
   /** Every contact that has any loan at all, open or settled. */
   const contactKeys = new Set([...loansByContact.keys(), ...paidByContact.keys()])
 
-  // 1) People with loans (combined loan + split-only net).
+  // 1) People with loans (combined loan + split-only net). Varios nombres pueden
+  //    ser la MISMA persona («Ale» y «Alesita Palomino», ligados a la misma
+  //    conexión): se juntan en una sola tarjeta y su saldo compartido cuenta una
+  //    vez. Antes salía una tarjeta por nombre, cada una con el saldo completo.
+  const relaciones = new Map<string, { claves: string[]; direct: GroupComputed | undefined }>()
   for (const key of contactKeys) {
-    const loans = (loansByContact.get(key) ?? []).slice().sort(byActivityDesc)
-    const paidLoans = (paidByContact.get(key) ?? []).slice().sort(byActivityDesc)
     const direct = directByContact.get(key)
+    const id = direct ? `g:${direct.group.id}` : `k:${key}`
+    const r = relaciones.get(id)
+    if (r) r.claves.push(key)
+    else relaciones.set(id, { claves: [key], direct })
+  }
+
+  for (const { claves, direct } of relaciones.values()) {
+    const loans = claves.flatMap((k) => loansByContact.get(k) ?? []).sort(byActivityDesc)
+    const paidLoans = claves.flatMap((k) => paidByContact.get(k) ?? []).sort(byActivityDesc)
     const loansNet = loans.reduce((s, l) => {
       const rem = loanRemaining(l, paymentsOf(l))
       return l.direction === 'owed_to_me' ? s + rem : s - rem
     }, 0)
     const net = loansNet + (direct?.mySplitNet ?? 0)
-    const contactMember = direct?.activeMembers.find((m) => !memberIsMe(m, userId))
+    const contactMember = direct ? contactoDe(direct, userId) : undefined
     const anyLoan = loans[0] ?? paidLoans[0]
     entries.push({
-      key: `person:${key}`,
+      key: direct ? `person:g:${direct.group.id}` : `person:${claves[0]}`,
       kind: 'person',
       name: contactMember ? displayName(contactMember) : anyLoan.name,
       avatarUrl: contactMember?.member_user_id
@@ -197,7 +216,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
       paidLoans,
       movements: movementsOf(direct),
     })
-    coveredContactKeys.add(key)
+    if (direct) coveredGroupIds.add(direct.group.id)
   }
 
   // 2) 1:1 relationships without loans of their own — connected or not. An
@@ -206,12 +225,10 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
   //    you left its screen.
   for (const g of splitGroups) {
     const contact = contactoDe(g, userId)
-    if (!contact) continue
-    const claves = clavesPorGrupo.get(g.group.id) ?? []
-    if (claves.some((k) => coveredContactKeys.has(k))) continue
+    if (!contact || coveredGroupIds.has(g.group.id)) continue
     const visible = displayName(contact)
     entries.push({
-      key: `person:${norm(visible)}`,
+      key: `person:g:${g.group.id}`,
       kind: 'person',
       name: displayName(contact),
       avatarUrl: contact.member_user_id
@@ -227,7 +244,7 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
       paidLoans: NO_LOANS,
       movements: movementsOf(g),
     })
-    for (const k of claves) coveredContactKeys.add(k)
+    coveredGroupIds.add(g.group.id)
   }
 
   // 3) Real multi-person groups (3+ members).

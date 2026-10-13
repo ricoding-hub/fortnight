@@ -234,3 +234,40 @@ describe('derivePeopleBalances — conexión vista por quien no la creó', () =>
     expect(r.entries[0].name).toBe('Toño Trenado')
   })
 })
+
+describe('derivePeopleBalances — una persona, una tarjeta', () => {
+  it('préstamos con su etiqueta y con su nombre visible: una sola tarjeta, el saldo compartido cuenta una vez', () => {
+    const g = connectedGroup() // contacto «Alesita» con saldo compartido de +200
+    const r = derivePeopleBalances(
+      input({
+        active: [loan({ id: 'l1', name: 'Alesita', amount: 100 }), loan({ id: 'l2', name: 'Alesita Palomino', amount: 100 })],
+        splitGroups: [g],
+        displayName: (m) => (m.is_me ? m.name : 'Alesita Palomino'),
+      }),
+    )
+    expect(r.entries).toHaveLength(1)
+    expect(r.entries[0].loans).toHaveLength(2)
+    expect(r.entries[0].net).toBe(400) // 100 + 100 + 200, no 600
+    expect(r.totalCobrar).toBe(400)
+  })
+
+  it('dos conexiones que comparten un nombre no se tapan una a la otra', () => {
+    const tuya = { ...connectedGroup(), isConnected: false, mySplitNet: 0 } as unknown as GroupComputed
+    const base = connectedGroup()
+    const suya = {
+      ...base,
+      group: { ...base.group, id: 'g2', name: 'Richy' },
+      activeMembers: [
+        { ...base.activeMembers[0] },
+        { ...base.activeMembers[1], id: 'm-her2', name: 'Yo', member_user_id: 'u-ale' },
+      ],
+    } as unknown as GroupComputed
+    const r = derivePeopleBalances(
+      input({
+        splitGroups: [tuya, suya],
+        displayName: (m) => (m.member_user_id === 'u-ale' ? 'Alesita' : m.name),
+      }),
+    )
+    expect(r.entries.map((e) => e.groupId).sort()).toEqual(['g1', 'g2'])
+  })
+})

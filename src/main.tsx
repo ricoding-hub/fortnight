@@ -5,7 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { marcarArranqueSano } from '@/lib/recover'
 import { usePwaStore, type BeforeInstallPromptEvent } from '@/store/pwaStore'
-import { isStandalone } from '@/lib/platform'
+import { isIOS, isStandalone } from '@/lib/platform'
 
 /**
  * Service worker: registered in 'prompt' mode. A new version waits instead of
@@ -20,7 +20,12 @@ const updateSW = registerSW({
     // app quedaba instalada con la barra translúcida y la franja borrosa de iOS
     // 26, por más que se reinstalara. La app instalada conserva el aviso, para
     // no recargar a media captura.
-    if (!isStandalone()) {
+    //
+    // Sólo en Safari de iPhone (el único lugar desde donde se instala así), sólo
+    // al abrir (no a media captura) y nunca en /auth/: recargar ahí borraba el
+    // modo «recuperar contraseña», que vive en memoria.
+    const recienAbierta = performance.now() < 15_000
+    if (isIOS() && !isStandalone() && recienAbierta && !window.location.pathname.startsWith('/auth/')) {
       void updateSW(true)
       return
     }

@@ -33,10 +33,18 @@ export function grupoDirectoPorContacto<G extends GrupoConMiembros>(
   nombre: (m: SplitMember) => string = (m) => m.name,
 ): Map<string, G> {
   const mapa = new Map<string, G>()
-  for (const g of grupos) {
+  const conexiones = grupos.flatMap((g) => {
     const contacto = contactoDe(g, userId)
-    if (!contacto) continue
-    for (const k of clavesDeContacto(contacto, nombre(contacto))) mapa.set(k, g)
+    return contacto ? [{ g, contacto }] : []
+  })
+  // Si dos conexiones comparten un nombre, gana la etiqueta que tú escribiste
+  // sobre el nombre visible: primero todas las etiquetas, luego los nombres libres.
+  for (const { g, contacto } of conexiones) {
+    const [etiqueta] = clavesDeContacto(contacto, '')
+    if (etiqueta && !mapa.has(etiqueta)) mapa.set(etiqueta, g)
+  }
+  for (const { g, contacto } of conexiones) {
+    for (const k of clavesDeContacto(contacto, nombre(contacto))) if (!mapa.has(k)) mapa.set(k, g)
   }
   return mapa
 }

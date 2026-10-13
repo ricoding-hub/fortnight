@@ -9,6 +9,7 @@ import {
 } from '@tabler/icons-react'
 import { Card } from '@/components/ui/Card'
 import { modoBarra } from '@/lib/barraEstado'
+import { isIOS } from '@/lib/platform'
 
 const VERSION = __APP_VERSION__
 
@@ -31,7 +32,7 @@ const BARRA = {
 export function AcercaDe() {
   const navigate = useNavigate()
   // Diagnóstico de la franja borrosa de iOS: dice con qué ajuste quedó instalada.
-  const barra = BARRA[modoBarra()]
+  const barra = isIOS() ? BARRA[modoBarra()] : null
 
   return (
     <div className="flex flex-col pb-8 animate-[fade-in_300ms_ease-out]">
