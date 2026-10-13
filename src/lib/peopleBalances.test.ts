@@ -213,3 +213,24 @@ describe('derivePeopleBalances — conexiones 1:1 sin préstamos', () => {
     expect(r.entries[0].net).toBe(0)
   })
 })
+
+describe('derivePeopleBalances — conexión vista por quien no la creó', () => {
+  it('tus préstamos se ligan a la conexión aunque la otra persona esté etiquetada «Yo»', () => {
+    // Toño creó la conexión: su fila es «Yo». Tú anotaste el préstamo como «Toño Trenado».
+    const base = connectedGroup()
+    const tono = { ...base.activeMembers[1], name: 'Yo', is_me: true, member_user_id: 'u-tono' }
+    const yo = { ...base.activeMembers[0], name: 'Alesita', is_me: false, member_user_id: ME }
+    const g = { ...base, members: [yo, tono], activeMembers: [yo, tono] } as unknown as GroupComputed
+    const r = derivePeopleBalances(
+      input({
+        active: [loan({ id: 'l1', name: 'Toño Trenado', amount: 100 })],
+        splitGroups: [g],
+        displayName: (m) => (m.member_user_id === 'u-tono' ? 'Toño Trenado' : m.name),
+      }),
+    )
+    // Una sola tarjeta, ligada a la conexión, con el nombre que tú ves.
+    expect(r.entries).toHaveLength(1)
+    expect(r.entries[0].groupId).toBe('g1')
+    expect(r.entries[0].name).toBe('Toño Trenado')
+  })
+})

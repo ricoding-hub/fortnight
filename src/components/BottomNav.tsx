@@ -47,7 +47,7 @@ export function BottomNav() {
             isGroupDetail ? openExpenseModal() : isLoansTab ? openLoanModal() : openAddModal('gasto')
           }
           aria-label={
-            isGroupDetail ? 'Agregar gasto al grupo' : isLoansTab ? 'Agregar préstamo' : 'Agregar movimiento'
+            isGroupDetail ? 'Agregar gasto compartido' : isLoansTab ? 'Agregar préstamo' : 'Agregar movimiento'
           }
           className="grid h-12 w-12 -translate-y-1 cursor-pointer place-items-center rounded-full bg-primary text-white transition-transform active:scale-95"
           style={{ boxShadow: '0 6px 14px rgba(42,75,255,0.4)' }}

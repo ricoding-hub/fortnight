@@ -189,7 +189,7 @@ export function GroupMovements({
         <EmptyState
           icon={IconReceipt}
           title="Sin gastos aún"
-          description={`Registra el primer gasto compartido de esta ${isDirect ? 'conexión' : 'grupo'}.`}
+          description={`Registra el primer gasto compartido ${isDirect ? 'de esta conexión' : 'de este grupo'}.`}
         />
       ) : visibles.length === 0 && hayMovimientos ? (
         <Card className="flex flex-col items-center gap-2 px-4 py-6 text-center">

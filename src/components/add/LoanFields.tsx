@@ -42,7 +42,7 @@ export function LoanFields({ footerTarget, onDone }: LoanFieldsProps) {
   const { user } = useAuth()
   const toast = useToast()
   const loans = useLoans()
-  const { groups } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
+  const { groups, displayName } = useSplitGroups({ loans: loans.data, paymentsByLoan: loans.paymentsByLoan })
 
   const [direccion, setDireccion] = useState<LoanDirection>('owed_to_me')
   const [persona, setPersona] = useState('')
@@ -54,10 +54,13 @@ export function LoanFields({ footerTarget, onDone }: LoanFieldsProps) {
   const [enviando, setEnviando] = useState(false)
 
   const nombres = useMemo(
-    () => unirNombres(nombresDeContactos(loans.data), nombresDeConexiones(groups, user?.id)),
-    [loans.data, groups, user?.id],
+    () => unirNombres(nombresDeContactos(loans.data), nombresDeConexiones(groups, user?.id, displayName)),
+    [loans.data, groups, user?.id, displayName],
   )
-  const gruposDirectos = useMemo(() => grupoDirectoPorContacto(groups, user?.id), [groups, user?.id])
+  const gruposDirectos = useMemo(
+    () => grupoDirectoPorContacto(groups, user?.id, displayName),
+    [groups, user?.id, displayName],
+  )
 
   // Sin contactos todavía, un campo de texto directo: un select vacío sólo con
   // «Otra persona…» es un paso de más.

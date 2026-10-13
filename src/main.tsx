@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { marcarArranqueSano } from '@/lib/recover'
 import { usePwaStore, type BeforeInstallPromptEvent } from '@/store/pwaStore'
+import { isStandalone } from '@/lib/platform'
 
 /**
  * Service worker: registered in 'prompt' mode. A new version waits instead of
@@ -13,6 +14,16 @@ import { usePwaStore, type BeforeInstallPromptEvent } from '@/store/pwaStore'
  */
 const updateSW = registerSW({
   onNeedRefresh() {
+    // En una pestaña de Safari la versión nueva se aplica sola. Es desde ahí
+    // que se agrega la app a la pantalla de inicio, y iOS lee en ESE momento el
+    // estilo de la barra de estado: si la pestaña seguía con el index viejo, la
+    // app quedaba instalada con la barra translúcida y la franja borrosa de iOS
+    // 26, por más que se reinstalara. La app instalada conserva el aviso, para
+    // no recargar a media captura.
+    if (!isStandalone()) {
+      void updateSW(true)
+      return
+    }
     usePwaStore.getState().setUpdateReady(true)
   },
   onRegisteredSW(_url, reg) {

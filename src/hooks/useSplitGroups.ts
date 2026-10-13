@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { resizeImage } from '@/lib/image'
 import { errorMessage } from '@/lib/errorMessage'
 import { memberIsMe } from '@/lib/loanFormat'
+import { clavesDeContacto, contactoDe, esConexion, nombreVisible } from '@/lib/conexion'
 
 export { memberIsMe }
 import {
@@ -83,7 +84,7 @@ export interface GroupComputed {
   suggestions: Array<{ fromMemberId: string; toMemberId: string; amount: number }>
   /** My net in pesos from split expenses/settlements only (excludes legacy loans). */
   mySplitNet: number
-  /** True when the group is just the backfilled 2-person shell with no split activity. */
+  /** Dos miembros activos: una conexión 1:1, no un grupo (ver src/lib/conexion.ts). */
   isDirect: boolean
   /** True when any other member is a real linked Fortnight user. */
   isConnected: boolean
@@ -101,6 +102,20 @@ const EMPTY_PROFILES = new Map<string, Profile>()
 
 function normName(s: string): string {
   return s.trim().toLowerCase()
+}
+
+/**
+ * ¿Este préstamo (por el nombre con que lo anotaste) es de esta persona? Por
+ * su etiqueta local o por su nombre visible: quien no creó la conexión ve a la
+ * otra persona etiquetada «Yo», y ese nombre no lo tiene ningún préstamo suyo.
+ */
+function esDelContacto(
+  nombrePrestamo: string,
+  m: SplitMember,
+  perfil: Pick<Profile, 'display_name' | 'email'> | undefined,
+  userId: string | undefined,
+): boolean {
+  return clavesDeContacto(m, nombreVisible(m, perfil, userId)).includes(normName(nombrePrestamo))
 }
 
 /** Is this member row the current user? Prefers the real link, falls back to is_me. */
@@ -254,7 +269,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
       const gExpenses = expenses.filter((e) => e.group_id === group.id)
       const gSettlements = settlements.filter((s) => s.group_id === group.id)
       const me = gMembers.find((m) => memberIsMe(m, user.id))
-      const contact = gMembers.length === 2 ? gMembers.find((m) => !memberIsMe(m, user.id)) : undefined
+      // La otra persona de una conexión (dos miembros ACTIVOS; contar a los que
+      // ya salieron convertía en «conexión» a un grupo que se quedó en dos).
+      const contact = contactoDe({ activeMembers }, user.id)
+      const perfilContacto = contact?.member_user_id ? profiles.get(contact.member_user_id) : undefined
       const isConnected = gMembers.some(
         (m) => !memberIsMe(m, user.id) && m.member_user_id != null,
       )
@@ -263,7 +281,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
       const matchedLoans = legacy.loans.filter(
         (l) =>
           l.group_id === group.id ||
-          (l.group_id == null && contact != null && normName(l.name) === normName(contact.name)),
+          (l.group_id == null && contact != null && esDelContacto(l.name, contact, perfilContacto, user.id)),
       )
       // Legacy loans stay PRIVATE: excluded from the shared math the moment
       // a group is connected, so every member sees the same numbers. They are
@@ -329,16 +347,12 @@ export function useSplitGroups(legacy: LegacyInputs) {
           amount: fromCents(t.amountCents),
         })),
         mySplitNet: fromCents(mySplitNetCents),
-        isDirect:
-          gMembers.length === 2 &&
-          !isConnected &&
-          gExpenses.length === 0 &&
-          gSettlements.length === 0,
+        isDirect: esConexion({ activeMembers }),
         isConnected,
         isOwner: group.user_id === user.id,
       }
     })
-  }, [user, groups, members, expenses, shares, settlements, activity, invites, legacy.loans, legacy.paymentsByLoan])
+  }, [user, groups, members, expenses, shares, settlements, activity, invites, legacy.loans, legacy.paymentsByLoan, profiles])
 
   /** Σ over groups of my positive split-only nets (pesos). */
   const splitCobrar = useMemo(
@@ -373,16 +387,15 @@ export function useSplitGroups(legacy: LegacyInputs) {
     return out
   }, [user, computed, profiles])
 
-  /** Display name for a member: linked profile name wins over the local label. */
+  /**
+   * Display name for a member: linked profile name wins over the local label,
+   * and another person's «Yo» (the creator's label for themself) never shows.
+   */
+  const userIdActual = user?.id
   const displayName = useCallback(
-    (m: SplitMember): string => {
-      if (m.member_user_id) {
-        const p = profiles.get(m.member_user_id)
-        if (p?.display_name) return p.display_name
-      }
-      return m.name
-    },
-    [profiles],
+    (m: SplitMember): string =>
+      nombreVisible(m, m.member_user_id ? profiles.get(m.member_user_id) : undefined, userIdActual),
+    [profiles, userIdActual],
   )
 
   /* ─────────────────────────── mutations ─────────────────────────── */
@@ -680,7 +693,13 @@ export function useSplitGroups(legacy: LegacyInputs) {
       const openLoans = ((loanRows ?? []) as Array<Loan & { loan_payments: LoanPayment[] }>).filter(
         (l) =>
           l.group_id === groupId ||
-          (l.group_id == null && normName(l.name) === normName(contactMember.name)),
+          (l.group_id == null &&
+            esDelContacto(
+              l.name,
+              contactMember,
+              contactMember.member_user_id ? profiles.get(contactMember.member_user_id) : undefined,
+              user.id,
+            )),
       )
 
       for (const loan of openLoans) {
@@ -729,13 +748,17 @@ export function useSplitGroups(legacy: LegacyInputs) {
     // One transaction row for the FULL settled amount (not just leftover).
     if (involvesMe && s.accountId) {
       const txAmount = toIsMe ? s.amount : -s.amount // I receive + / I pay −
+      // En una conexión el movimiento dice con quién; en un grupo, también en
+      // cuál. Nunca el nombre del grupo de una conexión: lo puso la otra persona.
       const groupName = groups.find((g) => g.id === groupId)?.name ?? ''
+      const conQuien = displayName(contactMember)
+      const enConexion = gMembers.filter((m) => m.left_at == null).length === 2
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: s.accountId,
         amount: txAmount,
         type: 'transaction',
-        description: `Liquidación: ${contactMember.name}${groupName ? ` · ${groupName}` : ''}`,
+        description: `Liquidación con ${conQuien}${!enConexion && groupName ? ` · ${groupName}` : ''}`,
         date: toKey(new Date()),
       })
     }
@@ -785,7 +808,11 @@ export function useSplitGroups(legacy: LegacyInputs) {
     let groupId = computed.find(
       (g) =>
         g.activeMembers.length === 2 &&
-        g.activeMembers.some((m) => !memberIsMe(m, user.id) && normName(m.name) === key),
+        g.activeMembers.some(
+          (m) =>
+            !memberIsMe(m, user.id) &&
+            esDelContacto(contactName, m, m.member_user_id ? profiles.get(m.member_user_id) : undefined, user.id),
+        ),
     )?.group.id
 
     if (!groupId) {
@@ -810,7 +837,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
         if (active.length !== 2) return false
         // The "other" member is the one that isn't me.
         return active.some(
-          (m) => m.member_user_id !== user.id && normName(m.name) === key,
+          (m) =>
+            m.member_user_id !== user.id &&
+            (normName(m.name) === key ||
+              (m.member_user_id != null && normName(profiles.get(m.member_user_id)?.display_name ?? '') === key)),
         )
       })
       if (existing) {
@@ -867,7 +897,8 @@ export function useSplitGroups(legacy: LegacyInputs) {
       (l) =>
         l.notes !== 'Sincronizado al grupo' &&
         (l.group_id === groupId ||
-          (l.group_id == null && normName(l.name) === normName(contact.name))),
+          (l.group_id == null &&
+            esDelContacto(l.name, contact, contact.member_user_id ? profiles.get(contact.member_user_id) : undefined, user.id))),
     )
 
     let migrated = 0
@@ -953,7 +984,8 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const openLoans = ((loanRows ?? []) as Array<Loan & { loan_payments: LoanPayment[] }>).filter(
       (l) =>
         l.group_id === groupId ||
-        (l.group_id == null && normName(l.name) === normName(contact.name)),
+        (l.group_id == null &&
+          esDelContacto(l.name, contact, contact.member_user_id ? profiles.get(contact.member_user_id) : undefined, user.id)),
     )
 
     let loansNetCents = 0
@@ -1028,13 +1060,13 @@ export function useSplitGroups(legacy: LegacyInputs) {
 
     // ONE account transaction for the real money that changed hands (the net).
     if (opts?.accountId && combinedNetCents !== 0) {
-      const groupName = groups.find((g) => g.id === groupId)?.name ?? ''
+      // «Saldar todo» sólo existe en conexiones: el movimiento dice con quién.
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: opts.accountId,
         amount: fromCents(combinedNetCents), // + I receive, − I pay
         type: 'transaction',
-        description: `Saldar todo: ${contact.name}${groupName && groupName !== contact.name ? ` · ${groupName}` : ''}`,
+        description: `Saldar todo con ${displayName(contact)}`,
         date: toKey(new Date()),
       })
     }

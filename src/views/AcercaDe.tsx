@@ -8,6 +8,7 @@ import {
   IconHeart,
 } from '@tabler/icons-react'
 import { Card } from '@/components/ui/Card'
+import { modoBarra } from '@/lib/barraEstado'
 
 const VERSION = __APP_VERSION__
 
@@ -21,8 +22,16 @@ const STACK: { label: string; role: string }[] = [
   { label: 'date-fns', role: 'Fechas' },
 ]
 
+const BARRA = {
+  navegador: null,
+  estandar: 'Barra superior: estándar',
+  translucida: 'Barra superior: translúcida. Reinstala la app para quitar la franja borrosa',
+} as const
+
 export function AcercaDe() {
   const navigate = useNavigate()
+  // Diagnóstico de la franja borrosa de iOS: dice con qué ajuste quedó instalada.
+  const barra = BARRA[modoBarra()]
 
   return (
     <div className="flex flex-col pb-8 animate-[fade-in_300ms_ease-out]">
@@ -62,6 +71,7 @@ export function AcercaDe() {
               Tu app de finanzas personales para el contexto mexicano. Sueldo catorcenal,
               sin APIs bancarias, sin fricción.
             </p>
+            {barra && <p className="mt-1 text-xs text-white/80">{barra}</p>}
           </div>
         </div>
       </div>
@@ -121,9 +131,21 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.16.0"
+            date="13 oct 2026"
+            current
+            notes={[
+              'Una conexión con una persona ya no se muestra como grupo: arriba sale su nombre (antes podía salir el tuyo, porque el nombre lo ponía quien creó la conexión desde su lado)',
+              '"Saldar todo", liquidar y el historial dicen con quién ("Tú → Toño"), nunca "Yo" de la otra persona',
+              'Al agregar un gasto en una conexión eliges "Mitad y mitad", "Te debe todo" u "Otro reparto". Los métodos de grupo siguen en "Otro reparto"',
+              'Tus préstamos anotados con el nombre de alguien ya se ligan a su conexión aunque la haya creado él: no más dos tarjetas de la misma persona',
+              'Los movimientos de tu cuenta dicen "Liquidación con Toño" en vez de mezclar el nombre del grupo',
+              'La franja borrosa de arriba: si tu app quedó instalada con el ajuste viejo de la barra, ahora te lo dice y te explica cómo quitarla. Al abrir fortnight en Safari se carga sola la versión nueva, para que al reinstalar quede bien',
+            ]}
+          />
+          <VersionRow
             version="1.15.0"
             date="12 oct 2026"
-            current
             notes={[
               'Los meses sin intereses avanzan solos: cada mensualidad entra en un corte de tu tarjeta y vence en su fecha de pago. Cuando pasa la fecha límite, cuenta como pagada. Ya no hay que tocar "Marcar mes pagado"',
               'Cada plan dice en cuál vas ("Mensualidad 4 de 12"), si ya está en tu estado de cuenta y cuándo vence. Se actualiza solo, aunque la app se quede abierta',

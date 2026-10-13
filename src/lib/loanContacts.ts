@@ -1,4 +1,4 @@
-import { memberIsMe } from '@/lib/loanFormat'
+import { clavesDeContacto, contactoDe, esEtiquetaPropia } from '@/lib/conexion'
 import type { Loan, SplitMember } from '@/types'
 
 /**
@@ -22,16 +22,21 @@ interface GrupoConMiembros {
   activeMembers: readonly SplitMember[]
 }
 
-/** La conexión 1:1 (dos personas) de cada contacto, por nombre en minúsculas. */
+/**
+ * La conexión 1:1 (dos personas) de cada contacto, por nombre en minúsculas:
+ * por su etiqueta local y por su nombre visible. Quien no creó la conexión ve
+ * a la otra persona etiquetada «Yo», que no coincide con ningún préstamo.
+ */
 export function grupoDirectoPorContacto<G extends GrupoConMiembros>(
   grupos: readonly G[],
   userId: string | undefined,
+  nombre: (m: SplitMember) => string = (m) => m.name,
 ): Map<string, G> {
   const mapa = new Map<string, G>()
   for (const g of grupos) {
-    if (g.activeMembers.length !== 2) continue
-    const contacto = g.activeMembers.find((m) => !memberIsMe(m, userId))
-    if (contacto) mapa.set(contacto.name.trim().toLowerCase(), g)
+    const contacto = contactoDe(g, userId)
+    if (!contacto) continue
+    for (const k of clavesDeContacto(contacto, nombre(contacto))) mapa.set(k, g)
   }
   return mapa
 }
@@ -58,12 +63,17 @@ export function grupoParaPrestamo<G extends GrupoConMiembros & { isConnected: bo
  * relación ya existe, y escribir su nombre a mano arriesga una variante
  * ("Ale" / "Alesita") que no se enlaza con ella.
  */
-export function nombresDeConexiones(grupos: readonly GrupoConMiembros[], userId: string | undefined): string[] {
+export function nombresDeConexiones(
+  grupos: readonly GrupoConMiembros[],
+  userId: string | undefined,
+  nombre: (m: SplitMember) => string = (m) => m.name,
+): string[] {
   const out: string[] = []
   for (const g of grupos) {
-    if (g.activeMembers.length !== 2) continue
-    const contacto = g.activeMembers.find((m) => !memberIsMe(m, userId))
-    if (contacto?.name.trim()) out.push(contacto.name.trim())
+    const contacto = contactoDe(g, userId)
+    // El nombre que ves, nunca la etiqueta «Yo» que la otra persona se puso.
+    const visible = contacto ? nombre(contacto).trim() : ''
+    if (visible && !esEtiquetaPropia(visible)) out.push(visible)
   }
   return out
 }

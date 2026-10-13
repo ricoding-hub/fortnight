@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { PetCompanion } from '@/components/PetCompanion'
 import { PwaBanner } from '@/components/PwaBanner'
 import { InstallPrompt } from '@/components/InstallPrompt'
+import { AvisoBarra } from '@/components/AvisoBarra'
 import { AddSheet } from '@/components/add/AddSheet'
 import { useUiStore } from '@/store/uiStore'
 import { useAccounts } from '@/hooks/useAccounts'
@@ -67,6 +68,7 @@ export function Layout() {
           >
             <PwaBanner />
             <InstallPrompt />
+            <AvisoBarra />
             {/* Por vista: si Inicio revienta, la barra y el resto siguen
                 usables y el usuario puede irse a otra pestaña. */}
             <ErrorBoundary scope={pathname} key={pathname}>

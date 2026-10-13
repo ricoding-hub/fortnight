@@ -1,5 +1,6 @@
 import { loanRemaining, loanActivityKey, memberIsMe } from '@/lib/loanFormat'
 import { impactoLiquidacion, impactoPersonal } from '@/lib/split'
+import { clavesDeContacto, contactoDe } from '@/lib/conexion'
 import type { GroupComputed } from '@/hooks/useSplitGroups'
 import type { Loan, LoanPayment, Profile, SplitExpense, SplitMember, SplitSettlement } from '@/types'
 
@@ -108,12 +109,18 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
     paidByContact.set(key, [...(paidByContact.get(key) ?? []), l])
   }
 
-  // Direct 2-person groups keyed by the OTHER member's local name.
+  // Direct 2-person groups keyed by every name the OTHER member goes by: the
+  // local label and the visible name. Whoever didn't create the connection sees
+  // the other person labeled «Yo», which matches none of their loans.
   const directByContact = new Map<string, GroupComputed>()
+  /** Las claves de cada conexión, para no repetir a la persona en el paso 2. */
+  const clavesPorGrupo = new Map<string, string[]>()
   for (const g of splitGroups) {
-    if (g.activeMembers.length !== 2) continue
-    const contact = g.activeMembers.find((m) => !memberIsMe(m, userId))
-    if (contact) directByContact.set(norm(contact.name), g)
+    const contact = contactoDe(g, userId)
+    if (!contact) continue
+    const claves = clavesDeContacto(contact, displayName(contact))
+    clavesPorGrupo.set(g.group.id, claves)
+    for (const k of claves) directByContact.set(k, g)
   }
 
   /** Shared expenses + settlements of a group, from my point of view. */
@@ -198,11 +205,13 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
   //    someone vanished from the list (and its invite link with it) as soon as
   //    you left its screen.
   for (const g of splitGroups) {
-    if (g.activeMembers.length !== 2) continue
-    const contact = g.activeMembers.find((m) => !memberIsMe(m, userId))
-    if (!contact || coveredContactKeys.has(norm(contact.name))) continue
+    const contact = contactoDe(g, userId)
+    if (!contact) continue
+    const claves = clavesPorGrupo.get(g.group.id) ?? []
+    if (claves.some((k) => coveredContactKeys.has(k))) continue
+    const visible = displayName(contact)
     entries.push({
-      key: `person:${norm(contact.name)}`,
+      key: `person:${norm(visible)}`,
       kind: 'person',
       name: displayName(contact),
       avatarUrl: contact.member_user_id
@@ -210,13 +219,15 @@ export function derivePeopleBalances(input: BalancesInput): PeopleBalances {
         : undefined,
       net: g.mySplitNet,
       groupId: g.group.id,
-      contactName: contact.name,
+      // El nombre que tú ves: la etiqueta local de la otra persona puede ser su
+      // «Yo», y con eso «Saldar todo» no encontraba a nadie.
+      contactName: visible,
       count: 1,
       loans: NO_LOANS,
       paidLoans: NO_LOANS,
       movements: movementsOf(g),
     })
-    coveredContactKeys.add(norm(contact.name))
+    for (const k of claves) coveredContactKeys.add(k)
   }
 
   // 3) Real multi-person groups (3+ members).

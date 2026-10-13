@@ -29,6 +29,12 @@ export function activityLabel(
   myShare?: number | null,
   /** True for a 1:1 connection (2 members) — reword "grupo" as "conexión". */
   direct = false,
+  /**
+   * Nombre visible de un miembro por id. Las liquidaciones guardan los nombres
+   * con las etiquetas de quien creó la relación («Yo → Richy»); con esto se
+   * leen como las ve cada quien («Tú → Toño Trenado»).
+   */
+  nombreDeMiembro?: (memberId: string) => string | null,
 ): ActivityLine {
   const subject = a.subject ?? ''
   switch (a.verb) {
@@ -41,7 +47,12 @@ export function activityLabel(
         struck: false,
       }
     case 'group_renamed':
-      return { text: `${a.actor_name} renombró el grupo a "${subject}"`, impact: null, struck: false }
+      return {
+        // Una conexión no tiene nombre propio: se llama como la otra persona.
+        text: direct ? `${a.actor_name} actualizó la conexión` : `${a.actor_name} renombró el grupo a "${subject}"`,
+        impact: null,
+        struck: false,
+      }
     case 'member_added':
       return { text: `${a.actor_name} agregó a ${subject}`, impact: null, struck: false }
     case 'member_linked':
@@ -58,12 +69,16 @@ export function activityLabel(
       }
     case 'invite_sent':
       return { text: `${a.actor_name} invitó a ${subject}`, impact: null, struck: false }
-    case 'settlement_added':
+    case 'settlement_added': {
+      const de = typeof a.meta?.from_member_id === 'string' ? nombreDeMiembro?.(a.meta.from_member_id) : null
+      const para = typeof a.meta?.to_member_id === 'string' ? nombreDeMiembro?.(a.meta.to_member_id) : null
+      const quien = de && para ? `${de} → ${para}` : subject
       return {
-        text: `${a.actor_name} registró un pago: ${subject}`,
+        text: `${a.actor_name} registró un pago: ${quien}`,
         impact: a.amount != null ? fmt(Number(a.amount)) : null,
         struck: false,
       }
+    }
     case 'expense_added':
     case 'expense_edited': {
       const verb = a.verb === 'expense_added' ? 'añadió' : 'editó'

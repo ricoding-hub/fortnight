@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useLoans, loanRemaining } from '@/hooks/useLoans'
 import { useSplitGroups, memberIsMe, type NewSettlement } from '@/hooks/useSplitGroups'
 import { saldoDeGasto } from '@/lib/split'
+import { contactoDe, nombreDeRelacion } from '@/lib/conexion'
 import { construirMovimientos } from '@/lib/groupMovements'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
@@ -244,10 +245,18 @@ export function PrestamoGrupo() {
     ? `${window.location.origin}/join/${g.group.invite_code}`
     : undefined
 
-  /** Members for the expense form, with linked profile names resolved. */
+  /** Members for the forms, with names resolved: «Tú» for me, the visible name for everyone else. */
   const formMembers = useMemo(
-    () => (g?.activeMembers ?? []).map((m) => ({ ...m, name: displayName(m) })),
-    [g, displayName],
+    () =>
+      (g?.activeMembers ?? [])
+        .map((m) => ({ ...m, name: memberIsMe(m, user?.id) ? 'Tú' : displayName(m) }))
+        // Tú primero: es quien casi siempre paga lo que registra.
+        .sort((a, b) => Number(memberIsMe(b, user?.id)) - Number(memberIsMe(a, user?.id))),
+    [g, displayName, user?.id],
+  )
+  const conNombre = useCallback(
+    (m: SplitMember): SplitMember => ({ ...m, name: memberIsMe(m, user?.id) ? 'Tú' : displayName(m) }),
+    [displayName, user?.id],
   )
 
   /* ── Movimientos: una sola lista cronológica (gastos + liquidaciones) ── */
@@ -320,9 +329,11 @@ export function PrestamoGrupo() {
   // (soft-leaving a 2-person group strands it in a broken half-state).
   const canLeave = multiUserReady && !g.isOwner && !isDirect && Math.abs(myNet) < 0.005
   // The other person in a 1:1 connection (for header avatar + invite wording).
-  const contact = isDirect ? g.activeMembers.find((m) => !memberIsMe(m, user?.id)) : undefined
+  const contact = contactoDe(g, user?.id)
   const contactProfile = contact?.member_user_id ? profiles.get(contact.member_user_id) : undefined
-  const contactName = contact ? displayName(contact) : g.group.name
+  // En una conexión, siempre la otra persona: el nombre del grupo lo puso quien
+  // la creó desde SU lado («Richy» para Toño), y Richy veía su propio nombre.
+  const contactName = nombreDeRelacion(g, user?.id, displayName)
   const noun = isDirect ? 'conexión' : 'grupo'
   /** Quiénes ya entraron con su cuenta. Tú cuentas siempre. */
   const sinConectar = g.activeMembers.filter(
@@ -493,7 +504,7 @@ export function PrestamoGrupo() {
           )
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-bold text-text">{g.group.name}</p>
+          <p className="truncate text-[15px] font-bold text-text">{contactName}</p>
           <p className="flex items-center gap-1 text-[11px] text-text-secondary">
             {isDirect ? (
               <>
@@ -570,7 +581,7 @@ export function PrestamoGrupo() {
             <span className="text-[12.5px] font-bold text-primary-deep">
               {syncing
                 ? 'Sincronizando…'
-                : `Sincronizar ${unsyncedLoans.length} préstamo${unsyncedLoans.length === 1 ? '' : 's'} al grupo`}
+                : `Pasar ${unsyncedLoans.length} préstamo${unsyncedLoans.length === 1 ? '' : 's'} a la conexión con ${contactName}`}
             </span>
             <span className="text-[10.5px] leading-snug text-text-secondary">
               Se convierten en gastos compartidos para que ambos vean el mismo saldo.
@@ -753,7 +764,7 @@ export function PrestamoGrupo() {
                     Tus préstamos privados
                   </p>
                   <p className="mt-0.5 text-[10.5px] leading-snug text-text-secondary">
-                    Solo tú los ves. No cuentan en el balance del grupo hasta que los sincronices.
+                    Solo tú los ves. No cuentan en el saldo de ustedes hasta que los pases a la conexión.
                   </p>
                 </li>
               )}
@@ -820,7 +831,10 @@ export function PrestamoGrupo() {
                           ?.find((sh) => sh.member_id === me.id)?.amount ?? 0,
                       )
                     : null
-                const line = activityLabel(a, me?.id ?? null, myShare, isDirect)
+                const line = activityLabel(a, me?.id ?? null, myShare, isDirect, (id) => {
+                  const m = membersById.get(id)
+                  return m ? conNombre(m).name : null
+                })
                 return (
                   <li key={a.id} className="flex items-start gap-2.5 py-2.5">
                     <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-bg-secondary text-text-secondary">
@@ -938,8 +952,8 @@ export function PrestamoGrupo() {
       {settleEdge && (
         <SettleModal
           open
-          from={settleEdge.from}
-          to={settleEdge.to}
+          from={conNombre(settleEdge.from)}
+          to={conNombre(settleEdge.to)}
           suggestedAmount={settleEdge.amount}
           onClose={() => setSettleEdge(null)}
           onSubmit={handleSettle}
@@ -979,7 +993,7 @@ export function PrestamoGrupo() {
       {settleAllOpen && (
         <SettleAllModal
           open
-          contactName={g.members.find((m) => !memberIsMe(m, user?.id))?.name ?? g.group.name}
+          contactName={contactName}
           net={myNet}
           breakdown={[
             ...g.legacyLoans

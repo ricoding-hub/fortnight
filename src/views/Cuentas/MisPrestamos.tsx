@@ -72,8 +72,8 @@ export function MisPrestamos() {
   // Direct 2-person group per contact (connected or not), for the settle-all
   // breakdown and for keeping a renamed contact in sync with their group.
   const directGroupByContact = useMemo(
-    () => grupoDirectoPorContacto(splitGroups, user?.id),
-    [splitGroups, user?.id],
+    () => grupoDirectoPorContacto(splitGroups, user?.id, displayName),
+    [splitGroups, user?.id, displayName],
   )
 
   // Unified Splitwise-style balances (people + groups) — the single source for
