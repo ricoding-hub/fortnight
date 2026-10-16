@@ -42,6 +42,9 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
   const original = accounts.find((a) => a.id === tx.account_id)
   const sincronizado = tx.source === 'syncfy'
   const esAjuste = tx.type === 'adjustment'
+  // Un pago de tarjeta son dos renglones: aquí sólo cambian fecha y nota (en
+  // los dos). El monto se corrige borrando el pago y registrándolo otra vez.
+  const esPago = tx.type === 'transfer'
 
   const [esGasto, setEsGasto] = useState(esGastoEn(Number(tx.amount), original))
   const [monto, setMonto] = useState(String(Math.abs(Number(tx.amount))))
@@ -62,9 +65,11 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
   async function guardar(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!sincronizado && !montoValido) return setError('Escribe un monto, por ejemplo 574.50')
+    if (!sincronizado && !esPago && !montoValido) return setError('Escribe un monto, por ejemplo 574.50')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || fecha > toKey(new Date())) return setError('Elige una fecha que no sea futura')
-    const patch: TransactionPatch = sincronizado
+    const patch: TransactionPatch = esPago
+      ? { date: fecha, description: nota.trim() || null }
+      : sincronizado
       ? { category_id: categoriaId || null, description: nota.trim() || null }
       : {
           amount: nuevoMonto,
@@ -103,7 +108,24 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
           </p>
         )}
 
-        {!sincronizado && !esAjuste && (
+        {esPago && (
+          <>
+            <p className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[12.5px] text-text-secondary">
+              Es un pago de tarjeta: aquí cambias la fecha y la nota de sus dos partes. Para cambiar el monto, bórralo y
+              regístralo otra vez.
+            </p>
+            <Input
+              label="Fecha"
+              type="date"
+              max={toKey(new Date())}
+              className="w-full min-w-0"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+            />
+          </>
+        )}
+
+        {!sincronizado && !esAjuste && !esPago && (
           <Segmented
             ariaLabel="Tipo de movimiento"
             value={esGasto}
@@ -115,7 +137,7 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
           />
         )}
 
-        {!sincronizado && (
+        {!sincronizado && !esPago && (
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Monto"
@@ -135,7 +157,7 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
           </div>
         )}
 
-        {!sincronizado && (
+        {!sincronizado && !esPago && (
           <Select label="Cuenta" value={cuentaId} onChange={(e) => setCuentaId(e.target.value)}>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -146,7 +168,7 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
           </Select>
         )}
 
-        {!esAjuste && (
+        {!esAjuste && !esPago && (
           <Select label="Categoría" value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
             <option value="">Sin categoría</option>
             {lista.map((c) => (
@@ -160,7 +182,7 @@ export function TransactionEditModal({ transaction: tx, accounts, categories, on
         <Input label="Nota (opcional)" value={nota} onChange={(e) => setNota(e.target.value)} />
 
         {/* Lo que va a pasar con el saldo, antes de guardar. */}
-        {!sincronizado && cuenta && (
+        {!sincronizado && !esPago && cuenta && (
           <p className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[12.5px] text-text-secondary">
             {cuentaId !== tx.account_id
               ? `Sale de ${original?.name ?? 'la cuenta anterior'} y entra en ${cuenta.name}: los dos saldos se ajustan.`

@@ -8,6 +8,8 @@ import { resizeImage } from '@/lib/image'
 import { errorMessage } from '@/lib/errorMessage'
 import { memberIsMe } from '@/lib/loanFormat'
 import { clavesDeContacto, contactoDe, esConexion, nombreVisible } from '@/lib/conexion'
+import { montoEnCuenta } from '@/lib/movimiento'
+import { tipoDeCuenta } from '@/lib/tipoDeCuenta'
 
 export { memberIsMe }
 import {
@@ -583,10 +585,12 @@ export function useSplitGroups(legacy: LegacyInputs) {
     // Account transaction only when the payer is me — same pattern as loans.
     const payer = members.find((m) => m.id === exp.paidByMemberId)
     if (exp.accountId && payer && memberIsMe(payer, user.id)) {
+      // Pagaste tú: el dinero sale (en una tarjeta, SUBE su deuda).
+      const cuenta = await tipoDeCuenta(exp.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: exp.accountId,
-        amount: -exp.amount,
+        amount: montoEnCuenta(cuenta, 'sale', exp.amount),
         type: 'transaction',
         description: `Gasto compartido: ${exp.description.trim()}`,
         date: exp.date ?? toKey(new Date()),
@@ -753,10 +757,11 @@ export function useSplitGroups(legacy: LegacyInputs) {
       const groupName = groups.find((g) => g.id === groupId)?.name ?? ''
       const conQuien = displayName(contactMember)
       const enConexion = gMembers.filter((m) => m.left_at == null).length === 2
+      const cuenta = await tipoDeCuenta(s.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: s.accountId,
-        amount: txAmount,
+        amount: montoEnCuenta(cuenta, txAmount >= 0 ? 'entra' : 'sale', Math.abs(txAmount)),
         type: 'transaction',
         description: `Liquidación con ${conQuien}${!enConexion && groupName ? ` · ${groupName}` : ''}`,
         date: toKey(new Date()),
@@ -1061,10 +1066,12 @@ export function useSplitGroups(legacy: LegacyInputs) {
     // ONE account transaction for the real money that changed hands (the net).
     if (opts?.accountId && combinedNetCents !== 0) {
       // «Saldar todo» sólo existe en conexiones: el movimiento dice con quién.
+      const cuenta = await tipoDeCuenta(opts.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: opts.accountId,
-        amount: fromCents(combinedNetCents), // + I receive, − I pay
+        // Recibes: entra. Pagas: sale (en una tarjeta, sube su deuda).
+        amount: montoEnCuenta(cuenta, combinedNetCents > 0 ? 'entra' : 'sale', Math.abs(fromCents(combinedNetCents))),
         type: 'transaction',
         description: `Saldar todo con ${displayName(contact)}`,
         date: toKey(new Date()),

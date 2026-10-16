@@ -14,6 +14,9 @@ import { CreditCycleBadge } from '@/components/CreditCycleBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
 import { bankLogoUrl } from '@/lib/banks'
+import { moneyNum } from '@/lib/money'
+import { fechaCorta } from '@/lib/movementDates'
+import type { EstadosTarjeta } from '@/lib/estadoDeCuenta'
 import type { Account } from '@/types'
 
 function SyncedLabel({ name }: { name: string }) {
@@ -37,6 +40,11 @@ interface AccountCardProps {
   canMoveDown?: boolean
   onMoveUp?: () => void
   onMoveDown?: () => void
+  /** Estado de cuenta de la tarjeta (sólo crédito). */
+  estado?: EstadosTarjeta
+  /** Abrir «Pagar» de esta tarjeta, opcionalmente con un monto ya escrito. */
+  onPagar?: (monto?: number) => void
+  onVerEstado?: () => void
 }
 
 /** First letters of up to the first two words, e.g. "Nu Débito" -> "ND". */
@@ -88,8 +96,13 @@ export function AccountCard({
   canMoveDown = false,
   onMoveUp,
   onMoveDown,
+  estado,
+  onPagar,
+  onVerEstado,
 }: AccountCardProps) {
   const [editing, setEditing] = useState(false)
+  /** Bajó el saldo de una tarjeta: ¿fue un pago? (Es como casi todos actualizan.) */
+  const [pregunta, setPregunta] = useState<{ diff: number; next: number } | null>(null)
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [invalid, setInvalid] = useState(false)
@@ -110,12 +123,21 @@ export function AccountCard({
 
   const toast = useToast()
 
-  async function save() {
-    const next = Number(value)
-    if (value.trim() === '' || Number.isNaN(next) || next < 0) {
+  async function save(forzar = false) {
+    // `moneyNum` entiende «1,234.50»; en una tarjeta, negativo es saldo a favor.
+    const next = moneyNum(value)
+    if (value.trim() === '' || Number.isNaN(next) || (!isCredit && next < 0)) {
       setInvalid(true)
       return
     }
+    const actual = Number(account.balance) || 0
+    if (!forzar && isCredit && onPagar && next < actual - 0.005) {
+      // Bajar la deuda a mano casi siempre es un pago: registrarlo como tal hace
+      // que salga de tu cuenta de débito y cuente en tu estado de cuenta.
+      setPregunta({ diff: Math.round((actual - next) * 100) / 100, next })
+      return
+    }
+    setPregunta(null)
     setSaving(true)
     try {
       await onSaveBalance(account, next)
@@ -129,7 +151,10 @@ export function AccountCard({
     }
   }
 
-  const displayBalance = isCredit ? Math.abs(account.balance) : account.balance
+  const saldo = Number(account.balance) || 0
+  // Una tarjeta con saldo negativo tiene dinero a tu favor; antes salía como deuda roja.
+  const aFavor = isCredit && saldo < -0.005
+  const displayBalance = isCredit ? Math.abs(saldo) : saldo
 
   // Reorder mode renders a non-link version so taps don't navigate.
   if (reorderMode) {
@@ -174,6 +199,7 @@ export function AccountCard({
   }
 
   return (
+    <div className="flex flex-col">
     <div className="flex items-center gap-3 py-3.5 transition-colors">
       <Link
         to={`/cuentas/movimientos?account=${account.id}`}
@@ -191,7 +217,7 @@ export function AccountCard({
             {isSynced && account.institution_name && (
               <SyncedLabel name={account.institution_name} />
             )}
-            {isCredit && <CreditCycleBadge account={account} />}
+            {isCredit && <CreditCycleBadge account={account} estado={estado} />}
           </div>
         </div>
       </Link>
@@ -249,10 +275,10 @@ export function AccountCard({
             onClick={startEdit}
             className={clsx(
               'text-sm font-bold tabular-nums transition-colors',
-              isCredit ? 'text-debt' : 'text-text',
+              aFavor ? 'text-asset-ink' : isCredit ? 'text-debt' : 'text-text',
             )}
           >
-            {formatMXN(displayBalance)}
+            {aFavor ? `A favor ${formatMXN(displayBalance)}` : formatMXN(displayBalance)}
           </button>
           <button
             type="button"
@@ -271,6 +297,87 @@ export function AccountCard({
             <IconSettings size={14} />
           </button>
         </div>
+      )}
+    </div>
+
+      {pregunta && (
+        <div className="mb-3 flex flex-col gap-2 rounded-xl bg-primary-soft/40 px-3.5 py-2.5">
+          <p className="text-[12.5px] text-text">
+            Bajaste la deuda {formatMXN(pregunta.diff)}. ¿Fue un pago?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const monto = pregunta.diff
+                setPregunta(null)
+                setEditing(false)
+                onPagar?.(monto)
+              }}
+              className="min-h-[36px] rounded-full bg-primary-deep px-3.5 text-[12.5px] font-bold text-white"
+            >
+              Sí, registrar el pago
+            </button>
+            <button
+              type="button"
+              onClick={() => void save(true)}
+              className="min-h-[36px] rounded-full border border-border bg-bg-elevated px-3.5 text-[12.5px] font-bold text-text"
+            >
+              No, sólo corregir el saldo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isCredit && estado && !estado.sinCorte && !editing && (
+        <LineaEstado estado={estado} onPagar={onPagar} onVerEstado={onVerEstado} />
+      )}
+    </div>
+  )
+}
+
+/** Una línea con lo que toca del estado de cuenta y cómo resolverlo. */
+function LineaEstado({
+  estado,
+  onPagar,
+  onVerEstado,
+}: {
+  estado: EstadosTarjeta
+  onPagar?: (monto?: number) => void
+  onVerEstado?: () => void
+}) {
+  const p = estado.proximo
+  const u = estado.ultimo
+  const texto = p
+    ? p.estado === 'vencido'
+      ? `Venció el ${fechaCorta(p.vence)} · te faltan ${formatMXN(p.falta)}`
+      : `Te faltan ${formatMXN(p.falta)} · vence ${fechaCorta(p.vence)}`
+    : u && u.estado === 'pagado'
+      ? `Estado del corte ${fechaCorta(u.corte)} pagado`
+      : 'Nada pendiente de tu último estado de cuenta'
+  return (
+    <div className="-mt-1 mb-3 flex items-center gap-2 pl-[52px]">
+      <p
+        className={clsx(
+          'min-w-0 flex-1 text-[12px] leading-snug',
+          p?.estado === 'vencido' ? 'font-semibold text-debt-ink' : p ? 'text-text-secondary' : 'text-asset-ink',
+        )}
+      >
+        {texto}
+      </p>
+      {onVerEstado && (
+        <button type="button" onClick={onVerEstado} className="min-h-[32px] shrink-0 px-1 text-[12px] font-bold text-primary-deep">
+          Estado
+        </button>
+      )}
+      {p && onPagar && (
+        <button
+          type="button"
+          onClick={() => onPagar()}
+          className="min-h-[32px] shrink-0 rounded-full bg-primary-soft px-3 text-[12px] font-bold text-primary-deep"
+        >
+          Pagar
+        </button>
       )}
     </div>
   )

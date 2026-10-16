@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { montoEnCuenta } from '@/lib/movimiento'
+import { tipoDeCuenta } from '@/lib/tipoDeCuenta'
+import { toKey } from '@/lib/localDate'
 import { useAuth } from '@/hooks/useAuth'
 import { loanRemaining } from '@/lib/loanFormat'
 
@@ -171,7 +174,8 @@ export function useLoans() {
     const loan = data.find((l) => l.id === id)
     if (!loan) return
     const paidAt = new Date().toISOString()
-    const today = paidAt.slice(0, 10)
+    // Día local, no UTC: de noche en CDMX el día UTC ya es mañana.
+    const today = toKey(new Date())
 
     // Settle the loan first; only then move money in the account. Doing it the
     // other way round left an orphan transaction whenever the update failed.
@@ -188,7 +192,10 @@ export function useLoans() {
     if (opts?.accountId) {
       const resolvedAmount = opts.amount ?? loanRemaining(loan, paymentsByLoan[id] ?? [])
       if (resolvedAmount > 0) {
-        const txAmount = loan.direction === 'owed_to_me' ? resolvedAmount : -resolvedAmount
+        // Te pagan: el dinero entra. Pagas tú: sale. En una tarjeta, pagar con
+        // ella SUBE su deuda; con el signo de débito la bajaba.
+        const cuenta = await tipoDeCuenta(opts.accountId)
+        const txAmount = montoEnCuenta(cuenta, loan.direction === 'owed_to_me' ? 'entra' : 'sale', resolvedAmount)
         const { error: txErr } = await supabase.from('transactions').insert({
           user_id: user.id,
           account_id: opts.accountId,
@@ -272,14 +279,16 @@ export function useLoans() {
     }
 
     if (opts?.accountId) {
-      const txAmount = loan.direction === 'owed_to_me' ? amount : -amount
+      const cuenta = await tipoDeCuenta(opts.accountId)
+      const txAmount = montoEnCuenta(cuenta, loan.direction === 'owed_to_me' ? 'entra' : 'sale', amount)
       const { error: txErr } = await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: opts.accountId,
         amount: txAmount,
         type: 'transaction',
         description: `Abono: ${loan.name}`,
-        date: now.slice(0, 10),
+        // Día local: a las 6 pm en CDMX, el día UTC ya es mañana.
+        date: toKey(new Date()),
       })
       if (txErr) {
         // Undo the payment so the loan balance and the account never disagree.

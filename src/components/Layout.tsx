@@ -6,6 +6,7 @@ import { PetCompanion } from '@/components/PetCompanion'
 import { PwaBanner } from '@/components/PwaBanner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { AvisoBarra } from '@/components/AvisoBarra'
+import { TarjetaHost } from '@/components/pagos/TarjetaHost'
 import { AddSheet } from '@/components/add/AddSheet'
 import { useUiStore } from '@/store/uiStore'
 import { useAccounts } from '@/hooks/useAccounts'
@@ -80,6 +81,9 @@ export function Layout() {
 
       <BottomNav />
       <PetCompanion />
+
+      {/* Pagar una tarjeta / su estado de cuenta, desde Inicio, Cuentas o el calendario. */}
+      <TarjetaHost />
 
       {/* Global add-movement modal — driven by uiStore */}
       {!accountsLoading && (

@@ -11,6 +11,9 @@ import {
 import { useAccounts } from '@/hooks/useAccounts'
 import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
 import { useOrdenCuentas } from '@/hooks/useOrdenCuentas'
+import { useInstallments } from '@/hooks/useInstallments'
+import { useUiStore } from '@/store/uiStore'
+import type { EstadosTarjeta } from '@/lib/estadoDeCuenta'
 import { AccountCard } from '@/components/AccountCard'
 import {
   AccountFormModal,
@@ -39,6 +42,9 @@ interface SectionProps {
   onEditDetails: (account: Account) => void
   onAdd: (type: AccountType) => void
   onMove: (accountId: string, direction: -1 | 1) => Promise<void>
+  estados: Record<string, EstadosTarjeta>
+  onPagar: (accountId: string, monto?: number) => void
+  onVerEstado: (accountId: string) => void
 }
 
 function Section({
@@ -52,6 +58,9 @@ function Section({
   onEditDetails,
   onAdd,
   onMove,
+  estados,
+  onPagar,
+  onVerEstado,
 }: SectionProps) {
   return (
     <section id={id} className="px-4 py-2">
@@ -83,6 +92,9 @@ function Section({
                   canMoveDown={i < accounts.length - 1}
                   onMoveUp={() => void onMove(a.id, -1)}
                   onMoveDown={() => void onMove(a.id, 1)}
+                  estado={estados[a.id]}
+                  onPagar={(monto) => onPagar(a.id, monto)}
+                  onVerEstado={() => onVerEstado(a.id)}
                 />
               </li>
             ))}
@@ -120,6 +132,10 @@ export function MisCuentas() {
   const [chooserOpen, setChooserOpen] = useState(false)
   const [chooserType, setChooserType] = useState<AccountType>('debit')
   const { orden, primero, setPrimero } = useOrdenCuentas()
+  // El estado de cuenta de cada tarjeta, para decir qué falta pagar.
+  const { estados } = useInstallments()
+  const abrirPago = useUiStore((s) => s.abrirPago)
+  const abrirEstado = useUiStore((s) => s.abrirEstado)
   const [bankModalOpen, setBankModalOpen] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
@@ -214,6 +230,9 @@ export function MisCuentas() {
     onEditDetails: (account: Account) => setFormMode({ kind: 'edit', account }),
     onAdd: openChooser,
     onMove: handleMove,
+    estados,
+    onPagar: abrirPago,
+    onVerEstado: abrirEstado,
   }
 
   const hasAccounts = accounts.length > 0

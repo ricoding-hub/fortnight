@@ -2,10 +2,12 @@ import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Segmented } from '@/components/ui/Segmented'
 import { FooterPortal } from '@/components/add/FooterPortal'
 import { useGamification, XP_PER_TX } from '@/hooks/useGamification'
 import { useToast } from '@/hooks/useToast'
 import { useOrdenCuentas } from '@/hooks/useOrdenCuentas'
+import { usePagarTarjeta } from '@/hooks/usePagarTarjeta'
 import { guardarPref, prefValida } from '@/lib/addPrefs'
 import { toKey } from '@/lib/calendar'
 import { formatMXN } from '@/lib/format'
@@ -61,9 +63,21 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
   const [categoryId, setCategoryId] = useState(
     () => prefValida(claveCat, lista.map((c) => c.id)) ?? '',
   )
+  // Gasto e ingreso recuerdan su cuenta por separado: un ingreso casi nunca va
+  // a la tarjeta con la que se gasta.
+  const claveCuenta = esGasto ? 'cuenta' : 'cuenta:ingreso'
   const [accountId, setAccountId] = useState(
-    () => prefValida('cuenta', accounts.map((a) => a.id)) ?? accounts[0]?.id ?? '',
+    () => prefValida(claveCuenta, accounts.map((a) => a.id)) ?? accounts[0]?.id ?? '',
   )
+  /**
+   * «Ingreso» en una tarjeta: antes era la única forma de pagarla, con
+   * categoría Salario. Ahora es un pago (sale de una cuenta de débito, no es
+   * ingreso) o un reembolso (una devolución, con categoría de gasto).
+   */
+  const [abono, setAbono] = useState<'pago' | 'reembolso'>('pago')
+  const debitos = accounts.filter((a) => a.type === 'debit')
+  const [origen, setOrigen] = useState(() => prefValida('pago:origen', debitos.map((d) => d.id)) ?? debitos[0]?.id ?? '')
+  const { pagar } = usePagarTarjeta()
   const [errores, setErrores] = useState<Errores>({})
   const [enviando, setEnviando] = useState(false)
   const intentado = useRef(false)
@@ -74,13 +88,17 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
     .map((tipo) => ({ tipo, cuentas: accounts.filter((a) => a.type === tipo) }))
     .filter((g) => g.cuentas.length > 0)
   const esCredito = cuenta?.type === 'credit'
+  const esPago = !esGasto && esCredito && abono === 'pago'
+  const esReembolso = !esGasto && esCredito && abono === 'reembolso'
+  // Las categorías que tocan: de gasto para gastos y reembolsos, de ingreso para ingresos.
+  const categoriasVisibles = esReembolso ? categories.filter((c) => c.kind === 'variable' || c.kind === 'fixed') : lista
   const monto = moneyNum(amount)
   const montoValido = isMoneyInput(amount) && monto > 0
 
   function validar(): Errores {
     const e: Errores = {}
     if (!montoValido) e.amount = amount.trim() === '' ? 'Escribe el monto' : 'Monto inválido, por ejemplo 574.50'
-    if (!categoryId) e.category = 'Elige una categoría'
+    if (!esPago && !categoryId) e.category = 'Elige una categoría'
     if (!accountId) e.account = 'Elige una cuenta'
     if (!date) e.date = 'Elige la fecha'
     else if (date > toKey(new Date())) e.date = 'No puede ser futura'
@@ -96,8 +114,28 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
     if (Object.keys(e).length > 0) return
 
     setEnviando(true)
-    // Gasto en débito resta; en tarjeta SUBE la deuda. Ingreso al revés: en una
-    // tarjeta es un pago y baja la deuda.
+    if (esPago && cuenta) {
+      try {
+        const de = debitos.find((d) => d.id === origen) ?? null
+        await pagar({
+          card: { id: cuenta.id, name: cuenta.name },
+          amount: monto,
+          from: de ? { id: de.id, name: de.name } : null,
+          date,
+          nota: note,
+        })
+        guardarPref('pago:origen', origen)
+        guardarPref(claveCuenta, accountId)
+        toast.success('Pago registrado', `${formatMXN(monto)} a ${cuenta.name}${de ? ` desde ${de.name}` : ''}`)
+        onDone()
+      } catch {
+        toast.error('Error al guardar', 'No se pudo registrar el pago')
+        setEnviando(false)
+      }
+      return
+    }
+    // Gasto en débito resta; en tarjeta SUBE la deuda. Un reembolso en tarjeta
+    // la baja; un ingreso en débito suma.
     const signo = esGasto ? (esCredito ? 1 : -1) : esCredito ? -1 : 1
     try {
       await onCreate({
@@ -107,13 +145,13 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
         description: note.trim() || null,
         date,
       })
-      guardarPref(claveCat, categoryId)
-      guardarPref('cuenta', accountId)
+      if (!esReembolso) guardarPref(claveCat, categoryId)
+      guardarPref(claveCuenta, accountId)
       // XP y racha los da el trigger tr_award_xp_on_transaction; esto es el
       // respaldo por si el tiempo real tarda en llegar.
       window.setTimeout(() => void refetchGami(), 400)
       toast.success(
-        esGasto ? 'Gasto registrado' : 'Ingreso registrado',
+        esGasto ? 'Gasto registrado' : esReembolso ? 'Reembolso registrado' : 'Ingreso registrado',
         `${formatMXN(monto)} · ${cuenta?.name ?? ''} · +${XP_PER_TX} XP`,
       )
       onDone()
@@ -130,14 +168,15 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
     const n = { ...previo, ...parche }
     const e: Errores = {}
     if (!(isMoneyInput(n.amount) && moneyNum(n.amount) > 0)) e.amount = n.amount.trim() === '' ? 'Escribe el monto' : 'Monto inválido, por ejemplo 574.50'
-    if (!n.categoryId) e.category = 'Elige una categoría'
+    if (!esPago && !n.categoryId) e.category = 'Elige una categoría'
     if (!n.accountId) e.account = 'Elige una cuenta'
     if (!n.date) e.date = 'Elige la fecha'
     else if (n.date > toKey(new Date())) e.date = 'No puede ser futura'
     setErrores(e)
   }
 
-  const etiquetaBoton = `${esGasto ? 'Registrar gasto' : 'Registrar ingreso'}${montoValido ? ` · ${formatMXN(monto)}` : ''}`
+  const accion = esGasto ? 'Registrar gasto' : esPago ? 'Registrar pago' : esReembolso ? 'Registrar reembolso' : 'Registrar ingreso'
+  const etiquetaBoton = `${accion}${montoValido ? ` · ${formatMXN(monto)}` : ''}`
 
   return (
     <form id="add-form" onSubmit={guardar} className="flex flex-col gap-3" noValidate>
@@ -166,6 +205,7 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
         />
       </div>
 
+      {!esPago && (
       <Select
         label="Categoría"
         value={categoryId}
@@ -173,15 +213,15 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
         onChange={(e) => { setCategoryId(e.target.value); revalidar({ categoryId: e.target.value }) }}
       >
         <option value="">Selecciona…</option>
-        {esGasto ? (
+        {esGasto || esReembolso ? (
           <>
             <optgroup label="Variables">
-              {lista.filter((c) => c.kind === 'variable').map((c) => (
+              {categoriasVisibles.filter((c) => c.kind === 'variable').map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </optgroup>
             <optgroup label="Fijos">
-              {lista.filter((c) => c.kind === 'fixed').map((c) => (
+              {categoriasVisibles.filter((c) => c.kind === 'fixed').map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </optgroup>
@@ -190,6 +230,7 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
           lista.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)
         )}
       </Select>
+      )}
 
       <Select
         label="Cuenta"
@@ -216,12 +257,45 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
 
       {/* El signo de una tarjeta es el contrario al de una cuenta de débito, y
           antes se invertía sin decirlo. */}
-      {esCredito && cuenta && (
+      {esCredito && cuenta && esGasto && (
         <p className="-mt-1 rounded-xl bg-bg-secondary px-3.5 py-2 text-[12.5px] text-text-secondary">
-          {esGasto
-            ? `Es una tarjeta: este gasto SUBE la deuda de ${cuenta.name}.`
-            : `Es una tarjeta: este ingreso cuenta como pago y BAJA la deuda de ${cuenta.name}.`}
+          Es una tarjeta: este gasto SUBE la deuda de {cuenta.name}.
         </p>
+      )}
+
+      {esCredito && cuenta && !esGasto && (
+        <div className="flex flex-col gap-2">
+          <Segmented
+            ariaLabel="Qué es"
+            value={abono}
+            onChange={(v) => {
+              setAbono(v)
+              setCategoryId('')
+            }}
+            options={[
+              { value: 'pago', label: 'Pago a la tarjeta' },
+              { value: 'reembolso', label: 'Reembolso' },
+            ]}
+          />
+          {esPago ? (
+            <Select label="¿De dónde salió el dinero?" value={origen} onChange={(e) => setOrigen(e.target.value)}>
+              {debitos.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+              <option value="">No registrar de dónde salió</option>
+            </Select>
+          ) : (
+            <p className="rounded-xl bg-bg-secondary px-3.5 py-2 text-[12.5px] text-text-secondary">
+              Una devolución de una compra: baja la deuda de {cuenta.name} y resta de esa categoría.
+            </p>
+          )}
+          {esPago && (
+            <p className="text-[12px] text-text-secondary">
+              Un pago no es ingreso: baja la deuda de {cuenta.name}
+              {origen ? ' y el saldo de la cuenta de la que salió' : ''}.
+            </p>
+          )}
+        </div>
       )}
 
       <Input

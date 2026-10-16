@@ -9,6 +9,7 @@ import {
   IconCalendar,
   IconCalendarEvent,
   IconCategory,
+  IconCreditCardPay,
   IconHash,
   IconNote,
   IconPencil,
@@ -21,6 +22,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/hooks/useToast'
 import { categoryIcon, categoryColor } from '@/lib/categories'
 import { formatMXN } from '@/lib/format'
+import { clasificar, efectoEnPatrimonio, ETIQUETA_CLASE } from '@/lib/movimiento'
 import type { Account, Category, Transaction } from '@/types'
 
 interface TransactionDetailModalProps {
@@ -85,24 +87,31 @@ export function TransactionDetailModal({
   const [confirmar, setConfirmar] = useState(false)
   const isAdjustment = transaction.type === 'adjustment'
   const esCargoMsi = transaction.type === 'installment' && !!transaction.installment_id
+  const clase = clasificar(transaction, account, category)
+  const esPago = clase === 'pago-tarjeta' || clase === 'transferencia'
 
   // Same net-worth sign convention used by TransactionRow so the detail
   // matches what the user tapped on.
-  const netEffect =
-    account?.type === 'credit' ? -transaction.amount : transaction.amount
+  const netEffect = efectoEnPatrimonio(transaction, account)
   const positive = netEffect >= 0
 
-  const chipColor = isAdjustment ? '#6B7194' : categoryColor(category)
+  const chipColor = isAdjustment || esPago ? '#6B7194' : categoryColor(category)
   const heading = isAdjustment
     ? 'Ajuste de saldo'
-    : (category?.name ?? 'Sin categoría')
+    : esPago
+      ? 'Pago de tarjeta'
+      : clase === 'reembolso'
+        ? `Reembolso · ${category?.name ?? 'sin categoría'}`
+        : (category?.name ?? 'Sin categoría')
 
   // Lo que pasa al borrarlo, dicho antes: el trigger revierte el saldo.
-  const consecuencia = account
-    ? `El saldo de ${account.name} ${
-        transaction.amount > 0 ? 'baja' : 'sube'
-      } ${formatMXN(Math.abs(transaction.amount))}${esCargoMsi ? ' y el plan a meses se queda sin cargo' : ''}.`
-    : 'Se borra del historial.'
+  const consecuencia = transaction.transfer_id
+    ? 'Se borra el pago completo: la tarjeta vuelve a deber ese monto y la cuenta de la que salió lo recupera.'
+    : account
+      ? `El saldo de ${account.name} ${
+          transaction.amount > 0 ? 'baja' : 'sube'
+        } ${formatMXN(Math.abs(transaction.amount))}${esCargoMsi ? ' y el plan a meses se queda sin cargo' : ''}.`
+      : 'Se borra del historial.'
 
   async function handleDelete() {
     try {
@@ -126,7 +135,7 @@ export function TransactionDetailModal({
             style={{ backgroundColor: `${chipColor}1A`, color: chipColor }}
           >
             {createElement(
-              isAdjustment ? IconAdjustmentsHorizontal : categoryIcon(category),
+              isAdjustment ? IconAdjustmentsHorizontal : esPago ? IconCreditCardPay : categoryIcon(category),
               { size: 26, stroke: 1.75 },
             )}
           </div>
@@ -157,7 +166,7 @@ export function TransactionDetailModal({
           <DetailRow
             icon={IconCategory}
             label="Categoría"
-            value={isAdjustment ? 'Ajuste (sin categoría)' : category?.name ?? 'Sin categoría'}
+            value={isAdjustment ? 'Ajuste (sin categoría)' : esPago ? null : category?.name ?? 'Sin categoría'}
           />
           <DetailRow
             icon={IconNote}
@@ -167,7 +176,7 @@ export function TransactionDetailModal({
           <DetailRow
             icon={IconArrowsLeftRight}
             label="Tipo"
-            value={TYPE_LABEL[transaction.type]}
+            value={ETIQUETA_CLASE[clase] ?? TYPE_LABEL[transaction.type]}
           />
           <DetailRow
             icon={IconBuildingBank}

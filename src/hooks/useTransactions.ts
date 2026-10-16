@@ -121,15 +121,16 @@ export function useTransactions(filters: TransactionFilters = {}) {
     }
   }
 
+  /** Borra un movimiento. Un pago de tarjeta se borra completo: sus dos partes. */
   async function deleteTransaction(id: string) {
     const prev = data.find((t) => t.id === id)
-    setData((cur) => cur.filter((t) => t.id !== id))
-    const { error: err } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id)
+    const transferId = prev?.transfer_id ?? null
+    const quitados = data.filter((t) => t.id === id || (transferId != null && t.transfer_id === transferId))
+    setData((cur) => cur.filter((t) => !quitados.includes(t)))
+    const q = supabase.from('transactions').delete()
+    const { error: err } = transferId ? await q.eq('transfer_id', transferId) : await q.eq('id', id)
     if (err) {
-      if (prev) setData((cur) => [prev, ...cur])
+      setData((cur) => [...quitados, ...cur])
       throw err
     }
   }
@@ -145,11 +146,22 @@ export function useTransactions(filters: TransactionFilters = {}) {
       prev != null &&
       ((patch.amount !== undefined && Number(patch.amount) !== Number(prev.amount)) ||
         (patch.account_id !== undefined && patch.account_id !== prev.account_id))
+    const transferId = prev?.transfer_id ?? null
+    if (transferId && mueveSaldo) {
+      // Las dos partes de un pago tienen que moverse juntas.
+      throw new Error('Para cambiar el monto o la cuenta de un pago, bórralo y regístralo otra vez.')
+    }
     if (mueveSaldo && !(await tieneEsquemaMsi())) throw new Error(MIGRACION_PARA_EDITAR)
-    setData((cur) => cur.map((t) => (t.id === id ? { ...t, ...patch } : t)))
-    const { error: err } = await supabase.from('transactions').update(patch).eq('id', id)
+    // Fecha y nota de un pago se cambian en sus dos partes.
+    const enUno = (t: Transaction) => t.id === id || (transferId != null && t.transfer_id === transferId)
+    const cambios: TransactionPatch = transferId
+      ? { ...(patch.date !== undefined ? { date: patch.date } : {}), ...(patch.description !== undefined ? { description: patch.description } : {}) }
+      : patch
+    setData((cur) => cur.map((t) => (enUno(t) ? { ...t, ...cambios } : t)))
+    const q = supabase.from('transactions').update(cambios)
+    const { error: err } = transferId ? await q.eq('transfer_id', transferId) : await q.eq('id', id)
     if (err) {
-      if (prev) setData((cur) => cur.map((t) => (t.id === id ? prev : t)))
+      void fetchTransactions()
       throw err
     }
   }

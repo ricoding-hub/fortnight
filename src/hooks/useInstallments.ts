@@ -180,6 +180,8 @@ export function useInstallments() {
   // La ventana de movimientos depende del día: se vuelve a pedir al cambiar.
   useEffect(() => {
     if (!user) return
+    // fetchTarjetas sólo cambia estado después de un await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTarjetas()
   }, [user, fetchTarjetas, hoy])
 

@@ -21,6 +21,8 @@ import { useLoans } from '@/hooks/useLoans'
 import { useProfile } from '@/hooks/useProfile'
 import { useSplitGroups } from '@/hooks/useSplitGroups'
 import { useTransactions } from '@/hooks/useTransactions'
+import { useCategories } from '@/hooks/useCategories'
+import { useHoy } from '@/hooks/useHoy'
 import { useGoals } from '@/hooks/useGoals'
 import { useGamification } from '@/hooks/useGamification'
 import { useScoreHistory } from '@/hooks/useScoreHistory'
@@ -49,6 +51,9 @@ import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
 import { useDebtFreeMonth } from '@/hooks/useDebtFreeMonth'
 import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
+import { addDays, fromKey } from '@/lib/localDate'
+import { fechaCorta } from '@/lib/movementDates'
+import { clasificar } from '@/lib/movimiento'
 import { useNotifications } from '@/hooks/useNotifications'
 import { computePaydays, fmtPayday, payFreqOf } from '@/lib/paydays'
 
@@ -101,15 +106,20 @@ export function Resumen() {
     existingNames: Array.from(new Set(allLoans.map((l) => l.name.trim()))).sort(),
     afterMutation: loansApi.refetch,
   })
-  const { data: recentTx } = useTransactions()
+  const hoy = useHoy()
+  // Inicio sólo usa las últimas semanas (tendencia, score de 30 días, misiones
+  // de la semana). Antes descargaba todo el historial en cada visita.
+  const { data: recentTx } = useTransactions({ dateFrom: toKey(addDays(fromKey(hoy), -45)) })
+  const { data: categories } = useCategories()
   const { data: goals } = useGoals()
   const { data: gami, loading: gamiLoading, nextLevelXP, levelProgress } = useGamification()
   const { unreadCount } = useNotifications()
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
-  const { data: allInstallments, active: activeInstallments } = useInstallments()
+  const { data: allInstallments, active: activeInstallments, estados, estadosListos } = useInstallments()
   const openAddModal = useUiStore((s) => s.openAddModal)
+  const abrirPago = useUiStore((s) => s.abrirPago)
 
   /* --------------------------------- derived */
 
@@ -203,7 +213,9 @@ export function Resumen() {
   )
 
   const unlockedAchievements = [
-    recentTx.length >= 1,
+    // «Primer movimiento»: con la ventana de 45 días ya no se ve todo el
+    // historial; el XP es la señal de que alguna vez registraste algo.
+    recentTx.length >= 1 || gami.xp > 0,
     gami.streak_days >= 7,
     score >= 5,
     gami.xp >= 500,
@@ -216,15 +228,40 @@ export function Resumen() {
   // and hands every user the same six months.
   const { month: mesLibre, reason: mesLibreReason } = useDebtFreeMonth()
 
-  const urgent = creditAccounts
-    .map((a) => ({ account: a, days: daysUntilPayment(a) }))
-    .filter((x): x is { account: typeof x.account; days: number } => x.days != null && x.days <= 5)
-    .sort((a, b) => a.days - b.days)
+  // Pago próximo: lo que FALTA del estado de cuenta, no el saldo completo (que
+  // trae todas las mensualidades MSI que aún no se cobran). Desaparece al pagar.
+  const urgent = estadosListos
+    ? creditAccounts
+        .flatMap((a) => {
+          const e = estados[a.id]
+          if (!e) return []
+          if (e.sinCorte) {
+            // Sin día de corte no se sabe cuánto: sólo se recuerda la fecha.
+            const days = daysUntilPayment(a, fromKey(hoy))
+            if (days == null || days > 5 || Number(a.balance) <= 0) return []
+            return [{ account: a, days, vencido: false, monto: null as number | null, corregido: false, vence: null as string | null }]
+          }
+          const p = e.proximo
+          if (!p) return []
+          const days = Math.round((fromKey(p.vence).getTime() - fromKey(hoy).getTime()) / 86_400_000)
+          const vencido = p.estado === 'vencido'
+          if (!vencido && days > 5) return []
+          return [{ account: a, days, vencido, monto: p.falta as number | null, corregido: p.corregido, vence: p.vence as string | null }]
+        })
+        .sort((a, b) => Number(b.vencido) - Number(a.vencido) || a.days - b.days)
+    : []
   const nextUrgent = urgent[0]
   const urgentLabel = nextUrgent
-    ? nextUrgent.days <= 0
-      ? `Paga ${nextUrgent.account.name} hoy`
-      : `${nextUrgent.account.name} en ${nextUrgent.days} día${nextUrgent.days === 1 ? '' : 's'}`
+    ? nextUrgent.vencido
+      ? `${nextUrgent.account.name}: venció el ${nextUrgent.vence ? fechaCorta(nextUrgent.vence) : 'pago'}`
+      : nextUrgent.days <= 0
+        ? `Paga ${nextUrgent.account.name} hoy`
+        : `${nextUrgent.account.name} en ${nextUrgent.days} día${nextUrgent.days === 1 ? '' : 's'}`
+    : ''
+  const urgentDetalle = nextUrgent
+    ? nextUrgent.monto == null
+      ? 'Agrega su día de corte para saber cuánto'
+      : `${formatMXN(nextUrgent.monto)} para no generar intereses${nextUrgent.corregido ? '' : ' · aprox.'}`
     : ''
 
   const streak = gami.streak_days
@@ -237,13 +274,20 @@ export function Resumen() {
     // Wednesday the counters still included last week's expenses, which had
     // already been claimed.
     const cutoffISO = toKey(startOfWeekMx(new Date()))
-    const weekTx = recentTx.filter((t) => t.date >= cutoffISO && t.type === 'transaction')
-    const weekDebtPayments = weekTx
-      .filter((t) => {
-        const acc = accounts.find((a) => a.id === t.account_id)
-        return acc?.type === 'credit' && Number(t.amount) < 0
-      })
-      .reduce((s, t) => s + -Number(t.amount), 0)
+    const cuentaDe = (id: string) => accounts.find((a) => a.id === id)
+    const categoriaDe = (id: string | null) => (id ? categories.find((c) => c.id === id) : null)
+    const semana = recentTx.filter((t) => t.date >= cutoffISO)
+    const clase = (t: (typeof recentTx)[number]) => clasificar(t, cuentaDe(t.account_id), categoriaDe(t.category_id))
+    // «Registra gastos»: gastos, ingresos y reembolsos. Un pago de tarjeta no
+    // es un gasto: antes contaba (y si además se anotaba en débito, dos veces).
+    const weekTx = semana.filter((t) => {
+      const c = clase(t)
+      return c === 'gasto' || c === 'ingreso' || c === 'reembolso'
+    })
+    // «Paga deuda»: lo que bajó de tus tarjetas, sea pago nuevo o el «Ingreso» de antes.
+    const weekDebtPayments = semana
+      .filter((t) => cuentaDe(t.account_id)?.type === 'credit' && clase(t) === 'pago-tarjeta')
+      .reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
     const weekAdjustmentCount = recentTx.filter(
       (t) => t.date >= cutoffISO && t.type === 'adjustment',
     ).length
@@ -261,7 +305,7 @@ export function Resumen() {
       loanPaidThisWeek,
       weekCategorizedTxCount,
     }
-  }, [recentTx, accounts, score, allLoans, activeLoans, subs])
+  }, [recentTx, accounts, categories, score, allLoans, activeLoans, subs])
 
   // `enabled` off while accounts load — a transient empty-accounts render
   // inflates the score and would falsely auto-claim the "score ≥ 7" mission.
@@ -739,9 +783,9 @@ export function Resumen() {
         </Card>
       </section>
 
-      {/* ── Pago próximo alert (only when payment due ≤5 days) ── */}
+      {/* ── Pago próximo: lo que falta del estado de cuenta (≤5 días o vencido) ── */}
       {nextUrgent && (
-        <section className="px-4 pt-2">
+        <section className="px-4 pt-2" aria-label="Pago próximo">
           <Card
             className="flex items-center justify-between p-3"
             style={{
@@ -760,15 +804,13 @@ export function Resumen() {
                 <p className="text-[13.5px] font-extrabold text-text">
                   {urgentLabel}
                 </p>
-                <p className="font-mono text-[11px] text-text-secondary">
-                  ${nextUrgent.account.balance.toLocaleString()}
-                </p>
+                <p className="text-[12px] text-text-secondary">{urgentDetalle}</p>
               </div>
             </div>
             <button
               type="button"
-              onClick={() => openAddModal('gasto')}
-              className="rounded-full bg-debt px-3.5 py-1.5 text-[11.5px] font-extrabold text-white transition-transform active:scale-[0.97]"
+              onClick={() => abrirPago(nextUrgent.account.id)}
+              className="min-h-[36px] shrink-0 rounded-full bg-debt-ink px-3.5 py-1.5 text-[12px] font-extrabold text-white transition-transform active:scale-[0.97]"
             >
               Pagar
             </button>

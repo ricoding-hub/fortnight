@@ -1,9 +1,10 @@
 import { createElement, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { IconAdjustmentsHorizontal, IconTrash } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconCalendarEvent, IconCreditCardPay, IconTrash } from '@tabler/icons-react'
 import { useToast } from '@/hooks/useToast'
 import { categoryIcon, categoryColor } from '@/lib/categories'
 import { formatMXN } from '@/lib/format'
+import { clasificar, efectoEnPatrimonio } from '@/lib/movimiento'
 import type { Account, Category, Transaction } from '@/types'
 
 interface TransactionRowProps {
@@ -32,6 +33,10 @@ export function TransactionRow({
   const moved = useRef(false)
 
   const isAdjustment = transaction.type === 'adjustment'
+  // Qué es, según el tipo y la cuenta: un pago de tarjeta ya no se ve como
+  // «Salario +$X».
+  const clase = clasificar(transaction, account, category)
+  const esPago = clase === 'pago-tarjeta' || clase === 'transferencia'
 
   function onPointerDown(e: React.PointerEvent) {
     startX.current = e.clientX
@@ -57,7 +62,10 @@ export function TransactionRow({
   const toast = useToast()
 
   async function handleDelete() {
-    if (!window.confirm('¿Eliminar este movimiento?')) {
+    const pregunta = transaction.transfer_id
+      ? '¿Eliminar este pago? Se borra de la tarjeta y de la cuenta de la que salió.'
+      : '¿Eliminar este movimiento?'
+    if (!window.confirm(pregunta)) {
       setOffset(0)
       return
     }
@@ -72,15 +80,20 @@ export function TransactionRow({
 
   // Sign and color follow the net-worth impact: a credit-card purchase raises
   // the account balance but lowers net worth, so it reads as negative here.
-  const netEffect =
-    account?.type === 'credit' ? -transaction.amount : transaction.amount
+  const netEffect = efectoEnPatrimonio(transaction, account)
   const positive = netEffect >= 0
 
-  const chipColor = isAdjustment ? '#6B7194' : categoryColor(category)
+  const chipColor = isAdjustment || esPago ? '#6B7194' : clase === 'cargo-msi' ? '#9B7BFF' : categoryColor(category)
 
   const title = isAdjustment
     ? 'Ajuste de saldo'
-    : (category?.name ?? 'Sin categoría')
+    : esPago
+      ? 'Pago de tarjeta'
+      : clase === 'cargo-msi'
+        ? 'Compra a meses'
+        : clase === 'reembolso'
+          ? `Reembolso · ${category?.name ?? 'sin categoría'}`
+          : (category?.name ?? 'Sin categoría')
   const subtitleParts = [account?.name ?? 'Cuenta eliminada']
   if (transaction.description) subtitleParts.push(transaction.description)
 
@@ -124,7 +137,13 @@ export function TransactionRow({
           style={{ backgroundColor: `${chipColor}18`, color: chipColor }}
         >
           {createElement(
-            isAdjustment ? IconAdjustmentsHorizontal : categoryIcon(category),
+            isAdjustment
+              ? IconAdjustmentsHorizontal
+              : esPago
+                ? IconCreditCardPay
+                : clase === 'cargo-msi'
+                  ? IconCalendarEvent
+                  : categoryIcon(category),
             { size: 18, stroke: 1.75 },
           )}
         </div>
@@ -141,7 +160,8 @@ export function TransactionRow({
         <span
           className={clsx(
             'shrink-0 text-sm font-bold tabular-nums',
-            positive ? 'text-asset' : 'text-debt',
+            // Un pago mueve dinero entre tus cuentas: ni verde de ingreso ni rojo de gasto.
+            esPago ? 'text-text' : positive ? 'text-asset-ink' : 'text-debt-ink',
           )}
         >
           {positive ? '+' : ''}

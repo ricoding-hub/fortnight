@@ -149,23 +149,43 @@ describe('gasto e ingreso', () => {
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ account_id: 'a-2', amount: 350 }))
   })
 
-  it('un ingreso en débito SUMA; en tarjeta es un pago y BAJA la deuda', { timeout: 20_000 }, async () => {
+  it('un ingreso en débito SUMA', { timeout: 20_000 }, async () => {
     await abrir({ initialKind: 'ingreso' })
     await escribir('Monto', '9800')
     await elegir('Categoría', 'c-salario')
     await elegir('Cuenta', 'a-1')
     await pulsar(/Registrar ingreso/)
     expect(onCreate).toHaveBeenLastCalledWith(expect.objectContaining({ account_id: 'a-1', amount: 9800 }))
+  })
 
-    cleanup()
-    onCreate.mockClear()
+  it('«Ingreso» en una tarjeta es un PAGO: sin categoría de ingreso, sale de una cuenta de débito', { timeout: 20_000 }, async () => {
+    // Antes había que etiquetarlo «Salario» y no salía de ninguna cuenta.
     await abrir({ initialKind: 'ingreso' })
     await elegir('Cuenta', 'a-2')
-    expect(document.body.textContent).toMatch(/BAJA la deuda de Nu/)
+    expect(screen.queryByLabelText('Categoría')).toBeNull()
     await escribir('Monto', '1500')
-    await elegir('Categoría', 'c-salario')
-    await pulsar(/Registrar ingreso/)
-    expect(onCreate).toHaveBeenLastCalledWith(expect.objectContaining({ account_id: 'a-2', amount: -1500 }))
+    await elegir('¿De dónde salió el dinero?', 'a-1')
+    await pulsar(/Registrar pago/)
+    expect(onCreate).not.toHaveBeenCalled()
+    const pago = doble.llamadas.find((l) => l.tabla === 'transactions' && l.op === 'insert')
+    const filas = pago?.payload as Array<{ account_id: string; amount: number; type: string; transfer_id?: string }>
+    expect(filas.map((f) => [f.account_id, f.amount, f.type])).toEqual([
+      ['a-2', -1500, 'transfer'],
+      ['a-1', -1500, 'transfer'],
+    ])
+    expect(filas[0].transfer_id).toBe(filas[1].transfer_id)
+  })
+
+  it('un reembolso en tarjeta baja la deuda con categoría de gasto', { timeout: 20_000 }, async () => {
+    await abrir({ initialKind: 'ingreso' })
+    await elegir('Cuenta', 'a-2')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: 'Reembolso' }))
+    })
+    await escribir('Monto', '800')
+    await elegir('Categoría', 'c-comida')
+    await pulsar(/Registrar reembolso/)
+    expect(onCreate).toHaveBeenLastCalledWith(expect.objectContaining({ account_id: 'a-2', amount: -800, category_id: 'c-comida' }))
   })
 
   it('el ingreso sólo ofrece categorías de ingreso, y el gasto no', { timeout: 20_000 }, async () => {
