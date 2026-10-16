@@ -2,7 +2,12 @@
 // Mirrors the Supabase schema (CLAUDE.md / supabase/migrations/001_initial.sql).
 
 export type AccountType = 'debit' | 'credit'
-export type TransactionType = 'transaction' | 'adjustment' | 'sync' | 'installment'
+/**
+ * `transfer`: una parte de un pago de tarjeta (migración 038). Las dos partes —
+ * la tarjeta y la cuenta de la que salió el dinero — comparten `transfer_id`.
+ * No son ingreso ni gasto: mueven dinero entre tus propias cuentas.
+ */
+export type TransactionType = 'transaction' | 'adjustment' | 'sync' | 'installment' | 'transfer'
 export type CategoryKind = 'fixed' | 'variable' | 'income'
 export type DataSource = 'manual' | 'syncfy'
 export type SyncfyStatus =
@@ -79,6 +84,23 @@ export interface Transaction {
    * that `getRevolvingBalance` has always assumed was in there.
    */
   installment_id: string | null
+  /** Une las dos partes de un pago de tarjeta (migración 038). */
+  transfer_id?: string | null
+}
+
+/**
+ * La cifra del estado de cuenta del banco para un corte (migración 038). Si
+ * existe, manda sobre el cálculo de la app.
+ */
+export interface CardStatement {
+  id: string
+  user_id: string
+  account_id: string
+  cut_date: string
+  no_interest_amount: number | null
+  min_amount: number | null
+  created_at: string
+  updated_at: string
 }
 
 export interface SyncfyCredential {

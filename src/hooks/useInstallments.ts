@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useHoy } from '@/hooks/useHoy'
 import { useTableChannel } from '@/hooks/useTableChannel'
-import { tieneEsquemaMsi } from '@/lib/esquema'
+import { esTablaFaltante, tieneEsquemaMsi } from '@/lib/esquema'
 import { toKey } from '@/lib/localDate'
 import type { CicloTarjeta } from '@/lib/cardCycle'
 import {
@@ -19,7 +19,17 @@ import {
   type CargoMsi,
   type InstallmentVivo,
 } from '@/lib/msi'
-import type { Installment } from '@/types'
+import {
+  estadosDeCuenta,
+  planEdc,
+  ventanaDeMovimientos,
+  type CorreccionEdc,
+  type EstadosTarjeta,
+  type MovEdc,
+  type PlanEdc,
+  type TarjetaEdc,
+} from '@/lib/estadoDeCuenta'
+import type { Account, Installment } from '@/types'
 
 export interface NewInstallment {
   name: string
@@ -48,6 +58,17 @@ type Fila = Installment & {
 }
 
 const EMPTY: InstallmentVivo[] = []
+const SIN_ESTADOS: Record<string, EstadosTarjeta> = {}
+
+/** Lo que hace falta para el estado de cuenta de cada tarjeta. */
+interface FotoTarjetas {
+  tarjetas: TarjetaEdc[]
+  movs: MovEdc[]
+  correcciones: CorreccionEdc[]
+  conCorrecciones: boolean
+  listo: boolean
+}
+const FOTO_VACIA: FotoTarjetas = { tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false }
 
 /** El ciclo de una tarjeta, para saber qué mensualidades ya vencieron. */
 async function cicloDeCuenta(accountId: string | null | undefined): Promise<CicloTarjeta | null> {
@@ -93,6 +114,43 @@ export function useInstallments() {
   const [filas, setFilas] = useState<Fila[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | null>(null)
+  const [foto, setFoto] = useState<FotoTarjetas>(FOTO_VACIA)
+
+  /**
+   * Las tarjetas, sus movimientos desde el corte más viejo que importa y las
+   * correcciones del banco: con eso se calcula el estado de cuenta. Los ciclos
+   * de corte salen de aquí también, así un fallo de la consulta de los planes
+   * ya no deja a los MSI sin fechas.
+   */
+  const fetchTarjetas = useCallback(async () => {
+    if (!user) return
+    const { data: cuentas, error: errCuentas } = await supabase.from('accounts').select('*').eq('type', 'credit')
+    if (errCuentas) {
+      setFoto((f) => ({ ...f, listo: true }))
+      return
+    }
+    const tarjetas = ((cuentas ?? []) as Account[]).filter((a) => a.type === 'credit')
+    const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()))
+    const ids = tarjetas.map((t) => t.id)
+    if (!desde || ids.length === 0) {
+      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true })
+      return
+    }
+    const [movsRes, corrRes] = await Promise.all([
+      supabase.from('transactions').select('*').in('account_id', ids).gt('date', desde),
+      supabase.from('card_statements').select('*').in('account_id', ids),
+    ])
+    const idsSet = new Set(ids)
+    setFoto({
+      tarjetas,
+      // Se vuelve a filtrar aquí: el cálculo no debe depender de que el filtro
+      // del servidor haya llegado intacto.
+      movs: ((movsRes.data ?? []) as MovEdc[]).filter((m) => idsSet.has(m.account_id) && m.date > desde),
+      correcciones: corrRes.error ? [] : ((corrRes.data ?? []) as CorreccionEdc[]),
+      conCorrecciones: !corrRes.error || !esTablaFaltante(corrRes.error),
+      listo: true,
+    })
+  }, [user])
 
   const fetchInstallments = useCallback(async () => {
     if (!user) return
@@ -119,6 +177,36 @@ export function useInstallments() {
     void fetchInstallments()
   }, [user, fetchInstallments])
 
+  // La ventana de movimientos depende del día: se vuelve a pedir al cambiar.
+  useEffect(() => {
+    if (!user) return
+    void fetchTarjetas()
+  }, [user, fetchTarjetas, hoy])
+
+  // Un pago o una compra nueva llegan en ráfagas (las dos partes de un pago):
+  // se juntan en una sola recarga.
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (espera.current) clearTimeout(espera.current)
+  }, [])
+  const recargarTarjetas = useCallback(() => {
+    if (espera.current) clearTimeout(espera.current)
+    espera.current = setTimeout(() => void fetchTarjetas(), 250)
+  }, [fetchTarjetas])
+
+  useTableChannel(
+    'estados',
+    user ? [{ table: 'transactions', filter: `user_id=eq.${user.id}` }] : null,
+    recargarTarjetas,
+  )
+  // La tabla de correcciones sólo existe con la migración 038; escuchar una
+  // tabla inexistente puede tumbar el canal entero.
+  useTableChannel(
+    'correcciones',
+    user && foto.conCorrecciones ? [{ table: 'card_statements', filter: `user_id=eq.${user.id}` }] : null,
+    recargarTarjetas,
+  )
+
   useTableChannel(
     'installments',
     user
@@ -129,13 +217,34 @@ export function useInstallments() {
           { table: 'accounts', filter: `user_id=eq.${user.id}` },
         ]
       : null,
-    () => void fetchInstallments(),
+    () => {
+      void fetchInstallments()
+      recargarTarjetas()
+    },
   )
 
-  const data = useMemo(
-    () => filas.map((f) => vivo(sinEmbebidos(f), cicloDe(f), hoy, cargoDe(f))),
-    [filas, hoy],
-  )
+  const { data, estados, planes } = useMemo(() => {
+    const porId = new Map(foto.tarjetas.map((t) => [t.id, t]))
+    // El ciclo de la tarjeta: de la foto (siempre fresca) o del plan embebido.
+    const ciclo = (f: Fila): CicloTarjeta | null =>
+      (f.account_id ? (porId.get(f.account_id) as CicloTarjeta | undefined) : undefined) ?? cicloDe(f)
+    const cargo = (f: Fila): CargoMsi | null => {
+      const embebido = cargoDe(f)
+      if (embebido) return embebido
+      const m = foto.movs.find((x) => x.installment_id === f.id && x.type === 'installment')
+      return m ? { id: m.id, amount: Number(m.amount), account_id: m.account_id, date: m.date } : null
+    }
+    const planes: PlanEdc[] = filas.map((f) => planEdc(sinEmbebidos(f), ciclo(f), cargo(f), hoy))
+    const estados = estadosDeCuenta({
+      tarjetas: foto.tarjetas,
+      movs: foto.movs,
+      planes,
+      correcciones: foto.correcciones,
+      hoy,
+    })
+    const data = filas.map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f)))
+    return { data, estados, planes }
+  }, [filas, foto, hoy])
 
   function filaDe(id: string) {
     return filas.find((f) => f.id === id)
@@ -415,6 +524,15 @@ export function useInstallments() {
   return {
     data: user ? data : EMPTY,
     active: user ? active : EMPTY,
+    /** Estado de cuenta por tarjeta (id → estados, próximo pago, siguiente corte). */
+    estados: user ? estados : SIN_ESTADOS,
+    /** Planes vistos desde su tarjeta, para proyectar pagos. */
+    planesTarjeta: planes,
+    tarjetas: foto.tarjetas,
+    movsTarjetas: foto.movs,
+    estadosListos: foto.listo,
+    conCorrecciones: foto.conCorrecciones,
+    recargarTarjetas: fetchTarjetas,
     loading: user ? loading : false,
     error,
     create,
