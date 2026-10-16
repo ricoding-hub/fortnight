@@ -117,7 +117,7 @@ export function Resumen() {
   const { snapshots: scoreSnapshots, recordIfChanged } = useScoreHistory()
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
-  const { data: allInstallments, active: activeInstallments, estados, estadosListos } = useInstallments()
+  const { data: allInstallments, active: activeInstallments, estados, estadosListos, planesTarjeta } = useInstallments()
   const openAddModal = useUiStore((s) => s.openAddModal)
   const abrirPago = useUiStore((s) => s.abrirPago)
 
@@ -855,6 +855,8 @@ export function Resumen() {
           transactions={recentTx}
           goals={goals}
           config={config}
+          estados={estados}
+          planesTarjeta={planesTarjeta}
           onOpen={() => navigate('/plan/proyeccion')}
         />
       </section>

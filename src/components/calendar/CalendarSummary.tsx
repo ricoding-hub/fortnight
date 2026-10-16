@@ -48,7 +48,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
         .slice(0, limit),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, today, limit])
+  }, [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, data.estados, data.planesTarjeta, today, limit])
 
   const weekHasEvents = week.some((d) => (byDay.get(toKey(d)) ?? []).length > 0)
   if (!weekHasEvents && upcoming.length === 0) return null

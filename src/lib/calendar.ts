@@ -1,5 +1,6 @@
 import { getRevolvingBalance, msiDelVencimiento, msiVencido } from '@/lib/debt'
 import { calendarioDe, type CalendarioMsi, type EstadoMes } from '@/lib/msi'
+import { pagosProyectados, type EstadosTarjeta, type PlanEdc } from '@/lib/estadoDeCuenta'
 import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
 import { computePaydays, payFreqOf } from '@/lib/paydays'
 import { corteEn, tieneVencimiento, vencimientosEntre } from '@/lib/cardCycle'
@@ -167,6 +168,13 @@ export interface CalendarInput {
   transactions: Transaction[]
   goals: Goal[]
   config: UserConfig | null
+  /**
+   * Estado de cuenta por tarjeta (src/lib/estadoDeCuenta.ts). Con él, cada
+   * fecha de pago lleva lo que FALTA de su estado — 0 si ya pagaste — y la
+   * proyección deja de restar dos veces un pago ya hecho.
+   */
+  estados?: Record<string, EstadosTarjeta>
+  planesTarjeta?: PlanEdc[]
 }
 
 export function buildCalendarEvents(
@@ -201,6 +209,46 @@ export function buildCalendarEvents(
   const accountById = new Map(accounts.map((a) => [a.id, a]))
 
   for (const a of accounts.filter((x) => x.type === 'credit')) {
+    const estado = input.estados?.[a.id]
+    if (estado && !estado.sinCorte) {
+      for (const p of pagosProyectados(estado, a, input.planesTarjeta ?? [], toKey(end), hoy)) {
+        if (p.vence < toKey(start) || p.vence > toKey(end)) continue
+        const etiqueta =
+          p.estado === 'pagado' || p.estado === 'sin-saldo'
+            ? 'Pagado'
+            : p.estado === 'vencido'
+              ? 'Venció'
+              : p.estado === 'estimado'
+                ? 'Estimado'
+                : 'Te falta'
+        out.push({
+          id: `due:${a.id}:${p.vence}`,
+          kind: 'card_due',
+          date: p.vence,
+          title: `Pago ${a.name}`,
+          amount: -p.monto,
+          // Lo vencido ya no sale ese día: queda en el saldo de la tarjeta.
+          countsToCash: p.estado !== 'vencido' && p.monto > 0,
+          estimated: p.estimado,
+          accountId: a.id,
+          tags: ['Tarjeta', etiqueta],
+        })
+      }
+      for (const d of cardCutDates(a, start, end)) {
+        out.push({
+          id: `cut:${a.id}:${toKey(d)}`,
+          kind: 'card_cut',
+          date: toKey(d),
+          title: `Corte ${a.name}`,
+          amount: 0,
+          countsToCash: false,
+          accountId: a.id,
+          tags: ['Tarjeta', 'Corte'],
+        })
+      }
+      continue
+    }
+    // Sin estado de cuenta (sin día de corte, o sin datos): la estimación de siempre.
     // The amount already folds in the MSI due on that date, so instalments below
     // are markers only — otherwise the same money would be counted twice. Each
     // due date carries ITS statement's mensualidades (it used to repeat one

@@ -21,12 +21,15 @@ export async function GET(req: Request): Promise<Response> {
     auth: { persistSession: false },
   })
 
+  // La notificación en la app no depende del correo: antes sólo se creaba si
+  // también estaba activado el correo.
   const { data: configs } = await sb
     .from('user_config')
     .select('user_id, notif_due_card, notif_email')
     .eq('notif_due_card', true)
-    .eq('notif_email', true)
 
+  // El día de hoy en México, no en el reloj del servidor (UTC).
+  const hoy = hoyEnMexico()
   let processed = 0
   let skipped = 0
 
@@ -38,12 +41,51 @@ export async function GET(req: Request): Promise<Response> {
       .eq('type', 'credit')
 
     for (const account of accounts ?? []) {
-      const days = computeDaysUntilPayment(account)
-      if (days == null || days > 1) continue
+      const pago = proximoPago(account, hoy)
+      if (!pago) continue
+      const days = diasEntre(hoy, pago.vence)
+      if (days > 1) continue
+      // Sin deuda no hay nada que avisar.
+      if (!(Number(account.balance) > 0.005)) {
+        skipped++
+        continue
+      }
 
-      const now = new Date()
-      const cycleKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      const dedupKey = `payment_due:${String(account.id)}:${cycleKey}`
+      // ¿Ya está pagado el estado de cuenta? Lo que se movió en la tarjeta desde
+      // el corte dice cuánto se abonó. Con la cifra del banco (migración 038) se
+      // sabe exacto; sin ella, sólo se calla si se pagó todo el saldo al corte.
+      let falta: number | null = null
+      if (pago.corte) {
+        const { data: movs } = await sb
+          .from('transactions')
+          .select('amount')
+          .eq('account_id', account.id)
+          .gt('date', pago.corte)
+        const despues = (movs ?? []).map((m) => Number(m.amount) || 0)
+        const pagado = despues.filter((m) => m < 0).reduce((s, m) => s - m, 0)
+        const saldoAlCorte = Number(account.balance) - despues.reduce((s, m) => s + m, 0)
+        const { data: correccion, error: errCorr } = await sb
+          .from('card_statements')
+          .select('no_interest_amount')
+          .eq('account_id', account.id)
+          .eq('cut_date', pago.corte)
+          .maybeSingle()
+        const banco = !errCorr && correccion?.no_interest_amount != null ? Number(correccion.no_interest_amount) : null
+        if (banco != null) {
+          falta = Math.max(0, banco - pagado)
+          if (falta <= 0.005) {
+            skipped++
+            continue
+          }
+        } else if (pagado >= saldoAlCorte - 0.005) {
+          skipped++
+          continue
+        }
+      }
+
+      // Una vez por fecha de pago (antes era una por mes calendario, y el aviso
+      // de «hoy» chocaba con el de «mañana»).
+      const dedupKey = `payment_due:${String(account.id)}:${pago.vence}:${days}`
 
       const { data: existing } = await sb
         .from('notifications')
@@ -57,15 +99,10 @@ export async function GET(req: Request): Promise<Response> {
         continue
       }
 
-      const { data: authData } = await sb.auth.admin.getUserById(String(cfg.user_id))
-      const email = authData?.user?.email
-      if (!email) continue
-
       const name = String(account.name)
-      const title = days === 0 ? `Hoy vence: ${name}` : `Mañana vence: ${name}`
-      const body = days === 0
-        ? `Hoy vence el pago de tu tarjeta ${name}.`
-        : `Mañana vence el pago de tu tarjeta ${name}.`
+      const title = days <= 0 ? `Hoy vence: ${name}` : `Mañana vence: ${name}`
+      const cuanto = falta != null ? ` Te faltan ${formatoMXN(falta)} según tu estado de cuenta.` : ' Abre Fortnight para ver cuánto te falta.'
+      const body = (days <= 0 ? `Hoy vence el pago de tu tarjeta ${name}.` : `Mañana vence el pago de tu tarjeta ${name}.`) + cuanto
 
       await sb.from('notifications').insert({
         user_id: cfg.user_id,
@@ -77,21 +114,82 @@ export async function GET(req: Request): Promise<Response> {
         email_sent: false,
         read: false,
       })
+      processed++
 
-      const emailOk = await sendEmail(email, name, Number(account.balance), days)
+      if (!cfg.notif_email) continue
+      const { data: authData } = await sb.auth.admin.getUserById(String(cfg.user_id))
+      const email = authData?.user?.email
+      if (!email) continue
 
+      const emailOk = await sendEmail(email, name, falta, days)
       if (emailOk) {
         await sb
           .from('notifications')
           .update({ email_sent: true })
           .eq('user_id', cfg.user_id)
           .eq('dedup_key', dedupKey)
-        processed++
       }
     }
   }
 
   return Response.json({ ok: true, processed, skipped })
+}
+
+function hoyEnMexico(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date())
+}
+
+function formatoMXN(n: number): string {
+  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
+}
+
+function aFecha(k: string): Date {
+  const [y, m, d] = k.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+function aClave(d: Date): string {
+  return d.toISOString().slice(0, 10) // fechas construidas en UTC a propósito
+}
+
+function diasEntre(desde: string, hasta: string): number {
+  return Math.round((aFecha(hasta).getTime() - aFecha(desde).getTime()) / 86_400_000)
+}
+
+function dia(y: number, m: number, d: number): Date {
+  const ultimo = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(y, m, Math.min(d, ultimo)))
+}
+
+/**
+ * La próxima fecha de pago (hoy o después) y el corte de ese estado de cuenta.
+ * Copia de src/lib/cardCycle.ts (esta función no puede importar de src/).
+ */
+function proximoPago(a: AccountRow, hoy: string): { vence: string; corte: string | null } | null {
+  const h = aFecha(hoy)
+  const cut = a.cut_day != null ? Number(a.cut_day) : null
+  const grace = a.payment_grace_days != null ? Number(a.payment_grace_days) : null
+  const due = a.payment_due_day != null ? Number(a.payment_due_day) : null
+  if (cut != null && grace != null) {
+    const atras = Math.ceil(grace / 28) + 1
+    for (let i = -atras; i <= 13; i++) {
+      const c = dia(h.getUTCFullYear(), h.getUTCMonth() + i, cut)
+      const v = new Date(c.getTime() + grace * 86_400_000)
+      if (aClave(v) >= hoy) return { vence: aClave(v), corte: aClave(c) }
+    }
+    return null
+  }
+  if (due == null) return null
+  for (let i = 0; i <= 13; i++) {
+    const v = dia(h.getUTCFullYear(), h.getUTCMonth() + i, due)
+    if (aClave(v) < hoy) continue
+    if (cut == null) return { vence: aClave(v), corte: null }
+    // El corte del estado que se paga: el último antes de esa fecha.
+    let c = dia(v.getUTCFullYear(), v.getUTCMonth(), cut)
+    if (aClave(c) >= aClave(v)) c = dia(v.getUTCFullYear(), v.getUTCMonth() - 1, cut)
+    return { vence: aClave(v), corte: aClave(c) }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -104,41 +202,6 @@ interface AccountRow {
   payment_grace_days: number | null
 }
 
-function computeDaysUntilPayment(account: AccountRow): number | null {
-  const { cut_day, payment_grace_days, payment_due_day } = account
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  if (payment_grace_days != null && cut_day != null) {
-    // Mirrors src/lib/cardCycle.ts: the first due date on or after today,
-    // walking cuts from far enough back to cover long grace periods. The old
-    // version jumped two cycles ahead once this cycle's due date had passed.
-    const clamp = (y: number, m: number) => {
-      const last = new Date(y, m + 1, 0).getDate()
-      return new Date(y, m, Math.min(cut_day, last))
-    }
-    const back = Math.ceil(payment_grace_days / 28) + 1
-    for (let i = -back; i <= 13; i++) {
-      const cut = clamp(today.getFullYear(), today.getMonth() + i)
-      const due = new Date(cut)
-      due.setDate(due.getDate() + payment_grace_days)
-      if (due >= today) return Math.round((due.getTime() - today.getTime()) / 86_400_000)
-    }
-    return null
-  }
-
-  if (payment_due_day != null) {
-    const clamp = (y: number, m: number) => {
-      const last = new Date(y, m + 1, 0).getDate()
-      return new Date(y, m, Math.min(payment_due_day, last))
-    }
-    let target = clamp(today.getFullYear(), today.getMonth())
-    if (target < today) target = clamp(today.getFullYear(), today.getMonth() + 1)
-    return Math.round((target.getTime() - today.getTime()) / 86_400_000)
-  }
-
-  return null
-}
 
 // ---------------------------------------------------------------------------
 // Email via Resend
@@ -147,14 +210,15 @@ function computeDaysUntilPayment(account: AccountRow): number | null {
 async function sendEmail(
   to: string,
   accountName: string,
-  balance: number,
+  falta: number | null,
   days: number,
 ): Promise<boolean> {
-  const urgencyLabel = days === 0 ? 'hoy' : 'mañana'
-  const balanceFmt = new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: 'MXN',
-  }).format(balance)
+  const urgencyLabel = days <= 0 ? 'hoy' : 'mañana'
+  // Sólo se dice un monto si viene del estado de cuenta del banco. El saldo
+  // completo incluye mensualidades MSI que aún no se cobran: no es lo que toca.
+  const montoHtml = falta != null
+    ? `Te faltan <strong style="color:#EF4444">${formatoMXN(falta)}</strong> para no generar intereses.`
+    : 'Abre Fortnight para ver cuánto te falta para no generar intereses.'
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -171,7 +235,7 @@ async function sendEmail(
     <div style="background:#F0F1F8;border-radius:10px;padding:14px 18px;margin-bottom:12px">
       <p style="margin:0;font-size:18px;font-weight:800;color:#0F0D2E">${accountName}</p>
       <p style="margin:4px 0 0;font-size:13px;color:#6B7194">
-        Saldo pendiente: <strong style="color:#EF4444">${balanceFmt}</strong>
+        ${montoHtml}
       </p>
     </div>
     <a href="https://fortnight.app/cuentas"

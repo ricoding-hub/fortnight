@@ -1,3 +1,8 @@
+// OBSOLETA: el aviso de pago vive en api/cron/payment-alerts.ts (Vercel Cron),
+// que ya sabe si el estado de cuenta está pagado y no manda el saldo completo
+// como «saldo pendiente». Esta copia no se programa; no la vuelvas a activar
+// sin traer esos cambios.
+
 // Fortnight — Edge Function: send-payment-alerts
 // Checks all credit accounts nearing their payment due date and sends
 // a Richeto-branded email via Resend. Deduplicates by billing cycle.

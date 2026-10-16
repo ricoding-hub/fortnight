@@ -132,9 +132,24 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.17.0"
+            date="16 oct 2026"
+            current
+            notes={[
+              'Tus tarjetas ahora tienen estado de cuenta, calculado como lo hace el banco: saldo al corte, las mensualidades MSI que aún no se cobran, el pago para no generar intereses, lo que llevas pagado y lo que te falta',
+              'El aviso de Inicio dice lo que te falta de tu estado de cuenta, no el saldo completo (que incluía todos tus meses futuros y las compras después del corte). Cuando pagas, desaparece',
+              '"Pagar" ya registra un pago de verdad: eliges cuánto (para no generar intereses, el mínimo, todo el saldo u otro monto) y de qué cuenta sale. Baja la deuda de la tarjeta y el saldo de esa cuenta en un solo movimiento, que no cuenta como ingreso ni como gasto',
+              'Si bajas el saldo de una tarjeta a mano, te pregunta si fue un pago y de qué cuenta salió. "Ingreso" en una tarjeta ahora es "Pago a la tarjeta" o "Reembolso", sin pedirte categoría de salario',
+              'Si tu banco dice otra cifra, la capturas en el estado de cuenta y manda sobre el cálculo. Las tarjetas con gracia larga, como Plata, muestran sus dos estados abiertos',
+              'El calendario y la proyección usan la misma cifra: un pago ya hecho sale en cero, y el pago ya no se resta dos veces. El día de pago tiene botón "Pagar"',
+              'Corregido: un préstamo, un abono o un gasto compartido pagado con tarjeta bajaba su deuda en vez de subirla. Una tarjeta con saldo a favor ya no sale como deuda',
+              'Los pagos de tarjeta se ven como "Pago de tarjeta" en Movimientos; borrarlo o cambiarle la fecha mueve las dos cuentas. Las misiones cuentan tus pagos y tus compras con tarjeta como lo que son',
+              'El aviso por correo ya no te manda el saldo completo como "saldo pendiente", no te avisa si ya pagaste, y la notificación en la app llega aunque tengas el correo apagado',
+            ]}
+          />
+          <VersionRow
             version="1.16.0"
             date="13 oct 2026"
-            current
             notes={[
               'Una conexión con una persona ya no se muestra como grupo: arriba sale su nombre (antes podía salir el tuyo, porque el nombre lo ponía quien creó la conexión desde su lado)',
               '"Saldar todo", liquidar y el historial dicen con quién ("Tú → Toño"), nunca "Yo" de la otra persona',

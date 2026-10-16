@@ -20,6 +20,8 @@ interface FinanceCalendarProps extends CalendarInput {
   onOpenAccount?: (accountId: string) => void
   onMarcarMes?: (installmentId: string, n: number) => Promise<void>
   onVerPlan?: (installmentId: string) => void
+  /** Pagar la tarjeta desde su fecha de pago. */
+  onPagarTarjeta?: (accountId: string) => void
 }
 
 /**
@@ -30,7 +32,7 @@ interface FinanceCalendarProps extends CalendarInput {
  * called out, which is the whole reason to look at money on a calendar
  * instead of a list.
  */
-export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPlan, ...data }: FinanceCalendarProps) {
+export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPlan, onPagarTarjeta, ...data }: FinanceCalendarProps) {
   // Cambia sola a medianoche: la PWA se queda abierta días.
   const hoy = useHoy()
   const today = useMemo(() => fromKey(hoy), [hoy])
@@ -46,7 +48,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPl
   const allEvents = useMemo(
     () => buildCalendarEvents(data, rangeFrom, rangeTo, hoy),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, rangeFrom, rangeTo, hoy],
+    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, data.estados, data.planesTarjeta, rangeFrom, rangeTo, hoy],
   )
   const events = useMemo(
     () => allEvents.filter((e) => !hidden.has(e.kind)),
@@ -240,6 +242,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPl
         onOpenAccount={onOpenAccount}
         onMarcarMes={onMarcarMes}
         onVerPlan={onVerPlan}
+        onPagarTarjeta={onPagarTarjeta}
       />
     </Card>
   )

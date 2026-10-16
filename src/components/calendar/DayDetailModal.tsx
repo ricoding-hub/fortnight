@@ -21,11 +21,12 @@ interface DayDetailModalProps {
   onMarcarMes?: (installmentId: string, n: number) => Promise<void>
   /** Abrir el plan a meses, mes por mes. */
   onVerPlan?: (installmentId: string) => void
+  onPagarTarjeta?: (accountId: string) => void
 }
 
 /** Everything happening on one day, and what it leaves you with. */
 export function DayDetailModal({
-  open, onClose, dayKey, events, projected, accounts = [], onOpenAccount, onMarcarMes, onVerPlan,
+  open, onClose, dayKey, events, projected, accounts = [], onOpenAccount, onMarcarMes, onVerPlan, onPagarTarjeta,
 }: DayDetailModalProps) {
   if (!dayKey) return null
   const accountById = new Map(accounts.map((a) => [a.id, a]))
@@ -102,6 +103,20 @@ export function DayDetailModal({
                       </span>
                     )}
                   </button>
+                  {e.kind === 'card_due' && e.accountId && e.amount < 0 && onPagarTarjeta && (
+                    <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose()
+                          onPagarTarjeta(e.accountId!)
+                        }}
+                        className="inline-flex min-h-[36px] items-center rounded-full border border-border bg-bg px-3 text-[12px] font-bold text-primary-deep"
+                      >
+                        Pagar
+                      </button>
+                    </div>
+                  )}
                   {e.installmentId && e.mes && (onMarcarMes || onVerPlan) && (
                     <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
                       {onMarcarMes && e.mes.estado !== 'pagada' && (

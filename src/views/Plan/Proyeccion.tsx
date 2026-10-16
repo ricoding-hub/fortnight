@@ -25,6 +25,7 @@ import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useToast } from '@/hooks/useToast'
+import { useUiStore } from '@/store/uiStore'
 import { useInstallments } from '@/hooks/useInstallments'
 import { useMonthlyDisposable } from '@/hooks/useMonthlyDisposable'
 import { Card } from '@/components/ui/Card'
@@ -72,7 +73,8 @@ export function Proyeccion() {
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
 
-  const { data: installments, active: activeInstallments, marcarMes } = useInstallments()
+  const { data: installments, active: activeInstallments, marcarMes, estados, planesTarjeta } = useInstallments()
+  const abrirPago = useUiStore((s) => s.abrirPago)
   const [debtMode, setDebtMode] = useState<'all' | 'con_costo'>('all')
 
   /**
@@ -175,9 +177,17 @@ export function Proyeccion() {
     if (primary.linked_account_ids.length === 0) return 0
     if (primary.is_debt) {
       const accountIds = new Set(primary.linked_account_ids)
+      // Lo que bajó de esas tarjetas: pagos nuevos (`transfer`), el «Ingreso» de
+      // antes y ajustes a la baja. Antes sólo contaba el tipo 'transaction', y un
+      // pago registrado como pago no habría contado.
       return monthTxs
-        .filter((t) => accountIds.has(t.account_id) && t.amount < 0 && t.type === 'transaction')
-        .reduce((s, t) => s + -t.amount, 0)
+        .filter(
+          (t) =>
+            accountIds.has(t.account_id) &&
+            Number(t.amount) < 0 &&
+            (t.type === 'transaction' || t.type === 'transfer' || t.type === 'adjustment'),
+        )
+        .reduce((s, t) => s - Number(t.amount), 0)
     }
     return 0
   }, [primary, monthTxs])
@@ -349,6 +359,9 @@ export function Proyeccion() {
           transactions={monthTxs}
           goals={goals}
           config={config}
+          estados={estados}
+          planesTarjeta={planesTarjeta}
+          onPagarTarjeta={abrirPago}
           startCash={liquidCash}
           onMarcarMes={async (id, n) => {
             try {
