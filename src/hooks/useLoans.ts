@@ -176,6 +176,8 @@ export function useLoans() {
     const paidAt = new Date().toISOString()
     // Día local, no UTC: de noche en CDMX el día UTC ya es mañana.
     const today = toKey(new Date())
+    // El tipo de la cuenta antes de escribir: si falla, no queda nada a medias.
+    const cuenta = opts?.accountId ? await tipoDeCuenta(opts.accountId) : null
 
     // Settle the loan first; only then move money in the account. Doing it the
     // other way round left an orphan transaction whenever the update failed.
@@ -194,7 +196,6 @@ export function useLoans() {
       if (resolvedAmount > 0) {
         // Te pagan: el dinero entra. Pagas tú: sale. En una tarjeta, pagar con
         // ella SUBE su deuda; con el signo de débito la bajaba.
-        const cuenta = await tipoDeCuenta(opts.accountId)
         const txAmount = montoEnCuenta(cuenta, loan.direction === 'owed_to_me' ? 'entra' : 'sale', resolvedAmount)
         const { error: txErr } = await supabase.from('transactions').insert({
           user_id: user.id,
@@ -247,6 +248,7 @@ export function useLoans() {
     if (!user) throw new Error('Not authenticated')
     const loan = data.find((l) => l.id === loanId)
     if (!loan) return
+    const cuenta = opts?.accountId ? await tipoDeCuenta(opts.accountId) : null
     const tempId = crypto.randomUUID()
     const now = new Date().toISOString()
     const optimistic: LoanPayment = {
@@ -279,7 +281,6 @@ export function useLoans() {
     }
 
     if (opts?.accountId) {
-      const cuenta = await tipoDeCuenta(opts.accountId)
       const txAmount = montoEnCuenta(cuenta, loan.direction === 'owed_to_me' ? 'entra' : 'sale', amount)
       const { error: txErr } = await supabase.from('transactions').insert({
         user_id: user.id,

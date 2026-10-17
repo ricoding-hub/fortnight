@@ -1,6 +1,6 @@
 import { corteEn, venceDelCorte, type CicloTarjeta } from '@/lib/cardCycle'
 import { addDays, fromKey, toKey } from '@/lib/localDate'
-import { calendarioMsi, fechaDeCompra, registradoEl, type CalendarioMsi, type CargoMsi } from '@/lib/msi'
+import { calendarioMsi, fechaDeCompra, registradoEl, type CalendarioMsi, type CargoMsi, type MesMsi } from '@/lib/msi'
 import type { Account, Installment, TransactionType } from '@/types'
 
 /**
@@ -79,6 +79,8 @@ export interface EstadoDeCuenta {
   pagado: number
   falta: number
   minimo: number
+  /** El pago mínimo que capturaste de tu estado de cuenta, si lo hiciste. */
+  minimoBanco: number | null
   minimoFalta: number
   /** Compras después del corte: van al siguiente estado. */
   compras: number
@@ -173,12 +175,20 @@ export function ventanaDeMovimientos(tarjetas: CicloTarjeta[], hoy: string): str
 }
 
 /**
- * ¿El capital de esta mensualidad está en el saldo de la tarjeta? Sí, salvo las
- * que venían pagadas de antes de registrar el plan (origen «anterior»): el cargo
- * sólo incluyó lo que faltaba. Una marcada a mano SÍ cuenta: marcar no mueve el
- * saldo, y si hubo un pago adelantado, ése ya lo bajó.
+ * ¿El capital de esta mensualidad seguía en el saldo de la tarjeta en el corte
+ * `c`? Sí, salvo:
+ *   · las que venían pagadas de antes de registrar el plan (origen «anterior»):
+ *     el cargo sólo incluyó lo que faltaba;
+ *   · las marcadas pagadas a mano ese día o antes (un plan liquidado, un
+ *     adelanto): ese pago ya bajó el saldo, y restarlas otra vez dejaba el pago
+ *     para no generar intereses por debajo de lo real — o en cero, sin aviso.
+ * Una marcada después del corte sí estaba en el saldo en ese corte.
  */
-const enSaldo = (m: { origen: string }) => m.origen !== 'anterior'
+function enSaldoEn(m: MesMsi, c: string): boolean {
+  if (m.origen === 'anterior') return false
+  if (m.origen === 'manual' && m.estado === 'pagada' && m.marcadaEl != null && m.marcadaEl <= c) return false
+  return true
+}
 
 /** Mensualidades de esta tarjeta que en el corte `c` todavía no se cobraban. */
 function msiNoFacturadoEn(planes: PlanEdc[], c: string): number {
@@ -186,7 +196,7 @@ function msiNoFacturadoEn(planes: PlanEdc[], c: string): number {
   for (const p of planes) {
     if (p.enSaldoDesde > c) continue // su capital aún no estaba en el saldo
     for (const m of p.cal.meses) {
-      if (m.corte && m.corte > c && enSaldo(m)) total += m.monto
+      if (m.corte && m.corte > c && enSaldoEn(m, c)) total += m.monto
     }
   }
   return r2(total)
@@ -196,7 +206,7 @@ function msiDelCorteEn(planes: PlanEdc[], c: string): number {
   let total = 0
   for (const p of planes) {
     if (p.enSaldoDesde > c) continue
-    for (const m of p.cal.meses) if (m.corte === c && enSaldo(m)) total += m.monto
+    for (const m of p.cal.meses) if (m.corte === c && enSaldoEn(m, c)) total += m.monto
   }
   return r2(total)
 }
@@ -253,7 +263,8 @@ export function estadosDeCuenta(i: {
       // Banxico: el mayor entre el % del revolvente y el 1.25% del límite, más
       // las mensualidades de ese corte. Nunca más de lo que se debe.
       const minRev = revolvente > EPS ? Math.min(revolvente, Math.max((revolvente * pct) / 100, limite * 0.0125)) : 0
-      const minimo = r2(numONulo(corr?.min_amount) ?? Math.min(pngi, minRev + msiExigible))
+      const minimoBanco = numONulo(corr?.min_amount)
+      const minimo = r2(minimoBanco ?? Math.min(pngi, minRev + msiExigible))
       const minimoFalta = r2(Math.max(0, minimo - pagado))
 
       const compras = r2(despues.filter((m) => num(m.amount) > 0).reduce((s, m) => s + num(m.amount), 0))
@@ -287,6 +298,7 @@ export function estadosDeCuenta(i: {
         pagado,
         falta,
         minimo,
+        minimoBanco,
         minimoFalta,
         compras,
         ajustesAlAlza,

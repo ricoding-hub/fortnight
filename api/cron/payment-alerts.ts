@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { faltaDelEstado, type MovFila, type PlanFila } from '../_lib/estadoTarjeta.js'
 
 const CRON_SECRET = process.env.CRON_SECRET ?? ''
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
@@ -51,35 +52,47 @@ export async function GET(req: Request): Promise<Response> {
         continue
       }
 
-      // ¿Ya está pagado el estado de cuenta? Lo que se movió en la tarjeta desde
-      // el corte dice cuánto se abonó. Con la cifra del banco (migración 038) se
-      // sabe exacto; sin ella, sólo se calla si se pagó todo el saldo al corte.
+      // ¿Ya está pagado el estado de cuenta? Se calcula como en la app: saldo al
+      // corte menos los MSI que aún no se cobran (antes se comparaba contra el
+      // saldo completo, y quien pagaba justo lo que tocaba seguía recibiendo
+      // «Hoy vence»). Con la cifra del banco (migración 038), ésa manda. Si
+      // algo no se puede leer, se avisa igual: callar por error es peor.
       let falta: number | null = null
-      if (pago.corte) {
-        const { data: movs } = await sb
-          .from('transactions')
-          .select('amount')
-          .eq('account_id', account.id)
-          .gt('date', pago.corte)
-        const despues = (movs ?? []).map((m) => Number(m.amount) || 0)
-        const pagado = despues.filter((m) => m < 0).reduce((s, m) => s - m, 0)
-        const saldoAlCorte = Number(account.balance) - despues.reduce((s, m) => s + m, 0)
-        const { data: correccion, error: errCorr } = await sb
-          .from('card_statements')
-          .select('no_interest_amount')
-          .eq('account_id', account.id)
-          .eq('cut_date', pago.corte)
-          .maybeSingle()
-        const banco = !errCorr && correccion?.no_interest_amount != null ? Number(correccion.no_interest_amount) : null
-        if (banco != null) {
-          falta = Math.max(0, banco - pagado)
-          if (falta <= 0.005) {
+      if (pago.corte && account.cut_day != null) {
+        const corte = pago.corte
+        const [movsRes, corrRes, planesRes] = await Promise.all([
+          sb.from('transactions').select('amount, date').eq('account_id', account.id).gt('date', corte),
+          sb.from('card_statements').select('no_interest_amount').eq('account_id', account.id).eq('cut_date', corte).maybeSingle(),
+          sb.from('installments').select('*').eq('account_id', account.id),
+        ])
+        const banco =
+          !corrRes.error && corrRes.data?.no_interest_amount != null ? Number(corrRes.data.no_interest_amount) : null
+        if (!movsRes.error && (!planesRes.error || banco != null)) {
+          const planes = (planesRes.error ? [] : (planesRes.data ?? [])) as PlanFila[]
+          const cargos = new Map<string, string>()
+          if (planes.length > 0) {
+            const { data: cargosData } = await sb
+              .from('transactions')
+              .select('installment_id, date')
+              .in('installment_id', planes.map((p) => p.id))
+              .eq('type', 'installment')
+            for (const c of cargosData ?? []) cargos.set(String(c.installment_id), String(c.date).slice(0, 10))
+          }
+          const r = faltaDelEstado({
+            saldo: Number(account.balance) || 0,
+            movs: (movsRes.data ?? []) as MovFila[],
+            planes,
+            cargos,
+            cutDay: Number(account.cut_day),
+            corte,
+            banco,
+          })
+          if (r.falta <= 0.005) {
             skipped++
             continue
           }
-        } else if (pagado >= saldoAlCorte - 0.005) {
-          skipped++
-          continue
+          // El monto sólo se dice si viene del banco: el calculado es aproximado.
+          if (banco != null) falta = r.falta
         }
       }
 

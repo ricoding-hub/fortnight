@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useHoy } from '@/hooks/useHoy'
 import { useTableChannel } from '@/hooks/useTableChannel'
+import { alCambiarTarjetas } from '@/lib/avisoTarjetas'
 import { esTablaFaltante, tieneEsquemaMsi } from '@/lib/esquema'
 import { toKey } from '@/lib/localDate'
 import type { CicloTarjeta } from '@/lib/cardCycle'
@@ -67,8 +68,35 @@ interface FotoTarjetas {
   correcciones: CorreccionEdc[]
   conCorrecciones: boolean
   listo: boolean
+  /**
+   * No se pudieron traer los movimientos: sin ellos, el estado de cuenta diría
+   * que no has pagado nada. Mejor no decir nada que una cifra falsa.
+   */
+  fallo: boolean
 }
-const FOTO_VACIA: FotoTarjetas = { tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false }
+const FOTO_VACIA: FotoTarjetas = { tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false }
+
+/** PostgREST corta en 1,000 filas: una tarjeta sincronizada las rebasa en la ventana. */
+const PAGINA = 1000
+
+async function movimientosDesde(ids: string[], desde: string): Promise<MovEdc[] | null> {
+  const out: MovEdc[] = []
+  for (let i = 0; i < 20; i++) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .in('account_id', ids)
+      .gt('date', desde)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(i * PAGINA, i * PAGINA + PAGINA - 1)
+    if (error) return null
+    const filas = (data ?? []) as MovEdc[]
+    out.push(...filas)
+    if (filas.length < PAGINA) break
+  }
+  return out
+}
 
 /** El ciclo de una tarjeta, para saber qué mensualidades ya vencieron. */
 async function cicloDeCuenta(accountId: string | null | undefined): Promise<CicloTarjeta | null> {
@@ -124,31 +152,33 @@ export function useInstallments() {
    */
   const fetchTarjetas = useCallback(async () => {
     if (!user) return
+    // Un fallo conserva la foto anterior (si había una buena); sin ella, se
+    // marca para no calcular con datos que faltan.
+    const fallar = () => setFoto((f) => (f.listo && !f.fallo ? f : { ...FOTO_VACIA, listo: true, fallo: true }))
     const { data: cuentas, error: errCuentas } = await supabase.from('accounts').select('*').eq('type', 'credit')
-    if (errCuentas) {
-      setFoto((f) => ({ ...f, listo: true }))
-      return
-    }
+    if (errCuentas) return fallar()
     const tarjetas = ((cuentas ?? []) as Account[]).filter((a) => a.type === 'credit')
     const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()))
     const ids = tarjetas.map((t) => t.id)
     if (!desde || ids.length === 0) {
-      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true })
+      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false })
       return
     }
-    const [movsRes, corrRes] = await Promise.all([
-      supabase.from('transactions').select('*').in('account_id', ids).gt('date', desde),
+    const [movs, corrRes] = await Promise.all([
+      movimientosDesde(ids, desde),
       supabase.from('card_statements').select('*').in('account_id', ids),
     ])
+    if (!movs) return fallar()
     const idsSet = new Set(ids)
     setFoto({
       tarjetas,
       // Se vuelve a filtrar aquí: el cálculo no debe depender de que el filtro
       // del servidor haya llegado intacto.
-      movs: ((movsRes.data ?? []) as MovEdc[]).filter((m) => idsSet.has(m.account_id) && m.date > desde),
+      movs: movs.filter((m) => idsSet.has(m.account_id) && m.date > desde),
       correcciones: corrRes.error ? [] : ((corrRes.data ?? []) as CorreccionEdc[]),
       conCorrecciones: !corrRes.error || !esTablaFaltante(corrRes.error),
       listo: true,
+      fallo: false,
     })
   }, [user])
 
@@ -195,6 +225,8 @@ export function useInstallments() {
     if (espera.current) clearTimeout(espera.current)
     espera.current = setTimeout(() => void fetchTarjetas(), 250)
   }, [fetchTarjetas])
+  // Un pago o un borrado desde otra pantalla de esta pestaña.
+  useEffect(() => alCambiarTarjetas(recargarTarjetas), [recargarTarjetas])
 
   useTableChannel(
     'estados',
@@ -522,17 +554,21 @@ export function useInstallments() {
   }
 
   const active = useMemo(() => data.filter((i) => i.status === 'active'), [data])
+  // El estado de cuenta resta los MSI que aún no se cobran: sin los planes
+  // cargados (o si fallaron), pediría el saldo completo. Hasta tenerlos, nada.
+  const estadosListos = foto.listo && !loading
+  const fiables = estadosListos && !foto.fallo && !error
 
   return {
     data: user ? data : EMPTY,
     active: user ? active : EMPTY,
     /** Estado de cuenta por tarjeta (id → estados, próximo pago, siguiente corte). */
-    estados: user ? estados : SIN_ESTADOS,
+    estados: user && fiables ? estados : SIN_ESTADOS,
     /** Planes vistos desde su tarjeta, para proyectar pagos. */
     planesTarjeta: planes,
     tarjetas: foto.tarjetas,
     movsTarjetas: foto.movs,
-    estadosListos: foto.listo,
+    estadosListos,
     conCorrecciones: foto.conCorrecciones,
     recargarTarjetas: fetchTarjetas,
     loading: user ? loading : false,

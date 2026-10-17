@@ -499,6 +499,9 @@ export function useSplitGroups(legacy: LegacyInputs) {
 
   async function addExpense(groupId: string, exp: NewExpense) {
     if (!user) throw new Error('Not authenticated')
+    // El tipo de la cuenta antes de escribir nada: si no se puede leer, no se
+    // guarda un gasto a medias (con el signo de una tarjeta adivinado).
+    const cuentaGasto = exp.accountId ? await tipoDeCuenta(exp.accountId) : null
     const totalCents = toCents(exp.amount)
     const shareInputs: ShareInput[] = exp.inputs.map((i) => ({
       memberId: i.memberId,
@@ -586,11 +589,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
     const payer = members.find((m) => m.id === exp.paidByMemberId)
     if (exp.accountId && payer && memberIsMe(payer, user.id)) {
       // Pagaste tú: el dinero sale (en una tarjeta, SUBE su deuda).
-      const cuenta = await tipoDeCuenta(exp.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: exp.accountId,
-        amount: montoEnCuenta(cuenta, 'sale', exp.amount),
+        amount: montoEnCuenta(cuentaGasto, 'sale', exp.amount),
         type: 'transaction',
         description: `Gasto compartido: ${exp.description.trim()}`,
         date: exp.date ?? toKey(new Date()),
@@ -663,6 +665,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
    */
   async function addSettlement(groupId: string, s: NewSettlement) {
     if (!user) throw new Error('Not authenticated')
+    const cuentaPago = s.accountId ? await tipoDeCuenta(s.accountId) : null
     let gMembers = members.filter((m) => m.group_id === groupId)
     if (!gMembers.some((m) => m.id === s.fromMemberId) || !gMembers.some((m) => m.id === s.toMemberId)) {
       // State can be stale right after the group was created — fetch fresh.
@@ -757,11 +760,10 @@ export function useSplitGroups(legacy: LegacyInputs) {
       const groupName = groups.find((g) => g.id === groupId)?.name ?? ''
       const conQuien = displayName(contactMember)
       const enConexion = gMembers.filter((m) => m.left_at == null).length === 2
-      const cuenta = await tipoDeCuenta(s.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: s.accountId,
-        amount: montoEnCuenta(cuenta, txAmount >= 0 ? 'entra' : 'sale', Math.abs(txAmount)),
+        amount: montoEnCuenta(cuentaPago, txAmount >= 0 ? 'entra' : 'sale', Math.abs(txAmount)),
         type: 'transaction',
         description: `Liquidación con ${conQuien}${!enConexion && groupName ? ` · ${groupName}` : ''}`,
         date: toKey(new Date()),
@@ -969,6 +971,7 @@ export function useSplitGroups(legacy: LegacyInputs) {
     opts?: { accountId?: string | null; note?: string | null },
   ) {
     if (!user) throw new Error('Not authenticated')
+    const cuentaSaldo = opts?.accountId ? await tipoDeCuenta(opts.accountId) : null
     const { data: freshMembers, error: mErr } = await supabase
       .from('split_members')
       .select('*')
@@ -1066,12 +1069,11 @@ export function useSplitGroups(legacy: LegacyInputs) {
     // ONE account transaction for the real money that changed hands (the net).
     if (opts?.accountId && combinedNetCents !== 0) {
       // «Saldar todo» sólo existe en conexiones: el movimiento dice con quién.
-      const cuenta = await tipoDeCuenta(opts.accountId)
       await supabase.from('transactions').insert({
         user_id: user.id,
         account_id: opts.accountId,
         // Recibes: entra. Pagas: sale (en una tarjeta, sube su deuda).
-        amount: montoEnCuenta(cuenta, combinedNetCents > 0 ? 'entra' : 'sale', Math.abs(fromCents(combinedNetCents))),
+        amount: montoEnCuenta(cuentaSaldo, combinedNetCents > 0 ? 'entra' : 'sale', Math.abs(fromCents(combinedNetCents))),
         type: 'transaction',
         description: `Saldar todo con ${displayName(contact)}`,
         date: toKey(new Date()),

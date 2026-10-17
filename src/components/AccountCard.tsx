@@ -31,8 +31,8 @@ function SyncedLabel({ name }: { name: string }) {
 
 interface AccountCardProps {
   account: Account
-  /** Persists a new balance; the hook records the delta as an adjustment. */
-  onSaveBalance: (account: Account, newBalance: number) => Promise<void>
+  /** Persists a new balance; the hook records the delta as an adjustment (dated `fecha`, or today). */
+  onSaveBalance: (account: Account, newBalance: number, fecha?: string) => Promise<void>
   onEditDetails: (account: Account) => void
   /** When true the card shows reorder controls instead of edit affordances. */
   reorderMode?: boolean
@@ -101,8 +101,14 @@ export function AccountCard({
   onVerEstado,
 }: AccountCardProps) {
   const [editing, setEditing] = useState(false)
-  /** Bajó el saldo de una tarjeta: ¿fue un pago? (Es como casi todos actualizan.) */
-  const [pregunta, setPregunta] = useState<{ diff: number; next: number } | null>(null)
+  /**
+   * Bajó el saldo de una tarjeta: ¿fue un pago? (Es como casi todos actualizan.)
+   * Subió: ¿son compras de antes del corte? Fechado hoy, el aumento se tomaba
+   * como compra nueva y el pago para no generar intereses salía de menos.
+   */
+  const [pregunta, setPregunta] = useState<
+    { tipo: 'baja'; diff: number; next: number } | { tipo: 'sube'; diff: number; next: number; corte: string } | null
+  >(null)
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [invalid, setInvalid] = useState(false)
@@ -123,7 +129,7 @@ export function AccountCard({
 
   const toast = useToast()
 
-  async function save(forzar = false) {
+  async function save(forzar = false, fecha?: string) {
     // `moneyNum` entiende «1,234.50»; en una tarjeta, negativo es saldo a favor.
     const next = moneyNum(value)
     if (value.trim() === '' || Number.isNaN(next) || (!isCredit && next < 0)) {
@@ -134,13 +140,18 @@ export function AccountCard({
     if (!forzar && isCredit && onPagar && next < actual - 0.005) {
       // Bajar la deuda a mano casi siempre es un pago: registrarlo como tal hace
       // que salga de tu cuenta de débito y cuente en tu estado de cuenta.
-      setPregunta({ diff: Math.round((actual - next) * 100) / 100, next })
+      setPregunta({ tipo: 'baja', diff: Math.round((actual - next) * 100) / 100, next })
+      return
+    }
+    const corte = estado && !estado.sinCorte ? estado.ultimo?.corte : undefined
+    if (!forzar && isCredit && corte && next > actual + 0.005) {
+      setPregunta({ tipo: 'sube', diff: Math.round((next - actual) * 100) / 100, next, corte })
       return
     }
     setPregunta(null)
     setSaving(true)
     try {
-      await onSaveBalance(account, next)
+      await onSaveBalance(account, next, fecha)
       setEditing(false)
       toast.success('Saldo actualizado', `El nuevo saldo es ${formatMXN(next)}`)
     } catch {
@@ -300,7 +311,31 @@ export function AccountCard({
       )}
     </div>
 
-      {pregunta && (
+      {pregunta?.tipo === 'sube' && (
+        <div className="mb-3 flex flex-col gap-2 rounded-xl bg-primary-soft/40 px-3.5 py-2.5">
+          <p className="text-[12.5px] text-text">
+            Subiste la deuda {formatMXN(pregunta.diff)}. ¿Son compras de antes del corte del {fechaCorta(pregunta.corte)}?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void save(true, pregunta.corte)}
+              className="min-h-[36px] rounded-full bg-primary-deep px-3.5 text-[12.5px] font-bold text-white"
+            >
+              Sí, van en ese estado de cuenta
+            </button>
+            <button
+              type="button"
+              onClick={() => void save(true)}
+              className="min-h-[36px] rounded-full border border-border bg-bg-elevated px-3.5 text-[12.5px] font-bold text-text"
+            >
+              No, son recientes
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pregunta?.tipo === 'baja' && (
         <div className="mb-3 flex flex-col gap-2 rounded-xl bg-primary-soft/40 px-3.5 py-2.5">
           <p className="text-[12.5px] text-text">
             Bajaste la deuda {formatMXN(pregunta.diff)}. ¿Fue un pago?

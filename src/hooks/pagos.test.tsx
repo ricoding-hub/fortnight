@@ -26,8 +26,8 @@ afterEach(() => {
   conPagos = true
 })
 
-async function montar<T>(hook: () => T, tablas: Filas = {}) {
-  doble = crearSupabaseDoble({ tablas })
+async function montar<T>(hook: () => T, tablas: Filas = {}, errores: Record<string, { message: string; code?: string }> = {}) {
+  doble = crearSupabaseDoble({ tablas, errores })
   const { AuthProvider } = await import('@/hooks/useAuth')
   const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>
   const r = renderHook(hook, { wrapper })
@@ -93,5 +93,33 @@ describe('préstamos pagados con tarjeta', () => {
     })
     const mov = doble.llamadas.find((l) => l.tabla === 'transactions' && l.op === 'insert')
     expect((mov?.payload as { amount: number }).amount).toBe(300)
+  })
+
+  it('si no se puede leer la cuenta, no adivina el signo ni deja el abono a medias', async () => {
+    const { useLoans } = await import('./useLoans')
+    const { result } = await montar(
+      () => useLoans(),
+      {
+        loans: [{ id: 'l1', user_id: 'u-1', name: 'Toño', amount: 1000, direction: 'i_owe', paid_at: null, created_at: '2026-10-01T00:00:00Z', notes: null }],
+        loan_payments: [],
+      },
+      { accounts: { message: 'fallo de red' } },
+    )
+    await act(async () => {
+      await expect(result.current.addPayment('l1', 300, { accountId: 'nu' })).rejects.toThrow(/conexión/)
+    })
+    expect(doble.llamadas.some((l) => l.op === 'insert')).toBe(false)
+  })
+})
+
+describe('sondas de esquema', () => {
+  it('un fallo de red no se toma como «falta la migración»', async () => {
+    const real = await vi.importActual<typeof import('@/lib/esquema')>('@/lib/esquema')
+    real.olvidarEsquema()
+    doble = crearSupabaseDoble({ errores: { transactions: { message: 'Failed to fetch' } } })
+    await expect(real.tieneEsquemaPagos()).rejects.toThrow(/conexión/)
+    doble = crearSupabaseDoble({ errores: { transactions: { message: 'column does not exist', code: '42703' } } })
+    real.olvidarEsquema()
+    await expect(real.tieneEsquemaPagos()).resolves.toBe(false)
   })
 })

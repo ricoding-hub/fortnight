@@ -132,10 +132,34 @@ describe('estado de cuenta — el caso de Tony', () => {
     expect(delCorte(e, '2026-10-15')).toMatchObject({ pngi: 0, aproximado: 'msi-sin-respaldo' })
   })
 
-  it('una mensualidad marcada a mano sigue en el saldo; el pago adelantado ya lo bajó', () => {
+  it('una mensualidad pagada por adelantado antes del corte ya no está en el saldo', () => {
     const plan = { ...PLAN, month_status: { _v: 2, '5': { s: 'paid', at: '2026-10-10' } } }
     const { e } = calcular({ plan, balance: 9000, movs: [...BASE, mov('p', -1000, '2026-10-10')] })
-    expect(delCorte(e, '2026-10-15')).toMatchObject({ msiNoFacturado: 5000, pngi: 4000 })
+    // El adelanto bajó el saldo y la mensualidad 5: no se resta dos veces.
+    expect(delCorte(e, '2026-10-15')).toMatchObject({ msiNoFacturado: 4000, pngi: 5000 })
+  })
+
+  it('marcada DESPUÉS del corte, en ese corte todavía estaba en el saldo', () => {
+    const plan = { ...PLAN, month_status: { _v: 2, '5': { s: 'paid', at: '2026-10-20' } } }
+    const { e } = calcular({ plan })
+    expect(delCorte(e, '2026-10-15')).toMatchObject({ msiNoFacturado: 5000, pngi: 5000 })
+  })
+
+  it('un plan liquidado ya no baja el pago de los cortes siguientes', () => {
+    // 1 nov: paga el estado de oct (5,000) y liquida el resto del MSI (5,000).
+    // Antes del corte del 15 nov compra 8,000. El banco pide 8,000, no 4,000.
+    const marcas: Record<string, unknown> = { _v: 2 }
+    for (const n of [1, 2, 3, 4, 5, 6]) marcas[n] = { s: 'paid', at: '2026-11-01' }
+    const plan = { ...PLAN, month_status: marcas }
+    const { e } = calcular({
+      plan,
+      hoy: '2026-11-20',
+      balance: 8000,
+      movs: [...BASE, mov('p', -10000, '2026-11-01', { type: 'transfer', transfer_id: 'x' }), mov('c', 8000, '2026-11-10')],
+    })
+    expect(delCorte(e, '2026-11-15')).toMatchObject({ saldoAlCorte: 8000, msiNoFacturado: 0, pngi: 8000, falta: 8000 })
+    // El de octubre quedó pagado con ese mismo pago.
+    expect(delCorte(e, '2026-10-15')).toMatchObject({ pngi: 5000, falta: 0, estado: 'pagado' })
   })
 
   it('la cifra del banco manda sobre el cálculo', () => {

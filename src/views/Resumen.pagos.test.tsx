@@ -137,6 +137,21 @@ describe('el aviso de pago de Inicio', () => {
     ])
   })
 
+  it('si los planes MSI no cargan, no pide el saldo completo', { timeout: 30_000 }, async () => {
+    await montar(tablas(), { installments: { message: 'fallo de red' } })
+    expect(screen.queryByText(/Algo se rompió/)).toBeNull()
+    expect(aviso()?.textContent ?? '').not.toMatch(/10,000/)
+  })
+
+  it('si los movimientos no cargan, no dice que no has pagado', { timeout: 30_000 }, async () => {
+    // Ya pagó los 5,000 y compró 2,000 después del corte. Sin movimientos, el
+    // cálculo diría «te faltan $2,000» (saldo 7,000 − MSI 5,000, nada pagado).
+    const movs = [...BASE, mov('c', 2000, '2026-10-20'), mov('p', -5000, '2026-11-02', { type: 'transfer', transfer_id: 'x' })]
+    await montar(tablas({ saldo: '7000', movs }), { transactions: { message: 'fallo de red' } })
+    expect(screen.queryByText(/Algo se rompió/)).toBeNull()
+    expect(aviso()?.textContent ?? '').not.toMatch(/para no generar intereses/)
+  })
+
   it('sin la tabla de correcciones (migración 038) la pantalla no se rompe', { timeout: 30_000 }, async () => {
     await montar(tablas(), { card_statements: { message: 'relation does not exist', code: 'PGRST205' } })
     expect(aviso()?.textContent).toMatch(/\$5,000\.00/)

@@ -132,7 +132,11 @@ export function PagarTarjetaModal({ tarjeta, estados, cuentas, montoInicial, onC
               </button>
             )}
           </div>
-        ) : estados?.sinCorte ? (
+        ) : !estados ? (
+          <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[12.5px] text-text-secondary">
+            Ahora no pude calcular tu estado de cuenta (revisa tu conexión). Puedes registrar el pago igual.
+          </p>
+        ) : estados.sinCorte ? (
           <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[12.5px] text-text-secondary">
             Agrega el día de corte de {tarjeta.name} (en Cuentas → ajustes de la tarjeta) para saber cuánto te toca
             pagar. Mientras, puedes registrar cualquier pago.
@@ -214,6 +218,12 @@ export function PagarTarjetaModal({ tarjeta, estados, cuentas, montoInicial, onC
           Un pago no es ingreso ni gasto: baja la deuda de {tarjeta.name}
           {origen ? ' y el saldo de la cuenta de la que sale' : ''}.
         </p>
+        {proximo && proximo.ajustesAlAlza > 0 && !proximo.corregido && (
+          <p className="text-[11.5px] leading-snug text-text-secondary">
+            Subiste el saldo a mano después del corte ({formatMXN(proximo.ajustesAlAlza)}) y se tomó como compra nueva. Si
+            era de antes del corte, la cifra para no generar intereses es mayor: revisa el estado de cuenta.
+          </p>
+        )}
       </form>
     </Modal>
   )

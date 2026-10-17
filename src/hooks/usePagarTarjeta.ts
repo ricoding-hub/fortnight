@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
 import { toKey } from '@/lib/localDate'
 import { tieneEsquemaPagos } from '@/lib/esquema'
 import type { Transaction } from '@/types'
@@ -55,6 +56,7 @@ export function usePagarTarjeta() {
     ]
     const { error } = await supabase.from('transactions').insert(filas)
     if (error) throw error
+    avisarCambioEnTarjetas()
   }
 
   /** Borra un pago completo: las dos partes si están unidas. */
@@ -62,6 +64,7 @@ export function usePagarTarjeta() {
     const q = supabase.from('transactions').delete()
     const { error } = tx.transfer_id ? await q.eq('transfer_id', tx.transfer_id) : await q.eq('id', tx.id)
     if (error) throw error
+    avisarCambioEnTarjetas()
   }
 
   /** Guarda la cifra del estado de cuenta del banco para un corte. */
@@ -83,11 +86,13 @@ export function usePagarTarjeta() {
       { onConflict: 'account_id,cut_date' },
     )
     if (error) throw error
+    avisarCambioEnTarjetas()
   }
 
   async function quitarCorreccion(accountId: string, cutDate: string): Promise<void> {
     const { error } = await supabase.from('card_statements').delete().eq('account_id', accountId).eq('cut_date', cutDate)
     if (error) throw error
+    avisarCambioEnTarjetas()
   }
 
   return { pagar, borrarPago, corregirEstado, quitarCorreccion }

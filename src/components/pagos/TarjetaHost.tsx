@@ -46,7 +46,7 @@ function TarjetaAbierta({ accountId, vista, monto }: { accountId: string; vista:
       estados={estados[accountId]}
       conCorrecciones={conCorrecciones}
       onClose={cerrar}
-      onPagar={() => abrirPago(accountId)}
+      onPagar={(m) => abrirPago(accountId, m)}
     />
   )
 }

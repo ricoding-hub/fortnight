@@ -53,7 +53,7 @@ import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
 import { addDays, fromKey } from '@/lib/localDate'
 import { fechaCorta } from '@/lib/movementDates'
-import { clasificar } from '@/lib/movimiento'
+import { clasificar, resumenDeMovimientos } from '@/lib/movimiento'
 import { useNotifications } from '@/hooks/useNotifications'
 import { computePaydays, fmtPayday, payFreqOf } from '@/lib/paydays'
 
@@ -142,15 +142,17 @@ export function Resumen() {
     .reduce((s, i) => s + i.msi.enEstado, 0)
   const deudaALaVista = getDeudaALaVista(accounts, activeInstallments)
 
-  // 7-day trend — includes both transactions and adjustments (real money moves).
+  // Por clase, no por signo: una compra con tarjeta (+ en la tarjeta) es un
+  // gasto, y un pago (dos renglones) no es gasto ni ingreso.
+  const cuentasPorId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
+  const categoriasPorId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
+
+  // Tendencia de 7 días: cuánto cambió tu patrimonio (una deuda que sube lo baja).
   const trend7d = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 7)
-    const cutoffISO = toKey(cutoff)
-    return recentTx
-      .filter((t) => t.date >= cutoffISO && (t.type === 'transaction' || t.type === 'adjustment'))
-      .reduce((s, t) => s + Number(t.amount), 0)
-  }, [recentTx])
+    return resumenDeMovimientos(recentTx, cuentasPorId, categoriasPorId, toKey(cutoff)).cambioPatrimonio
+  }, [recentTx, cuentasPorId, categoriasPorId])
 
   // Next payday chip
   const nextPayday = useMemo(() => {
@@ -164,17 +166,9 @@ export function Resumen() {
   const { monthlyIncome, monthlyExpense } = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 30)
-    const iso = toKey(cutoff)
-    let income = 0
-    let expense = 0
-    for (const t of recentTx) {
-      if (t.date < iso || t.type !== 'transaction') continue
-      const amt = Number(t.amount)
-      if (amt > 0) income += amt
-      else expense += -amt
-    }
-    return { monthlyIncome: income, monthlyExpense: expense }
-  }, [recentTx])
+    const r = resumenDeMovimientos(recentTx, cuentasPorId, categoriasPorId, toKey(cutoff))
+    return { monthlyIncome: r.ingresos, monthlyExpense: r.gastos }
+  }, [recentTx, cuentasPorId, categoriasPorId])
 
   const { score, breakdown } = useMemo(
     () =>

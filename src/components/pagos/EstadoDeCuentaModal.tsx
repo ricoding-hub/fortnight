@@ -16,7 +16,8 @@ interface EstadoDeCuentaModalProps {
   estados: EstadosTarjeta | undefined
   conCorrecciones: boolean
   onClose: () => void
-  onPagar: () => void
+  /** Abrir el pago con lo que falta de ESTE estado (con dos abiertos, no siempre es el próximo). */
+  onPagar: (monto?: number) => void
 }
 
 const ESTADO: Record<EstadoDeCuenta['estado'], { texto: string; clase: string }> = {
@@ -46,15 +47,19 @@ export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose
       title={`Estado de cuenta · ${tarjeta.name}`}
       footer={
         e && e.falta > 0 ? (
-          <Button onClick={onPagar}>Pagar {formatMXN(e.falta)}</Button>
+          <Button onClick={() => onPagar(e.falta)}>Pagar {formatMXN(e.falta)}</Button>
         ) : (
-          <Button variant="secondary" onClick={onPagar}>
+          <Button variant="secondary" onClick={() => onPagar()}>
             Registrar un pago
           </Button>
         )
       }
     >
-      {estados?.sinCorte || !e ? (
+      {!estados ? (
+        <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[13px] text-text-secondary">
+          Ahora no pude calcular el estado de cuenta de {tarjeta.name} (revisa tu conexión). Vuelve a abrirlo en un momento.
+        </p>
+      ) : estados.sinCorte || !e ? (
         <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[13px] text-text-secondary">
           Para calcular tu estado de cuenta hace falta el día de corte de {tarjeta.name}. Agrégalo en Cuentas → ajustes de la
           tarjeta.
@@ -151,7 +156,8 @@ export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose
             </p>
           )}
 
-          {conCorrecciones && <Corregir tarjeta={tarjeta} estado={e} />}
+          {/* `key` por corte: lo escrito en una pestaña no se guarda en otra. */}
+          {conCorrecciones && <Corregir key={e.corte} tarjeta={tarjeta} estado={e} />}
         </div>
       )}
     </Modal>
@@ -172,7 +178,8 @@ function Corregir({ tarjeta, estado }: { tarjeta: Account; estado: EstadoDeCuent
   const { corregirEstado, quitarCorreccion } = usePagarTarjeta()
   const [abierto, setAbierto] = useState(false)
   const [pngi, setPngi] = useState(estado.corregido ? String(estado.pngi) : '')
-  const [minimo, setMinimo] = useState('')
+  // Lo ya capturado se conserva: volver a guardar sólo el PNGI borraba el mínimo.
+  const [minimo, setMinimo] = useState(estado.minimoBanco != null ? String(estado.minimoBanco) : '')
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
 
@@ -201,7 +208,11 @@ function Corregir({ tarjeta, estado }: { tarjeta: Account; estado: EstadoDeCuent
         {estado.corregido && (
           <button
             type="button"
-            onClick={() => void quitarCorreccion(tarjeta.id, estado.corte).then(() => toast.success('Se usa el cálculo de la app', ''))}
+            onClick={() =>
+              void quitarCorreccion(tarjeta.id, estado.corte)
+                .then(() => toast.success('Se usa el cálculo de la app', ''))
+                .catch(() => toast.error('No se pudo guardar', 'Inténtalo de nuevo'))
+            }
             className="min-h-[40px] text-[13px] font-semibold text-text-secondary"
           >
             Usar el cálculo de la app

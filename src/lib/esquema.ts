@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabase'
  *
  * Sin ellas la app funciona igual al leer; algunas escrituras usan el camino
  * viejo, que también es correcto. Se pregunta una vez por sesión. Un error que
- * no sea «columna inexistente» no se recuerda: se vuelve a preguntar la próxima
- * vez, y mientras tanto se usa el camino viejo.
+ * no sea «columna inexistente» (la red, un permiso) no es una respuesta: no se
+ * recuerda y se lanza. Antes se tomaba como «no hay migración», y un pago de
+ * tarjeta con la 038 ya corrida se guardaba como dos ajustes sueltos.
  */
 const respuestas = new Map<string, Promise<boolean>>()
 
@@ -28,7 +29,7 @@ function sondear(clave: string, tabla: string, columna: string): Promise<boolean
     if (!error) return true
     if (esColumnaFaltante(error) || esTablaFaltante(error)) return false
     respuestas.delete(clave)
-    return false
+    throw new Error('No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.')
   })()
   respuestas.set(clave, intento)
   return intento

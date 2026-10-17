@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
 import { toKey } from '@/lib/calendar'
 import { useAuth } from '@/hooks/useAuth'
 import type { Account } from '@/types'
@@ -224,7 +225,12 @@ export function useAccounts() {
    * We apply an optimistic update immediately so the UI reflects the new
    * balance without waiting for the DB trigger → realtime → re-fetch cycle.
    */
-  async function updateBalance(account: Account, newBalance: number) {
+  /**
+   * `fecha`: el día del ajuste (por omisión, hoy). Una tarjeta que sube por
+   * compras de antes del corte se fecha en el corte, para que entre en ese
+   * estado de cuenta y no en el siguiente.
+   */
+  async function updateBalance(account: Account, newBalance: number, fecha?: string) {
     if (!user) throw new Error('Not authenticated')
     // Synced accounts derive their balance from imported transactions plus
     // the periodic reconciliation adjustment. Manual edits would drift
@@ -249,7 +255,7 @@ export function useAccounts() {
       account_id: account.id,
       amount: diff,
       type: 'adjustment',
-      date: toKey(new Date()),
+      date: fecha ?? toKey(new Date()),
     })
 
     if (err) {
@@ -261,6 +267,7 @@ export function useAccounts() {
       )
       throw err
     }
+    if (account.type === 'credit') avisarCambioEnTarjetas()
   }
 
   return {

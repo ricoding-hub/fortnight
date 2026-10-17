@@ -332,8 +332,11 @@ export function buildCalendarEvents(
     const tarjeta = inst.account_id ? accountById.get(inst.account_id) ?? null : null
     const cal = calendarioDe(inst, tarjeta, hoy)
     // Con una tarjeta con fecha de pago, el pago de la tarjeta ya la lleva. Sin
-    // ella (o sin tarjeta), sale de tu efectivo el día que vence.
-    const porTarjeta = tieneVencimiento(tarjeta)
+    // ella (o sin tarjeta), sale de tu efectivo el día que vence. Con estado de
+    // cuenta (hay corte), el pago de la tarjeta sale aunque la fecha sea
+    // estimada: la mensualidad va dentro y no se cuenta otra vez.
+    const estadoT = tarjeta ? input.estados?.[tarjeta.id] : undefined
+    const porTarjeta = (!!estadoT && !estadoT.sinCorte) || tieneVencimiento(tarjeta)
     const M = cal.meses.length
     for (const m of cal.meses) {
       if (m.vence < desde || m.vence > hasta) continue

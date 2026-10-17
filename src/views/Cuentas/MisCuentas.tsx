@@ -38,7 +38,7 @@ interface SectionProps {
   accounts: Account[]
   total: number
   reorderMode: boolean
-  onSaveBalance: (account: Account, newBalance: number) => Promise<void>
+  onSaveBalance: (account: Account, newBalance: number, fecha?: string) => Promise<void>
   onEditDetails: (account: Account) => void
   onAdd: (type: AccountType) => void
   onMove: (accountId: string, direction: -1 | 1) => Promise<void>

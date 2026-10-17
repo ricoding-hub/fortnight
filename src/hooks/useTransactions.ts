@@ -3,6 +3,7 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Transaction, TransactionType } from '@/types'
+import { avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
 import { toKey } from '@/lib/calendar'
 import { tieneEsquemaMsi } from '@/lib/esquema'
 
@@ -119,6 +120,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       setData((prev) => prev.filter((t) => t.id !== tempId))
       throw err
     }
+    avisarCambioEnTarjetas()
   }
 
   /** Borra un movimiento. Un pago de tarjeta se borra completo: sus dos partes. */
@@ -133,6 +135,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       setData((cur) => [...quitados, ...cur])
       throw err
     }
+    avisarCambioEnTarjetas()
   }
 
   /**
@@ -164,6 +167,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       void fetchTransactions()
       throw err
     }
+    avisarCambioEnTarjetas()
   }
 
   return {
