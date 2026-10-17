@@ -132,9 +132,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
+            version="1.18.0"
+            date="17 oct 2026"
+            current
+            notes={[
+              'Tus MSI ahora se marcan con tus pagos: una mensualidad de tarjeta queda pagada cuando lo que pagaste a la tarjeta la cubre, no sólo porque pasó la fecha. Si no alcanzó, sale vencida y el detalle te dice por qué',
+              'En un plan con tarjeta, el botón ya no es "Ya pagué la mensualidad" (que no movía dinero) sino "Pagar Nu": registra el pago de verdad. Marcar sin pagar sigue en el detalle, como corrección',
+              'Si anotaste una compra a meses como gasto normal, ábrela en Movimientos y toca "Fue a meses: convertir". Tu estado de cuenta deja de pedirla completa, sin cargarla otra vez',
+              'Al registrar algo a meses, si ya tienes un gasto parecido en esa tarjeta te pregunta si es ese, para no contar la compra dos veces',
+              'La tarjeta de tu última compra a meses (o la única que tienes) ya viene elegida, y en un gasto con tarjeta está el atajo "¿Fue a meses?"',
+            ]}
+          />
+          <VersionRow
             version="1.17.0"
             date="16 oct 2026"
-            current
             notes={[
               'Tus tarjetas ahora tienen estado de cuenta, calculado como lo hace el banco: saldo al corte, las mensualidades MSI que aún no se cobran, el pago para no generar intereses, lo que llevas pagado y lo que te falta',
               'El aviso de Inicio dice lo que te falta de tu estado de cuenta, no el saldo completo (que incluía todos tus meses futuros y las compras después del corte). Cuando pagas, desaparece',

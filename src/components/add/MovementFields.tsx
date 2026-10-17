@@ -13,6 +13,7 @@ import { toKey } from '@/lib/calendar'
 import { formatMXN } from '@/lib/format'
 import { isMoneyInput, moneyNum } from '@/lib/money'
 import type { NewTransaction } from '@/hooks/useTransactions'
+import type { SemillaMeses } from '@/store/uiStore'
 import type { Account, Category } from '@/types'
 
 export type Direction = 'spend' | 'receive'
@@ -24,6 +25,8 @@ interface MovementFieldsProps {
   onCreate: (tx: NewTransaction) => Promise<void>
   footerTarget: HTMLElement | null
   onDone: () => void
+  /** «¿Fue a meses?»: pasa lo escrito a la pestaña «A meses». */
+  onAMeses?: (s: SemillaMeses) => void
 }
 
 /** Errores por campo. Se muestran junto al campo, no con un temblor. */
@@ -42,7 +45,7 @@ interface Errores {
  * pegar un monto, y no se come media pantalla: el numpad ocupaba ~40 % y por eso
  * la rejilla de categorías se cortaba a media fila.
  */
-export function MovementFields({ direction, accounts, categories, onCreate, footerTarget, onDone }: MovementFieldsProps) {
+export function MovementFields({ direction, accounts, categories, onCreate, footerTarget, onDone, onAMeses }: MovementFieldsProps) {
   const toast = useToast()
   const { refetch: refetchGami } = useGamification()
   const esGasto = direction === 'spend'
@@ -258,9 +261,25 @@ export function MovementFields({ direction, accounts, categories, onCreate, foot
       {/* El signo de una tarjeta es el contrario al de una cuenta de débito, y
           antes se invertía sin decirlo. */}
       {esCredito && cuenta && esGasto && (
-        <p className="-mt-1 rounded-xl bg-bg-secondary px-3.5 py-2 text-[12.5px] text-text-secondary">
-          Es una tarjeta: este gasto SUBE la deuda de {cuenta.name}.
-        </p>
+        <div className="-mt-1 flex flex-wrap items-center justify-between gap-x-3 rounded-xl bg-bg-secondary px-3.5 py-1.5 text-[12.5px] text-text-secondary">
+          <span className="py-0.5">Es una tarjeta: este gasto SUBE la deuda de {cuenta.name}.</span>
+          {onAMeses && (
+            <button
+              type="button"
+              onClick={() =>
+                onAMeses({
+                  name: note.trim() || lista.find((c) => c.id === categoryId)?.name || '',
+                  total: montoValido ? monto : 0,
+                  date,
+                  accountId: cuenta.id,
+                })
+              }
+              className="min-h-[36px] font-bold text-primary-deep"
+            >
+              ¿Fue a meses?
+            </button>
+          )}
+        </div>
       )}
 
       {esCredito && cuenta && !esGasto && (

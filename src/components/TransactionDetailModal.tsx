@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/useToast'
 import { categoryIcon, categoryColor } from '@/lib/categories'
 import { formatMXN } from '@/lib/format'
 import { clasificar, efectoEnPatrimonio, ETIQUETA_CLASE } from '@/lib/movimiento'
+import { useUiStore } from '@/store/uiStore'
 import type { Account, Category, Transaction } from '@/types'
 
 interface TransactionDetailModalProps {
@@ -89,6 +90,15 @@ export function TransactionDetailModal({
   const esCargoMsi = transaction.type === 'installment' && !!transaction.installment_id
   const clase = clasificar(transaction, account, category)
   const esPago = clase === 'pago-tarjeta' || clase === 'transferencia'
+  const abrirAMeses = useUiStore((s) => s.abrirAMeses)
+  // Una compra con tarjeta registrada como gasto normal se puede volver MSI:
+  // así el estado de cuenta deja de pedirla completa («1 solo pago»).
+  const convertible =
+    clase === 'gasto' &&
+    account?.type === 'credit' &&
+    !transaction.installment_id &&
+    (transaction.type === 'transaction' || transaction.type === 'sync') &&
+    Number(transaction.amount) > 0
 
   // Same net-worth sign convention used by TransactionRow so the detail
   // matches what the user tapped on.
@@ -221,6 +231,25 @@ export function TransactionDetailModal({
               </button>
             </div>
           </div>
+        )}
+
+        {convertible && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose()
+              abrirAMeses({
+                txId: transaction.id,
+                name: transaction.description?.trim() || category?.name || 'Compra a meses',
+                total: Number(transaction.amount),
+                date: transaction.date.slice(0, 10),
+                accountId: transaction.account_id,
+              })
+            }}
+            className="mt-4 flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-primary/20 bg-primary-soft/40 text-sm font-semibold text-primary-deep transition-colors hover:bg-primary-soft/70"
+          >
+            <IconCalendarEvent size={16} /> Fue a meses: convertir
+          </button>
         )}
 
         {onEdit && !esCargoMsi && (

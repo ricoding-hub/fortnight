@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconCheck, IconDotsVertical, IconPencil, IconTrash, IconRotate } from '@tabler/icons-react'
+import { IconCheck, IconCreditCardPay, IconDotsVertical, IconPencil, IconTrash, IconRotate } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -20,6 +20,8 @@ interface InstallmentDetailModalProps {
   onLiquidar: (restarDelSaldo: boolean) => Promise<void>
   onEliminar: (quitarCargo: boolean) => Promise<void>
   onCambiarFechaDeCompra: (fecha: string) => Promise<void>
+  /** Pagar la tarjeta del plan (el pago real que cubre la mensualidad). */
+  onPagarTarjeta?: () => void
 }
 
 const ESTADO: Record<EstadoMes, { texto: string; clase: string }> = {
@@ -30,11 +32,15 @@ const ESTADO: Record<EstadoMes, { texto: string; clase: string }> = {
 }
 
 /** Por qué un mes está como está. Es la parte «transparente». */
-function porQue(m: MesMsi): string {
+function porQue(m: MesMsi, tarjeta: string | undefined): string {
   if (m.origen === 'anterior') return 'La traías marcada de antes'
   if (m.origen === 'manual') {
     const cuando = m.marcadaEl ? ` el ${fechaCorta(m.marcadaEl)}` : ''
     return m.estado === 'pagada' ? `La marcaste pagada${cuando}` : `Marcaste que no la pagaste${cuando}`
+  }
+  if (m.porPagos) {
+    if (m.estado === 'pagada') return `Cubierta con tus pagos a ${tarjeta ?? 'la tarjeta'}`
+    if (m.estado === 'vencida') return 'Tu pago no alcanzó esta mensualidad'
   }
   if (m.estado === 'pagada') return 'Pagada sola: pasó su fecha límite'
   if (m.estado === 'por-pagar') return 'Ya está en tu estado de cuenta'
@@ -58,6 +64,7 @@ export function InstallmentDetailModal({
   onLiquidar,
   onEliminar,
   onCambiarFechaDeCompra,
+  onPagarTarjeta,
 }: InstallmentDetailModalProps) {
   const { msi, cargo } = inst
   const M = msi.meses.length
@@ -72,6 +79,8 @@ export function InstallmentDetailModal({
   const [quitarCargo, setQuitarCargo] = useState(msi.pagadas === 0)
   const sugerida = sugerirFechaDeCompra(inst, inst.ciclo, hoy)
   const linea = lineaDeEstado(inst)
+  const conTarjeta = linkedAccount?.type === 'credit'
+  const enCurso = !!msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
 
   async function correr(clave: string, f: () => Promise<void>) {
     setOcupado(clave)
@@ -105,6 +114,11 @@ export function InstallmentDetailModal({
               {msi.pagadas} pagada{msi.pagadas === 1 ? '' : 's'} · {formatMXN(Number(inst.total_amount))} en {M} meses
               {linkedAccount ? ` · ${linkedAccount.name}` : ' · sin tarjeta'}
             </p>
+            {conTarjeta && enCurso && onPagarTarjeta && (
+              <Button compact className="mt-2.5" onClick={onPagarTarjeta}>
+                <IconCreditCardPay size={15} /> Pagar {linkedAccount!.name}
+              </Button>
+            )}
           </div>
 
           {sugerida && (
@@ -151,7 +165,7 @@ export function InstallmentDetailModal({
                         </p>
                         <p className="text-[11.5px] leading-snug text-text-secondary">
                           {m.corte ? `Corte ${fechaCorta(m.corte)} · ` : ''}
-                          {porQue(m)}
+                          {porQue(m, linkedAccount?.name)}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -177,14 +191,14 @@ export function InstallmentDetailModal({
                             <IconCheck size={13} /> Marcar pagada
                           </AccionMes>
                         )}
-                        {m.estado !== 'vencida' && m.vence < hoy && (
+                        {m.estado !== 'vencida' && (m.vence < hoy || m.estado === 'pagada') && (
                           <AccionMes ocupado={ocupado === `u${m.n}`} onClick={() => void correr(`u${m.n}`, async () => { await onMarcarMes(m.n, 'unpaid'); setMenuMes(null) })}>
                             No la pagué
                           </AccionMes>
                         )}
                         {m.origen !== 'auto' && (
                           <AccionMes ocupado={ocupado === `a${m.n}`} onClick={() => void correr(`a${m.n}`, async () => { await onMarcarMes(m.n, 'auto'); setMenuMes(null) })}>
-                            <IconRotate size={13} /> Según las fechas
+                            <IconRotate size={13} /> Quitar mi marca
                           </AccionMes>
                         )}
                       </div>
@@ -194,7 +208,9 @@ export function InstallmentDetailModal({
               })}
             </ol>
             <p className="mt-1.5 text-[11.5px] leading-snug text-text-secondary">
-              Marcar una mensualidad no mueve tu saldo: el pago a la tarjeta lo registras como siempre.
+              {conTarjeta
+                ? `Cada mensualidad se marca sola cuando tus pagos a ${linkedAccount!.name} la cubren. Marcarla a mano no mueve tu saldo.`
+                : 'Marcar una mensualidad no mueve tu saldo: el pago lo registras como siempre.'}
               {linkedAccount?.cut_day ? ` Calculado con el corte actual (día ${linkedAccount.cut_day}).` : ''}
             </p>
           </div>

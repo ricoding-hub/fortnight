@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useHoy } from '@/hooks/useHoy'
 import { useTableChannel } from '@/hooks/useTableChannel'
-import { alCambiarTarjetas } from '@/lib/avisoTarjetas'
+import { alCambiarTarjetas, avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
+import { coberturaDe, coberturaMsi } from '@/lib/coberturaMsi'
 import { esTablaFaltante, tieneEsquemaMsi } from '@/lib/esquema'
 import { toKey } from '@/lib/localDate'
 import type { CicloTarjeta } from '@/lib/cardCycle'
@@ -48,9 +49,14 @@ export interface NewInstallment {
    * `accounts.balance` really contains it. Ignored without an `account_id`.
    */
   charge_to_card?: boolean
+  /**
+   * Transient: un gasto de tarjeta ya registrado que pasa a ser el cargo del
+   * plan («Convertir a meses»). No se carga nada nuevo: el saldo no cambia.
+   */
+  adopt_tx_id?: string
 }
 
-export type InstallmentPatch = Partial<Omit<NewInstallment, 'charge_to_card'>>
+export type InstallmentPatch = Partial<Omit<NewInstallment, 'charge_to_card' | 'adopt_tx_id'>>
 
 /** La fila tal como llega, con la tarjeta y el cargo embebidos. */
 type Fila = Installment & {
@@ -257,7 +263,12 @@ export function useInstallments() {
     },
   )
 
-  const { data, estados, planes } = useMemo(() => {
+  // El estado de cuenta resta los MSI que aún no se cobran: sin los planes
+  // cargados (o si fallaron), pediría el saldo completo. Hasta tenerlos, nada.
+  const estadosListos = foto.listo && !loading
+  const fiables = estadosListos && !foto.fallo && !error
+
+  const { data, estados, planes, coberturas } = useMemo(() => {
     const porId = new Map(foto.tarjetas.map((t) => [t.id, t]))
     // El ciclo de la tarjeta: de la foto (siempre fresca) o del plan embebido.
     const ciclo = (f: Fila): CicloTarjeta | null =>
@@ -276,9 +287,12 @@ export function useInstallments() {
       correcciones: foto.correcciones,
       hoy,
     })
-    const data = filas.map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f)))
-    return { data, estados, planes }
-  }, [filas, foto, hoy])
+    // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
+    // Sin un estado confiable, no se opina: decide la fecha.
+    const coberturas = fiables ? coberturaMsi(estados, planes) : new Map<string, never>()
+    const data = filas.map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f), coberturaDe(coberturas, f.id)))
+    return { data, estados, planes, coberturas }
+  }, [filas, foto, hoy, fiables])
 
   function filaDe(id: string) {
     return filas.find((f) => f.id === id)
@@ -290,7 +304,7 @@ export function useInstallments() {
 
   async function create(inst: NewInstallment): Promise<void> {
     if (!user) throw new Error('Not authenticated')
-    const { charge_to_card: chargeToCard, billing_offset, ...row } = inst
+    const { charge_to_card: chargeToCard, adopt_tx_id: adoptar, billing_offset, ...row } = inst
     const migrado = await tieneEsquemaMsi()
     const ahora = new Date().toISOString()
     const hoyLocal = toKey(new Date())
@@ -337,7 +351,20 @@ export function useInstallments() {
       throw err ?? new Error('No se pudo guardar el plan')
     }
 
-    if (chargeToCard && row.account_id) {
+    if (adoptar) {
+      // El gasto ya está en el saldo: sólo cambia de tipo y apunta al plan. Si
+      // no se puede, el plan se deshace — un plan con su compra contada dos
+      // veces (como gasto y en el plan) es justo lo que esto evita.
+      const { error: adoptErr } = await supabase
+        .from('transactions')
+        .update({ type: 'installment', installment_id: inserted.id })
+        .eq('id', adoptar)
+      if (adoptErr) {
+        await supabase.from('installments').delete().eq('id', inserted.id)
+        setFilas((prev) => prev.filter((i) => i.id !== base.id))
+        throw adoptErr
+      }
+    } else if (chargeToCard && row.account_id) {
       // Lo que falta por pagar: sin pagos es el total exacto (la última
       // mensualidad absorbe el redondeo). Si la compra es vieja, lo que ya
       // venció se pagó con estados de cuenta que ya estaban en el saldo.
@@ -362,6 +389,8 @@ export function useInstallments() {
       }
     }
     await fetchInstallments()
+    // Un cargo nuevo o un gasto convertido cambian el estado de cuenta.
+    avisarCambioEnTarjetas()
   }
 
   /**
@@ -495,7 +524,7 @@ export function useInstallments() {
     }
 
     const month_status = conMarca(plano, n, e, hoyLocal)
-    const cal = calendarioMsi({ ...plano, month_status }, cicloDe(prev), hoyLocal)
+    const cal = calendarioMsi({ ...plano, month_status }, cicloDe(prev), hoyLocal, coberturaDe(coberturas, id))
     const cambios = { month_status, ...copiaContador(cal), updated_at: new Date().toISOString() }
     parchar(id, cambios)
     const { error: err } = await supabase.from('installments').update(cambios).eq('id', id)
@@ -514,7 +543,7 @@ export function useInstallments() {
     const plano = sinEmbebidos(prev)
     const cambios = migrado
       ? (() => {
-          const month_status = liquidarMarcas(plano, cicloDe(prev), hoyLocal)
+          const month_status = liquidarMarcas(plano, cicloDe(prev), hoyLocal, coberturaDe(coberturas, id))
           return { month_status, months_paid: Number(plano.months_total), status: 'paid' as const }
         })()
       : { months_paid: Number(plano.months_total), status: 'paid' as const }
@@ -554,10 +583,6 @@ export function useInstallments() {
   }
 
   const active = useMemo(() => data.filter((i) => i.status === 'active'), [data])
-  // El estado de cuenta resta los MSI que aún no se cobran: sin los planes
-  // cargados (o si fallaron), pediría el saldo completo. Hasta tenerlos, nada.
-  const estadosListos = foto.listo && !loading
-  const fiables = estadosListos && !foto.fallo && !error
 
   return {
     data: user ? data : EMPTY,

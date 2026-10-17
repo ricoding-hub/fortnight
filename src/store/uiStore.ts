@@ -4,6 +4,19 @@ import type { AddKind } from '@/components/add/AddSheet'
 
 export type { AddKind }
 
+/**
+ * Una compra que se va a registrar a meses, ya conocida. Con `txId`, es un
+ * gasto ya registrado que se CONVIERTE (su cargo pasa a ser el del plan, sin
+ * cargar otra vez); sin él, sólo llena el formulario.
+ */
+export interface SemillaMeses {
+  txId?: string
+  name: string
+  total: number
+  date: string
+  accountId: string
+}
+
 interface UiState {
   /** The "add transaction" bottom-sheet is open. */
   addModalOpen: boolean
@@ -31,6 +44,10 @@ interface UiState {
   abrirPago: (accountId: string, monto?: number) => void
   abrirEstado: (accountId: string) => void
   cerrarTarjeta: () => void
+  /** «Convertir a meses» un gasto de tarjeta ya registrado (vive en Layout). */
+  aMeses: SemillaMeses | null
+  abrirAMeses: (s: SemillaMeses) => void
+  cerrarAMeses: () => void
   /** Guided tour (driver.js). */
   tourOpen: boolean
   openTour: () => void
@@ -56,6 +73,9 @@ export const useUiStore = create<UiState>((set) => ({
   abrirPago: (accountId, monto) => set({ tarjeta: { accountId, vista: 'pagar', monto } }),
   abrirEstado: (accountId) => set({ tarjeta: { accountId, vista: 'estado' } }),
   cerrarTarjeta: () => set({ tarjeta: null }),
+  aMeses: null,
+  abrirAMeses: (semilla) => set({ aMeses: semilla }),
+  cerrarAMeses: () => set({ aMeses: null }),
   tourOpen: false,
   openTour: () => set({ tourOpen: true }),
   closeTour: () => set({ tourOpen: false }),

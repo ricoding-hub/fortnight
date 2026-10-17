@@ -10,12 +10,15 @@ import { Select } from '@/components/ui/Select'
 import { Segmented } from '@/components/ui/Segmented'
 import { FooterPortal } from '@/components/add/FooterPortal'
 import { useToast } from '@/hooks/useToast'
+import { guardarPref, prefValida } from '@/lib/addPrefs'
 import { toKey } from '@/lib/calendar'
+import { compraParecida, type MovEdc } from '@/lib/estadoDeCuenta'
 import { formatMXN } from '@/lib/format'
 import { isCountInput, isMoneyInput, moneyOr, parseCountInput } from '@/lib/money'
 import { fechaCorta } from '@/lib/movementDates'
 import { calendarioMsi, nuevoCargo, registradoEl, type InstallmentVivo } from '@/lib/msi'
 import type { InstallmentPatch, NewInstallment } from '@/hooks/useInstallments'
+import type { SemillaMeses } from '@/store/uiStore'
 import type { Account, Installment } from '@/types'
 
 const schema = z.object({
@@ -50,6 +53,13 @@ interface InstallmentFieldsProps {
   onUpdate?: (id: string, patch: InstallmentPatch) => Promise<unknown>
   /** Tras guardar: cerrar el modal o la hoja. */
   onDone: () => void
+  /**
+   * Una compra ya conocida. Con `txId` se convierte ese gasto en el cargo del
+   * plan; sin él, sólo llena los campos («¿Fue a meses?» desde un gasto).
+   */
+  semilla?: SemillaMeses
+  /** Movimientos recientes de las tarjetas, para avisar si la compra ya está registrada. */
+  movimientos?: MovEdc[]
 }
 
 /**
@@ -72,9 +82,22 @@ export function InstallmentFields({
   onSubmit,
   onUpdate,
   onDone,
+  semilla,
+  movimientos,
 }: InstallmentFieldsProps) {
   const isEditing = editingInstallment != null
   const creditAccounts = accounts.filter((a) => a.type === 'credit')
+  // La tarjeta de la última compra a meses, o la única. Antes quedaba «Sin
+  // asociar» y el plan no tenía corte, ni cargo, ni estado de cuenta.
+  const tarjetaPorOmision =
+    creditAccounts.length === 1
+      ? creditAccounts[0].id
+      : (prefValida('msi:tarjeta', creditAccounts.map((a) => a.id)) ?? '')
+  // El gasto que este plan convierte (en vez de cargar la compra otra vez).
+  const [adoptado, setAdoptado] = useState<{ id: string; accountId: string } | null>(
+    semilla?.txId ? { id: semilla.txId, accountId: semilla.accountId } : null,
+  )
+  const [noEsEse, setNoEsEse] = useState<string | null>(null)
   const toast = useToast()
   const [saveError, setSaveError] = useState<string | null>(null)
   // Editar quiere ver todo; registrar algo nuevo, lo mínimo.
@@ -101,13 +124,13 @@ export function InstallmentFields({
           charge_to_card: false,
         }
       : {
-          name: '',
-          total_amount: '',
+          name: semilla?.name ?? '',
+          total_amount: semilla?.total ? String(semilla.total) : '',
           months_total: '12',
           is_zero_interest: true,
-          charge_to_card: true,
-          account_id: '',
-          start_date: toKey(new Date()),
+          charge_to_card: !semilla?.txId,
+          account_id: semilla?.accountId ?? tarjetaPorOmision,
+          start_date: semilla?.date ?? toKey(new Date()),
           billing_offset: '0',
         },
   })
@@ -174,6 +197,14 @@ export function InstallmentFields({
     }
   }
 
+  // ¿Ya está registrada? Un gasto parecido en esa tarjeta (±$1, ±3 días): se
+  // ofrece convertirlo. Cargarla otra vez duplicaba la compra en el saldo.
+  const parecida =
+    !isEditing && !adoptado && selectedCard && totalAmount > 0 && fechaValida && movimientos
+      ? compraParecida(movimientos, { accountId: selectedCard.id, total: totalAmount, fecha: startDate! })
+      : null
+  const sugerirConvertir = parecida && parecida.id !== noEsEse ? parecida : null
+
   // Un error en un campo que está dentro de «Más opciones» no se puede quedar
   // escondido: se abre para que se vea.
   useEffect(() => {
@@ -193,7 +224,8 @@ export function InstallmentFields({
       monthly_amount: monthlyAmount,
       months_total: mTotal,
       is_zero_interest: values.is_zero_interest,
-      account_id: values.account_id || null,
+      // Al convertir un gasto, el plan va en la tarjeta de ese gasto.
+      account_id: adoptado?.accountId ?? (values.account_id || null),
       start_date: values.start_date,
       billing_offset: parseCountInput(values.billing_offset) ?? 0,
     }
@@ -202,8 +234,16 @@ export function InstallmentFields({
         await onUpdate(editingInstallment.id, base)
         toast.success('Plan actualizado', `${base.name} · ${formatMXN(monthlyAmount)}/mes`)
       } else {
-        await onSubmit({ ...base, charge_to_card: values.charge_to_card })
-        toast.success('Compra a meses registrada', `${base.name} · ${formatMXN(monthlyAmount)}/mes`)
+        await onSubmit({
+          ...base,
+          charge_to_card: adoptado ? false : values.charge_to_card,
+          ...(adoptado ? { adopt_tx_id: adoptado.id } : {}),
+        })
+        if (base.account_id) guardarPref('msi:tarjeta', base.account_id)
+        toast.success(
+          adoptado ? 'Gasto convertido a meses' : 'Compra a meses registrada',
+          `${base.name} · ${formatMXN(monthlyAmount)}/mes`,
+        )
       }
       onDone()
     } catch (err) {
@@ -219,7 +259,9 @@ export function InstallmentFields({
       <Button type="submit" form={formId} loading={isSubmitting}>
         {isEditing
           ? 'Guardar cambios'
-          : monthlyAmount > 0
+          : adoptado
+            ? `Convertir a ${monthsTotal} meses${monthlyAmount > 0 ? ` · ${formatMXN(monthlyAmount)}/mes` : ''}`
+            : monthlyAmount > 0
             ? `Registrar · ${formatMXN(monthlyAmount)}/mes`
             : 'Registrar compra a meses'}
       </Button>
@@ -257,7 +299,7 @@ export function InstallmentFields({
         </Select>
       </div>
 
-      {creditAccounts.length > 0 && (
+      {creditAccounts.length > 0 && !adoptado && (
         <Select label="Tarjeta" {...register('account_id')}>
           <option value="">Sin asociar</option>
           {creditAccounts.map((a) => (
@@ -315,7 +357,38 @@ export function InstallmentFields({
       {/* ¿Esto ya está dentro del saldo de la tarjeta? Preguntarlo es el arreglo
           entero: la app siempre dio por hecho que sí, y nada lo ponía ahí. Sólo al
           crear: cambiarlo después es el caso ambiguo, así que no se ofrece. */}
-      {!isEditing && selectedCard && (
+      {sugerirConvertir && selectedCard && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3" role="status">
+          <p className="text-[12.5px] leading-snug text-text">
+            ¿Es este? Ya tienes un gasto de <b className="font-mono">{formatMXN(Number(sugerirConvertir.amount))}</b> en{' '}
+            {selectedCard.name} el {fechaCorta(sugerirConvertir.date.slice(0, 10))}
+            {sugerirConvertir.description ? ` («${sugerirConvertir.description}»)` : ''}. Si es la misma compra, conviértelo
+            en vez de cargarla otra vez.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" compact onClick={() => setAdoptado({ id: sugerirConvertir.id, accountId: selectedCard.id })}>
+              Sí, convertir ese gasto
+            </Button>
+            <Button type="button" compact variant="secondary" onClick={() => setNoEsEse(sugerirConvertir.id)}>
+              No, es otra compra
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {adoptado && selectedCard && (
+        <div className="rounded-xl bg-asset-soft/50 px-3.5 py-2.5 text-[12.5px] leading-snug text-text">
+          Tu gasto ya registrado en <b>{selectedCard.name}</b> pasa a ser el cargo de este plan: el saldo no cambia, y
+          tu estado de cuenta ya no lo pide completo, sólo sus mensualidades.
+          {!semilla?.txId && (
+            <button type="button" onClick={() => setAdoptado(null)} className="ml-1 min-h-[32px] font-bold text-primary-deep">
+              Deshacer
+            </button>
+          )}
+        </div>
+      )}
+
+      {!isEditing && !adoptado && selectedCard && (
         <Controller
           control={control}
           name="charge_to_card"

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconCalendarEvent, IconCheck, IconChevronRight } from '@tabler/icons-react'
+import { IconCalendarEvent, IconCheck, IconChevronRight, IconCreditCardPay } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { formatMXN } from '@/lib/format'
@@ -15,6 +15,11 @@ interface InstallmentCardProps {
   onOpen: () => void
   /** «Ya la pagué»: sólo cuando la mensualidad en curso ya está en el estado de cuenta. */
   onPagarActual?: () => void
+  /**
+   * En un plan con tarjeta, la mensualidad se cubre pagando la tarjeta: el botón
+   * abre el pago real en vez de marcarla sin mover dinero.
+   */
+  onPagarTarjeta?: () => void
 }
 
 /**
@@ -24,15 +29,16 @@ interface InstallmentCardProps {
  * había que acordarse de tocar cada mes. Ahora el avance sale de las fechas de
  * la tarjeta, y el detalle (al tocarla) deja corregir cualquier mes.
  */
-export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPagarActual }: InstallmentCardProps) {
+export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPagarActual, onPagarTarjeta }: InstallmentCardProps) {
   const [logoFailed, setLogoFailed] = useState(false)
   const { msi } = inst
   const M = msi.meses.length
   const enEstado = msi.meses.filter((m) => m.estado === 'por-pagar' || m.estado === 'vencida').length
   const linea = lineaDeEstado(inst)
   const showLogo = !!linkedAccount?.logo_domain && !logoFailed
-  const puedePagar =
-    onPagarActual && msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
+  const enCurso = !!msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
+  const conTarjeta = linkedAccount?.type === 'credit' && !!onPagarTarjeta
+  const puedePagar = enCurso && (conTarjeta || !!onPagarActual)
 
   return (
     <Card className="p-0">
@@ -107,13 +113,23 @@ export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPa
       </button>
       {puedePagar && (
         <div className="border-t border-border px-3.5 py-2">
-          <button
-            type="button"
-            onClick={onPagarActual}
-            className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-bold text-asset-ink transition-colors hover:bg-asset-soft/60"
-          >
-            <IconCheck size={14} stroke={2.5} /> Ya pagué la mensualidad {msi.actual!.n}
-          </button>
+          {conTarjeta ? (
+            <button
+              type="button"
+              onClick={onPagarTarjeta}
+              className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-bold text-primary-deep transition-colors hover:bg-primary-soft/60"
+            >
+              <IconCreditCardPay size={14} stroke={2.25} /> Pagar {linkedAccount!.name}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onPagarActual}
+              className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-bold text-asset-ink transition-colors hover:bg-asset-soft/60"
+            >
+              <IconCheck size={14} stroke={2.5} /> Ya pagué la mensualidad {msi.actual!.n}
+            </button>
+          )}
         </div>
       )}
     </Card>

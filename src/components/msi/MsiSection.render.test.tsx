@@ -21,7 +21,7 @@ vi.mock('@/lib/esquema', () => ({ tieneEsquemaMsi: () => Promise.resolve(true) }
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(2026, 9, 20, 12))
-  localStorage.setItem('fortnight:msi:aviso-fechas', '1')
+  localStorage.setItem('fortnight:msi:aviso-pagos', '1')
 })
 afterEach(() => {
   cleanup()
@@ -75,7 +75,10 @@ describe('MSI en Cuentas', () => {
   it('el detalle explica cada mes y deja marcar uno', { timeout: 20_000 }, async () => {
     await montar()
     await clic(screen.getByRole('button', { name: /iPhone: ver mensualidades/ }))
-    expect(screen.getAllByText(/Pagada sola: pasó su fecha límite/)).toHaveLength(3)
+    // Las dos primeras, antes de la ventana de movimientos: las decide la fecha.
+    expect(screen.getAllByText(/Pagada sola: pasó su fecha límite/)).toHaveLength(2)
+    // La 3ª: en el corte del 15 sep sólo quedaba lo que aún no se cobra, o sea, ya se pagó.
+    expect(screen.getByText(/Cubierta con tus pagos a BBVA/)).toBeTruthy()
     expect(screen.getByText(/Ya está en tu estado de cuenta/)).toBeTruthy()
     await clic(screen.getByRole('button', { name: 'Cambiar la mensualidad 4' }))
     await clic(screen.getByRole('button', { name: /Marcar pagada/ }))
@@ -85,10 +88,13 @@ describe('MSI en Cuentas', () => {
     })
   })
 
-  it('«Ya pagué la mensualidad 4» desde la tarjeta del plan', { timeout: 20_000 }, async () => {
+  it('en un plan con tarjeta, el botón paga la tarjeta en vez de marcar sin mover dinero', { timeout: 20_000 }, async () => {
     await montar()
-    await clic(screen.getByRole('button', { name: 'Ya pagué la mensualidad 4' }))
-    expect(doble.llamadas.some((l) => l.tabla === 'installments' && l.op === 'update')).toBe(true)
+    expect(screen.queryByRole('button', { name: /Ya pagué la mensualidad/ })).toBeNull()
+    await clic(screen.getByRole('button', { name: 'Pagar BBVA' }))
+    const { useUiStore } = await import('@/store/uiStore')
+    expect(useUiStore.getState().tarjeta).toMatchObject({ accountId: 'c1', vista: 'pagar' })
+    expect(doble.llamadas.some((l) => l.tabla === 'installments' && l.op === 'update')).toBe(false)
   })
 
   it('eliminar con pagos hechos no quita el cargo salvo que lo pidas', { timeout: 20_000 }, async () => {

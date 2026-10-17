@@ -369,3 +369,72 @@ describe('cambiar de tipo', () => {
     expect(screen.getByLabelText('Categoría')).toBeTruthy()
   })
 })
+
+describe('«1 solo pago»: una compra a meses que ya estaba anotada', () => {
+  const NU = { ...TARJETA, cut_day: 15, payment_due_day: 5 }
+  const llenar = async () => {
+    await escribir('¿Qué compraste?', 'iPhone')
+    await escribir('Monto total', '12000')
+    await escribir('Meses', '12')
+  }
+
+  it('la única tarjeta queda elegida (antes quedaba «Sin asociar»)', { timeout: 20_000 }, async () => {
+    await abrir({ initialKind: 'meses' })
+    expect((screen.getByLabelText('Tarjeta') as HTMLSelectElement).value).toBe('a-2')
+  })
+
+  it('«¿Fue a meses?» en un gasto con tarjeta pasa lo escrito a «A meses»', { timeout: 20_000 }, async () => {
+    await abrir()
+    await escribir('Monto', '12000')
+    await elegir('Cuenta', 'a-2')
+    await escribir('Nota (opcional)', 'iPhone')
+    await pulsar('¿Fue a meses?')
+    expect((screen.getByLabelText('¿Qué compraste?') as HTMLInputElement).value).toBe('iPhone')
+    expect((screen.getByLabelText('Monto total') as HTMLInputElement).value).toBe('12000')
+    expect((screen.getByLabelText('Tarjeta') as HTMLSelectElement).value).toBe('a-2')
+  })
+
+  it('si el gasto ya está en la tarjeta, lo convierte en vez de cargarlo otra vez', { timeout: 20_000 }, async () => {
+    await abrir(
+      { initialKind: 'meses', cuentas: [DEBITO, NU] },
+      {
+        ...SPLIT,
+        accounts: [DEBITO, NU],
+        transactions: [
+          { id: 'tx-ipad', user_id: 'u-1', account_id: 'a-2', amount: 12000, date: hoy(), type: 'transaction', description: 'iPad', category_id: 'c-comida', installment_id: null, transfer_id: null, created_at: '' },
+        ],
+      },
+    )
+    await llenar()
+    await asentar(6)
+    expect(document.body.textContent).toMatch(/¿Es este\? Ya tienes un gasto de \$12,000\.00 en Nu/)
+    await pulsar('Sí, convertir ese gasto')
+    await pulsar(/Convertir a 12 meses/)
+
+    expect(doble.llamadas.some((l) => l.tabla === 'installments' && l.op === 'insert')).toBe(true)
+    const convertido = doble.llamadas.find((l) => l.tabla === 'transactions' && l.op === 'update')
+    expect(convertido?.payload).toMatchObject({ type: 'installment' })
+    // Nada se carga otra vez: el saldo de la tarjeta no cambia.
+    expect(doble.llamadas.some((l) => l.tabla === 'transactions' && l.op === 'insert')).toBe(false)
+  })
+
+  it('«No, es otra compra» sigue con el cargo normal', { timeout: 20_000 }, async () => {
+    await abrir(
+      { initialKind: 'meses', cuentas: [DEBITO, NU] },
+      {
+        ...SPLIT,
+        accounts: [DEBITO, NU],
+        transactions: [
+          { id: 'tx-ipad', user_id: 'u-1', account_id: 'a-2', amount: 12000, date: hoy(), type: 'transaction', description: 'iPad', category_id: 'c-comida', installment_id: null, transfer_id: null, created_at: '' },
+        ],
+      },
+    )
+    await llenar()
+    await asentar(6)
+    await pulsar('No, es otra compra')
+    expect(document.body.textContent).not.toMatch(/¿Es este\?/)
+    await pulsar(/Registrar · /)
+    expect(doble.llamadas.some((l) => l.tabla === 'transactions' && l.op === 'insert')).toBe(true)
+    expect(doble.llamadas.some((l) => l.tabla === 'transactions' && l.op === 'update')).toBe(false)
+  })
+})

@@ -15,9 +15,10 @@ import { formatMXN } from '@/lib/format'
 import { fromKey, toKey } from '@/lib/localDate'
 import { fechaCorta } from '@/lib/movementDates'
 import { cuentaEnSuFecha, type InstallmentVivo } from '@/lib/msi'
+import { useUiStore } from '@/store/uiStore'
 import type { Account } from '@/types'
 
-const AVISO = 'fortnight:msi:aviso-fechas'
+const AVISO = 'fortnight:msi:aviso-pagos'
 
 function avisoVisto(): boolean {
   try {
@@ -38,7 +39,7 @@ interface MsiSectionProps {
  * un plan (también abre con `?msi=<id>`, desde el calendario o Movimientos).
  */
 export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
-  const { data: planes, create, update, marcarMes, liquidar, remove } = useInstallments()
+  const { data: planes, create, update, marcarMes, liquidar, remove, movsTarjetas } = useInstallments()
   const hoy = useHoy()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -46,6 +47,7 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
   const [editando, setEditando] = useState<InstallmentVivo | null>(null)
   const [verTerminados, setVerTerminados] = useState(false)
   const [avisoCerrado, setAvisoCerrado] = useState(avisoVisto)
+  const abrirPago = useUiStore((s) => s.abrirPago)
 
   const credit = accounts.filter((a) => a.type === 'credit')
   const accountById = new Map(accounts.map((a) => [a.id, a]))
@@ -115,11 +117,11 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
         </button>
       ) : (
         <div className="flex flex-col gap-3">
-          {!avisoCerrado && activos.length > 0 && (
+          {!avisoCerrado && activos.some((p) => p.account_id && accountById.has(p.account_id)) && (
             <div className="flex items-start gap-2 rounded-xl bg-lavender-soft/50 px-3.5 py-2.5">
               <p className="flex-1 text-[12.5px] leading-snug text-text">
-                Ahora tus MSI avanzan solos con las fechas de corte y pago de cada tarjeta. Toca un plan para ver
-                mes por mes y corregir cualquiera.
+                Tus MSI ahora se marcan con tus pagos: una mensualidad queda pagada cuando lo que pagaste a la tarjeta
+                la cubre, no sólo porque pasó la fecha. Toca un plan para ver el porqué de cada mes.
               </p>
               <button type="button" onClick={cerrarAviso} aria-label="Entendido" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-text-secondary">
                 <IconX size={15} />
@@ -166,6 +168,7 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
                   installment={p}
                   linkedAccount={cuenta ?? undefined}
                   onOpen={() => abrir(p.id)}
+                  onPagarTarjeta={cuenta ? () => abrirPago(cuenta.id) : undefined}
                   onPagarActual={() =>
                     void notificar(marcarMes(p.id, p.msi.actual!.n, 'paid'), [
                       'Mensualidad pagada',
@@ -214,6 +217,15 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
           onClose={cerrar}
           onEdit={() => setEditando(abierto)}
           onMarcarMes={(n, e) => notificar(marcarMes(abierto.id, n, e))}
+          onPagarTarjeta={
+            abierto.account_id && accountById.get(abierto.account_id)?.type === 'credit'
+              ? () => {
+                  // El pago se abre solo; al volver, la lista ya dice qué cubrió.
+                  cerrar()
+                  abrirPago(abierto.account_id!)
+                }
+              : undefined
+          }
           onCambiarFechaDeCompra={(fecha) =>
             notificar(update(abierto.id, { start_date: fecha }), ['Fecha de compra actualizada', fechaCorta(fecha)])
           }
@@ -239,6 +251,7 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
         onSubmit={create}
         editingInstallment={editando ?? undefined}
         onUpdate={update}
+        movimientos={movsTarjetas}
       />
     </section>
   )

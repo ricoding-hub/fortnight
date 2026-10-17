@@ -15,6 +15,11 @@ import type { Installment } from '@/types'
  * dónde sale su estado: automático, marcado a mano, o «anterior» (el progreso
  * que ya traía el contador viejo, para que nadie pierda lo que había marcado).
  *
+ * Desde v1.18, en una tarjeta con estado de cuenta, una mensualidad la cubren
+ * tus PAGOS, no la fecha: `cobertura` (calculada con el estado de cuenta) dice
+ * si lo pagado alcanzó. Sin pagos, una mensualidad vencida queda «vencida».
+ * Donde no hay estado de cuenta confiable, sigue mandando la fecha.
+ *
  * Todo es puro y en días locales `YYYY-MM-DD`: se prueba sin reloj ni red.
  */
 
@@ -37,7 +42,15 @@ export interface MesMsi {
   estado: EstadoMes
   origen: OrigenMes
   marcadaEl: string | null
+  /** El estado lo decidieron tus pagos a la tarjeta, no la fecha. */
+  porPagos: boolean
 }
+
+/**
+ * ¿Lo que pagaste a la tarjeta alcanzó para la mensualidad `n`? `null` = no
+ * hay estado de cuenta con qué saberlo: decide la fecha.
+ */
+export type CoberturaMsi = (n: number) => 'cubierta' | 'no-cubierta' | null
 
 export interface CalendarioMsi {
   meses: MesMsi[]
@@ -160,7 +173,12 @@ type PlanMsi = Pick<
   'total_amount' | 'monthly_amount' | 'months_total' | 'months_paid' | 'start_date' | 'created_at' | 'month_status' | 'billing_offset'
 > & { status?: Installment['status'] }
 
-export function calendarioMsi(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: string): CalendarioMsi {
+export function calendarioMsi(
+  inst: PlanMsi,
+  ciclo: CicloTarjeta | null,
+  hoy: string,
+  cobertura?: CoberturaMsi,
+): CalendarioMsi {
   const M = mesesTotales(inst)
   const compra = fechaDeCompra(inst, hoy)
   const offset = Math.min(12, Math.max(0, Math.round(num(inst.billing_offset))))
@@ -170,6 +188,8 @@ export function calendarioMsi(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: st
   for (let n = 1; n <= M; n++) {
     const f = fechasDeMes(compra, ciclo, offset, n)
     const marca = marcas[n]
+    // Una marca a mano gana siempre; sin ella, los pagos (si se saben) y luego la fecha.
+    const cob = marca ? null : (cobertura?.(n) ?? null)
     let estado: EstadoMes
     let origen: OrigenMes = 'auto'
     let marcadaEl: string | null = null
@@ -177,14 +197,15 @@ export function calendarioMsi(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: st
       estado = 'pagada'
       origen = marca.at == null ? 'anterior' : 'manual'
       marcadaEl = marca.at
+    } else if (marca?.s === 'unpaid') {
+      // «No la pagué»: vencida si ya pasó su fecha; si no, sigue por pagar.
+      estado = f.vence < hoy ? 'vencida' : f.desde <= hoy ? 'por-pagar' : 'proxima'
+      origen = 'manual'
+      marcadaEl = marca.at
+    } else if (cob === 'cubierta') {
+      estado = 'pagada'
     } else if (f.vence < hoy) {
-      if (marca?.s === 'unpaid') {
-        estado = 'vencida'
-        origen = 'manual'
-        marcadaEl = marca.at
-      } else {
-        estado = 'pagada'
-      }
+      estado = cob === 'no-cubierta' ? 'vencida' : 'pagada'
     } else if (f.desde <= hoy) {
       estado = 'por-pagar'
     } else {
@@ -199,6 +220,7 @@ export function calendarioMsi(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: st
       estado,
       origen,
       marcadaEl,
+      porPagos: cob != null,
     })
   }
 
@@ -249,10 +271,14 @@ export function conMarca(inst: PlanMsi, n: number, e: 'paid' | 'unpaid' | 'auto'
   return guardable(marcas)
 }
 
-/** «Liquidar el resto»: todas las que faltan quedan pagadas hoy. */
-export function liquidarMarcas(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: string): Record<string, unknown> {
+/**
+ * «Liquidar el resto»: todas las que faltan quedan pagadas hoy. Con la
+ * cobertura, también las que tus pagos no alcanzaron: sin ella, al dejar de
+ * saberse los pagos volverían a salir vencidas.
+ */
+export function liquidarMarcas(inst: PlanMsi, ciclo: CicloTarjeta | null, hoy: string, cobertura?: CoberturaMsi): Record<string, unknown> {
   const marcas = { ...marcasEfectivas(inst) }
-  for (const m of calendarioMsi(inst, ciclo, hoy).meses) {
+  for (const m of calendarioMsi(inst, ciclo, hoy, cobertura).meses) {
     if (m.estado !== 'pagada') marcas[m.n] = { s: 'paid', at: hoy }
   }
   return guardable(marcas)
@@ -323,8 +349,14 @@ export interface InstallmentVivo extends Installment {
   cargo: CargoMsi | null
 }
 
-export function vivo(inst: Installment, ciclo: CicloTarjeta | null, hoy: string, cargo: CargoMsi | null = null): InstallmentVivo {
-  const cal = calendarioMsi(inst, ciclo, hoy)
+export function vivo(
+  inst: Installment,
+  ciclo: CicloTarjeta | null,
+  hoy: string,
+  cargo: CargoMsi | null = null,
+  cobertura?: CoberturaMsi,
+): InstallmentVivo {
+  const cal = calendarioMsi(inst, ciclo, hoy, cobertura)
   // `months_paid` se sobrescribe con lo que dicen las fechas, así que las marcas
   // se guardan ya resueltas: recalcular sobre el plan vivo no confunde los
   // meses automáticos con marcas «anteriores».

@@ -6,6 +6,7 @@ import { LoanFields } from '@/components/add/LoanFields'
 import { MovementFields } from '@/components/add/MovementFields'
 import { useInstallments } from '@/hooks/useInstallments'
 import type { NewTransaction } from '@/hooks/useTransactions'
+import type { SemillaMeses } from '@/store/uiStore'
 import type { Account, Category } from '@/types'
 
 export type AddKind = 'gasto' | 'ingreso' | 'prestamo' | 'meses'
@@ -62,6 +63,8 @@ function CuerpoDeLaHoja({
   // anotar la quincena, el siguiente toque al + abriría en «Ingreso» y sería una
   // sorpresa. Lo que sí se recuerda es la categoría y la cuenta.
   const [kind, setKind] = useState<AddKind>(initialKind ?? 'gasto')
+  // «¿Fue a meses?» desde un gasto con tarjeta: lo ya escrito pasa a «A meses».
+  const [semilla, setSemilla] = useState<SemillaMeses | undefined>()
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -90,11 +93,15 @@ function CuerpoDeLaHoja({
           onCreate={onCreate}
           footerTarget={footerTarget}
           onDone={onDone}
+          onAMeses={(s) => {
+            setSemilla(s)
+            setKind('meses')
+          }}
         />
       ) : kind === 'prestamo' ? (
         <LoanFields key="prestamo" footerTarget={footerTarget} onDone={onDone} />
       ) : (
-        <ComprasAMeses accounts={accounts} footerTarget={footerTarget} onDone={onDone} />
+        <ComprasAMeses accounts={accounts} footerTarget={footerTarget} onDone={onDone} semilla={semilla} />
       )}
     </div>
   )
@@ -105,12 +112,14 @@ function ComprasAMeses({
   accounts,
   footerTarget,
   onDone,
+  semilla,
 }: {
   accounts: Account[]
   footerTarget: HTMLElement | null
   onDone: () => void
+  semilla?: SemillaMeses
 }) {
-  const { create } = useInstallments()
+  const { create, movsTarjetas } = useInstallments()
   return (
     <InstallmentFields
       key="meses"
@@ -119,6 +128,8 @@ function ComprasAMeses({
       footerTarget={footerTarget}
       onSubmit={create}
       onDone={onDone}
+      semilla={semilla}
+      movimientos={movsTarjetas}
     />
   )
 }
