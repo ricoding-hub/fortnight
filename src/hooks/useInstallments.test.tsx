@@ -196,4 +196,17 @@ describe('un gasto convertido a meses', () => {
     })
     expect(escrituras('installments', 'delete')).toHaveLength(1)
   })
+
+  it('quitarle la tarjeta lo devuelve a Movimientos con su tipo (uno del banco sigue siendo del banco)', { timeout: 20_000 }, async () => {
+    const delBanco = {
+      ...CONVERTIDO,
+      vinculados: [{ ...CONVERTIDO.vinculados[0], source: 'syncfy' }],
+    }
+    const { result } = await montar({ installments: [delBanco], accounts: [{ id: 'c1', ...CICLO }] })
+    await act(async () => {
+      await result.current.update('p1', { account_id: null })
+    })
+    expect(escrituras('transactions', 'delete')).toHaveLength(0)
+    expect(escrituras('transactions', 'update')[0]?.payload).toEqual({ type: 'sync', installment_id: null })
+  })
 })

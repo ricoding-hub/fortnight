@@ -19,7 +19,7 @@ const PLAN = {
   created_at: '2026-07-03T18:00:00Z', updated_at: '', month_status: { _v: 2 }, billing_offset: 0,
 } as Installment
 
-function abrir(o: { cobertura?: CoberturaMsi; estadosListos?: boolean; cargo?: { adoptado?: boolean } } = {}) {
+function abrir(o: { cobertura?: CoberturaMsi; estadosListos?: boolean; textoEspera?: string; cargo?: { adoptado?: boolean } } = {}) {
   const inst = vivo(PLAN, NU, '2026-10-20', o.cargo ? { id: 't1', amount: 12000, account_id: 'nu', date: '2026-07-03', ...o.cargo } : null, o.cobertura)
   render(
     <InstallmentDetailModal
@@ -34,6 +34,7 @@ function abrir(o: { cobertura?: CoberturaMsi; estadosListos?: boolean; cargo?: {
       onCambiarFechaDeCompra={async () => {}}
       onPagarTarjeta={() => {}}
       estadosListos={o.estadosListos}
+      textoEspera={o.textoEspera}
     />,
   )
 }
@@ -51,6 +52,9 @@ describe('detalle de un plan a meses', () => {
   it('«Liquidar» espera a que cargue el estado de cuenta', () => {
     abrir({ estadosListos: false })
     expect((screen.getByRole('button', { name: /Cargando/ }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    abrir({ estadosListos: false, textoEspera: 'Sin estado de cuenta' })
+    expect((screen.getByRole('button', { name: /Sin estado de cuenta/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('un gasto convertido lo dice, y no ofrece quitar el cargo', () => {

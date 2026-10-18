@@ -217,8 +217,8 @@ export function TransactionDetailModal({
           <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-primary-soft/40 px-3.5 py-3">
             <IconCalendarEvent size={16} className="mt-0.5 shrink-0 text-primary-deep" />
             <div className="min-w-0 flex-1 text-[12.5px] leading-snug text-text">
-              Es el cargo de una compra a meses: subió la deuda de la tarjeta por lo que faltaba pagar. Las
-              mensualidades, el plazo y este cargo se cambian desde el plan.
+              Es la compra de un plan a meses. Las mensualidades, el plazo y este cargo se cambian desde el
+              plan.
               <button
                 type="button"
                 onClick={() => {

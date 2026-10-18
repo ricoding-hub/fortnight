@@ -118,4 +118,23 @@ describe('editar un plan a meses', () => {
     expect((screen.getByLabelText('Meses') as HTMLSelectElement).value).toBe('12')
     expect((screen.getByLabelText('Fecha de compra') as HTMLInputElement).value).toBe('2026-10-12')
   })
+
+  it('un gasto convertido: la vista previa dice lo mismo que hará guardar', { timeout: 20_000 }, async () => {
+    const convertido: InstallmentVivo = vivo({ ...CRUDO, created_at: '2026-10-10T18:00:00Z' }, null, '2026-10-12', {
+      id: 't-1', amount: 9000, account_id: 'a-2', date: '2026-06-29', adoptado: true,
+    })
+    await abrir(convertido)
+    // Cambiar el plazo no toca el gasto.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Meses'), { target: { value: '6' } })
+    })
+    await asentar(2)
+    expect(document.body.textContent).not.toMatch(/pasa de/)
+    // Sin tarjeta, el gasto vuelve a Movimientos (no se borra).
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '' } })
+    })
+    await asentar(2)
+    expect(screen.getByText('Tu gasto de $9,000.00 vuelve a Movimientos como gasto normal.')).toBeTruthy()
+  })
 })

@@ -42,6 +42,7 @@ export interface MovEdc {
   category_id?: string | null
   description?: string | null
   created_at?: string | null
+  source?: string | null
 }
 
 /** Un plan MSI visto desde su tarjeta: su calendario por fechas y desde cuándo está en el saldo. */
@@ -78,6 +79,12 @@ export interface EstadoDeCuenta {
   corregido: boolean
   abonos: MovEdc[]
   pagado: number
+  /**
+   * Lo abonado a este estado antes del siguiente corte (cada abono con la regla
+   * de ESTE estado). Lo que no alcanzó a cubrir del mínimo se arrastra al
+   * siguiente: ver `coberturaMsi`.
+   */
+  pagadoAntesDelSiguiente: number
   falta: number
   minimo: number
   /** El pago mínimo que capturaste de tu estado de cuenta, si lo hiciste. */
@@ -169,7 +176,9 @@ export function cortesParaEstados(c: CicloTarjeta, hoy: string, desdeMinimo?: st
     if (k > hoy) break
     if (k >= desde) out.push(k)
   }
-  return out.slice(-13)
+  // Normalmente son 3 o 4. Con planes MSI largos se mira más atrás, hasta 40
+  // cortes, para que un plan de 24 meses no se salga de la ventana.
+  return out.slice(-40)
 }
 
 /** Desde qué fecha (exclusiva) hay que traer movimientos de estas tarjetas, o null si ninguna tiene corte. */
@@ -294,6 +303,14 @@ export function estadosDeCuenta(i: {
       const pngi = pngiBanco ?? pngiCalculado
       const abonos = despues.filter((m) => num(m.amount) < 0)
       const pagado = r2(abonos.reduce((s, m) => s + abonoAplicable(m, c, planes), 0))
+      const siguienteCorteDeLaLista = cortes[idx + 1]
+      const pagadoAntesDelSiguiente = siguienteCorteDeLaLista
+        ? r2(
+            abonos
+              .filter((m) => m.date.slice(0, 10) <= siguienteCorteDeLaLista)
+              .reduce((s, m) => s + abonoAplicable(m, c, planes), 0),
+          )
+        : pagado
       const falta = r2(Math.max(0, pngi - pagado))
 
       const msiExigible = Math.min(msiDelCorte, pngi)
@@ -334,6 +351,7 @@ export function estadosDeCuenta(i: {
         corregido: pngiBanco != null,
         abonos,
         pagado,
+        pagadoAntesDelSiguiente,
         falta,
         minimo,
         minimoBanco,

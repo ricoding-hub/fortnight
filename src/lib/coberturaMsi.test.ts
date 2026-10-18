@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { coberturaDe, coberturaMsi } from './coberturaMsi'
 import { estadosDeCuenta, planEdc, type MovEdc, type TarjetaEdc } from './estadoDeCuenta'
-import { calendarioMsi, conMarca, liquidarMarcas, marcasEfectivas } from './msi'
+import { calendarioMsi, conMarca, cuentaEnSuFecha, liquidarMarcas, marcasEfectivas } from './msi'
 import type { Installment } from '@/types'
 
 /*
@@ -209,7 +209,8 @@ describe('revisión v1.18: los pagos se aplican como lo hace el banco', () => {
     // 20 ene: la ventana normal ya no llega al corte del 15 oct.
     const sinVentana = calendario({ hoy: '2027-01-20' })
     expect(sinVentana.cal(PLAN).meses[0].porPagos).toBe(false)
-    const conVentana = calendario({ hoy: '2027-01-20', desde: '2026-09-20' })
+    // La ventana empieza un corte antes de la 1ª mensualidad (compra − 35 días).
+    const conVentana = calendario({ hoy: '2027-01-20', desde: '2026-08-16' })
     expect(conVentana.cal(PLAN).meses[0]).toMatchObject({ estado: 'vencida', porPagos: true })
   })
 
@@ -217,5 +218,68 @@ describe('revisión v1.18: los pagos se aplican como lo hace el banco', () => {
     const convertido = { ...PLAN, created_at: '2026-10-20T18:00:00Z' }
     const { cal } = calendario({ hoy: '2026-11-06', planes: [{ inst: convertido, cargo: { ...CARGO, adoptado: true } }] })
     expect(cal(convertido).meses[0]).toMatchObject({ estado: 'vencida', porPagos: true })
+  })
+})
+
+describe('revisión v1.18, ronda 2: el arrastre es el mínimo vencido', () => {
+  it('quien paga sólo el mínimo cada mes cubre sus mensualidades (el mínimo las incluye)', () => {
+    // 10,000 revolventes + el MSI de 6,000. Paga 1,250 (el mínimo) el 3 nov y el 3 dic.
+    const { cal } = calendario({
+      hoy: '2026-12-06',
+      tarjeta: { balance: 16000 - 2500 },
+      base: [mov('r', 10000, '2026-09-16'), mov('msi', 6000, '2026-09-20', { type: 'installment', installment_id: 'p1' })],
+      pagos: [pago('p1', 1250, '2026-11-03'), pago('p2', 1250, '2026-12-03')].map((m) => ({ ...m, amount: m.amount })),
+    })
+    const c = cal(PLAN)
+    expect(c.meses[0].estado).toBe('pagada')
+    expect(c.meses[1]).toMatchObject({ estado: 'pagada', porPagos: true })
+    expect(c.restante).toBe(4000)
+  })
+
+  it('sin pagar el mínimo de noviembre, la 2ª sí queda vencida', () => {
+    const { cal } = calendario({
+      hoy: '2026-12-06',
+      tarjeta: { balance: 16000 - 1250 },
+      base: [mov('r', 10000, '2026-09-16'), mov('msi', 6000, '2026-09-20', { type: 'installment', installment_id: 'p1' })],
+      pagos: [pago('p1', 1250, '2026-11-03')],
+    })
+    expect(cal(PLAN).meses[1].estado).toBe('vencida')
+  })
+
+  it('«Liquidar» un plan no infla lo que se arrastra a los otros', () => {
+    const otro: Installment = { ...PLAN, id: 'p2', name: 'Bici', total_amount: 3000, monthly_amount: 500, start_date: '2026-09-25', created_at: '2026-09-25T18:00:00Z' }
+    const liquidado = { ...PLAN, month_status: liquidarMarcas(PLAN, MP, '2026-11-12', (n) => (n === 1 ? 'cubierta' : null)) }
+    const { cal } = calendario({
+      hoy: '2026-12-06',
+      tarjeta: { balance: 4000 },
+      planes: [
+        { inst: liquidado, cargo: CARGO },
+        { inst: otro, cargo: { ...CARGO, id: 'msi2', amount: 3000, date: '2026-09-25' } },
+      ],
+      base: [
+        ...BASE,
+        mov('msi2', 3000, '2026-09-25', { type: 'installment', installment_id: 'p2' }),
+        pago('a', 5500, '2026-11-03'),
+        mov('c', 2000, '2026-11-10'),
+        mov('liq', -5000, '2026-11-12', { type: 'adjustment', installment_id: 'p1' }),
+        pago('b', 500, '2026-11-20'),
+      ],
+    })
+    expect(cal(otro).meses[0].estado).toBe('pagada')
+    // La 2ª de la bici (corte 15 nov) la cubre el pago del 20 nov.
+    expect(cal(otro).meses[1]).toMatchObject({ estado: 'pagada', porPagos: true })
+  })
+
+  it('si el estado anterior es aproximado (tarjeta dada de alta después), decide la fecha', () => {
+    const { mapa, cal } = calendario({ hoy: '2026-11-06', tarjeta: { created_at: '2026-10-01T18:00:00Z' } })
+    expect(mapa.has('p1:1')).toBe(false)
+    expect(cal(PLAN).meses[0]).toMatchObject({ estado: 'pagada', porPagos: false })
+  })
+
+  it('una mensualidad cubierta por tus pagos ya no cuenta en el pago de su fecha', () => {
+    const { cal } = calendario({ hoy: '2026-10-25', pagos: [pago('p', 5000, '2026-10-24')] })
+    const m = cal(PLAN).meses[0]
+    expect(m).toMatchObject({ estado: 'pagada', porPagos: true })
+    expect(cuentaEnSuFecha(m)).toBe(false)
   })
 })

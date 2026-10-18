@@ -179,7 +179,19 @@ export function InstallmentFields({
   // Al editar, lo que le pasa al cargo de la tarjeta, dicho antes de guardar.
   const cargo = editingInstallment?.cargo ?? null
   let efectoCargo: string | null = null
-  if (isEditing && cargo && borrador && editingInstallment) {
+  if (isEditing && cargo?.adoptado && borrador && editingInstallment) {
+    // Un gasto convertido: la misma regla que `update()` — sólo cambia con el
+    // total, y sin tarjeta vuelve a ser un gasto normal.
+    const nuevaTarjeta = accountId || null
+    const monto = Math.max(0, Math.round((cargo.amount + (totalAmount - Number(editingInstallment.total_amount))) * 100) / 100)
+    if (!nuevaTarjeta || monto <= 0) {
+      efectoCargo = `Tu gasto de ${formatMXN(cargo.amount)} vuelve a Movimientos como gasto normal.`
+    } else if (nuevaTarjeta !== cargo.account_id) {
+      efectoCargo = `Tu gasto de ${formatMXN(monto)} se mueve a ${selectedCard?.name ?? 'la otra tarjeta'}.`
+    } else if (Math.abs(monto - cargo.amount) >= 0.005) {
+      efectoCargo = `Tu gasto en ${selectedCard?.name ?? 'la tarjeta'} pasa de ${formatMXN(cargo.amount)} a ${formatMXN(monto)}.`
+    }
+  } else if (isEditing && cargo && borrador && editingInstallment) {
     const nuevaTarjeta = accountId || null
     if (!nuevaTarjeta) {
       efectoCargo = `Se quita el cargo de ${formatMXN(cargo.amount)} de la tarjeta.`

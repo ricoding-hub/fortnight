@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
+import { esColumnaFaltante } from '@/lib/esquema'
 import { toKey } from '@/lib/calendar'
 import { useAuth } from '@/hooks/useAuth'
 import type { Account } from '@/types'
@@ -261,14 +262,20 @@ export function useAccounts() {
       ),
     )
 
-    const { error: err } = await supabase.from('transactions').insert({
+    const fila: Record<string, unknown> = {
       user_id: user.id,
       account_id: account.id,
       amount: diff,
       type: 'adjustment',
       date: fecha ?? toKey(new Date()),
-      ...(opciones?.installmentId ? { installment_id: opciones.installmentId } : {}),
-    })
+    }
+    let { error: err } = await supabase
+      .from('transactions')
+      .insert(opciones?.installmentId ? { ...fila, installment_id: opciones.installmentId } : fila)
+    // Sin la migración 031 no existe `installment_id`: el ajuste se guarda igual.
+    if (err && opciones?.installmentId && esColumnaFaltante(err)) {
+      ;({ error: err } = await supabase.from('transactions').insert(fila))
+    }
 
     if (err) {
       // Revert optimistic update on failure

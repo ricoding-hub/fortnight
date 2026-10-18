@@ -27,6 +27,8 @@ interface InstallmentDetailModalProps {
    * dejaba sin marcar las mensualidades que tus pagos no cubrieron.
    */
   estadosListos?: boolean
+  /** Qué decir en el botón mientras no se puede liquidar. */
+  textoEspera?: string
 }
 
 const ESTADO: Record<EstadoMes, { texto: string; clase: string }> = {
@@ -71,6 +73,7 @@ export function InstallmentDetailModal({
   onCambiarFechaDeCompra,
   onPagarTarjeta,
   estadosListos = true,
+  textoEspera = 'Cargando…',
 }: InstallmentDetailModalProps) {
   const { msi, cargo } = inst
   const M = msi.meses.length
@@ -252,7 +255,7 @@ export function InstallmentDetailModal({
             </Button>
             {!msi.terminado ? (
               <Button variant="secondary" disabled={!estadosListos} onClick={() => setConfirmarLiquidar(true)}>
-                <IconCheck size={15} /> {estadosListos ? 'Liquidar' : 'Cargando…'}
+                <IconCheck size={15} /> {estadosListos ? 'Liquidar' : textoEspera}
               </Button>
             ) : (
               <span />

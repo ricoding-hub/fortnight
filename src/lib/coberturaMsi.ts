@@ -10,8 +10,11 @@ import type { CoberturaMsi } from '@/lib/msi'
  *
  * Aquí, para cada estado de cuenta, lo pagado después de su corte se aplica
  * como lo hace el banco, a lo más viejo primero:
- *   1. lo que quedó debiendo el estado anterior (ese saldo ya va dentro de
- *      este): sin esto, un solo pago cubría las mensualidades de dos cortes;
+ *   1. lo que quedó sin pagar del MÍNIMO del estado anterior (el pago vencido
+ *      va primero): sin esto, un solo pago cubría las mensualidades de dos
+ *      cortes. Es el mínimo, no todo el pago para no generar intereses: quien
+ *      paga el mínimo cada mes sí cubre sus mensualidades, porque el mínimo
+ *      las incluye;
  *   2. las mensualidades de este corte que marcaste pagadas a mano después del
  *      corte (siguen en el saldo, así que consumen el pago);
  *   3. las demás mensualidades de este corte, el plan más viejo primero.
@@ -44,11 +47,18 @@ export function coberturaMsi(porTarjeta: Record<string, EstadosTarjeta>, planes:
     const estados = [...et.estados].sort((a, b) => a.corte.localeCompare(b.corte))
     for (let k = 0; k < estados.length; k++) {
       const e = estados[k]
+      const pagadoCompleto = e.falta <= EPS
+      // El primero de la ventana no tiene anterior: no se sabe qué arrastra.
+      // La ventana empieza un corte antes de la 1ª mensualidad de cada plan,
+      // así que normalmente no trae mensualidades.
+      if (k === 0 && !pagadoCompleto) continue
       const anterior = k > 0 ? estados[k - 1] : null
-      // Lo pagado entre el corte anterior y éste ya se aplicó a aquél.
-      const arrastre = anterior ? Math.max(0, anterior.pngi - (anterior.pagado - e.pagado)) : 0
       if (e.aproximado) continue
-      let disponible = e.falta <= EPS ? Infinity : Math.max(0, e.pagado - arrastre)
+      // Un anterior aproximado (de antes de dar de alta la tarjeta) no dice
+      // cuánto se arrastra: si éste no está pagado, decide la fecha.
+      if (anterior?.aproximado && !pagadoCompleto) continue
+      const arrastre = anterior ? Math.max(0, anterior.minimo - anterior.pagadoAntesDelSiguiente) : 0
+      let disponible = pagadoCompleto ? Infinity : Math.max(0, e.pagado - arrastre)
       for (const p of delTarjeta) {
         if (p.enSaldoDesde > e.corte) continue
         for (const m of p.cal.meses) {

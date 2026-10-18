@@ -7,7 +7,7 @@ import { useTableChannel } from '@/hooks/useTableChannel'
 import { alCambiarTarjetas, avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
 import { coberturaDe, coberturaMsi } from '@/lib/coberturaMsi'
 import { esTablaFaltante, tieneEsquemaMsi } from '@/lib/esquema'
-import { toKey } from '@/lib/localDate'
+import { addDays, fromKey, toKey } from '@/lib/localDate'
 import type { CicloTarjeta } from '@/lib/cardCycle'
 import {
   calendarioMsi,
@@ -15,6 +15,7 @@ import {
   copiaContador,
   esAdoptado,
   fechaDeCompra,
+  marcasEfectivas,
   liquidarMarcas,
   marcasGuardables,
   nuevoCargo,
@@ -63,7 +64,7 @@ export type InstallmentPatch = Partial<Omit<NewInstallment, 'charge_to_card' | '
 /** La fila tal como llega, con la tarjeta y el cargo embebidos. */
 type Fila = Installment & {
   cuenta?: CicloTarjeta | null
-  vinculados?: (CargoMsi & { type?: string; created_at?: string | null })[] | null
+  vinculados?: (CargoMsi & { type?: string; created_at?: string | null; source?: string | null })[] | null
 }
 
 const EMPTY: InstallmentVivo[] = []
@@ -121,13 +122,25 @@ async function cicloDeCuenta(accountId: string | null | undefined): Promise<Cicl
   return (data as CicloTarjeta | null) ?? null
 }
 const CON_EMBEBIDOS =
-  '*, cuenta:accounts(type, cut_day, payment_due_day, payment_grace_days), vinculados:transactions(id, amount, account_id, date, type, created_at)'
+  '*, cuenta:accounts(type, cut_day, payment_due_day, payment_grace_days), vinculados:transactions(id, amount, account_id, date, type, created_at, source)'
 
 function cargoDe(f: Fila): CargoMsi | null {
   const c = (f.vinculados ?? []).find((t) => t.type === 'installment') ?? null
-  return c
-    ? { id: c.id, amount: Number(c.amount), account_id: c.account_id, date: c.date, adoptado: esAdoptado(c, f) }
-    : null
+  return c ? cargoDesde(c, f) : null
+}
+
+function cargoDesde(
+  c: { id: string; amount: number | string; account_id: string; date: string; created_at?: string | null; source?: string | null },
+  f: Pick<Installment, 'created_at'>,
+): CargoMsi {
+  return {
+    id: c.id,
+    amount: Number(c.amount),
+    account_id: c.account_id,
+    date: c.date,
+    adoptado: esAdoptado(c, f),
+    tipoOriginal: c.source === 'syncfy' ? 'sync' : 'transaction',
+  }
 }
 
 function cicloDe(f: Fila): CicloTarjeta | null {
@@ -156,12 +169,22 @@ export function useInstallments() {
   const [filas, setFilas] = useState<Fila[]>([])
   // Hasta dónde mirar el estado de cuenta de cada tarjeta: la compra más vieja
   // de sus planes activos (un plan de 12 meses rebasa la ventana normal).
+  // Un corte antes de la 1ª mensualidad: así cada corte del plan tiene un
+  // estado anterior del que saber qué quedó sin pagar.
+  // No se usa el `status` guardado (se escribe sólo con las fechas): un plan
+  // sale de la cuenta sólo si TODAS sus mensualidades tienen marca «pagada».
   const desdePorTarjeta = useMemo(() => {
     const out: Record<string, string> = {}
+    const hoyKey = toKey(new Date())
     for (const f of filas) {
-      if (!f.account_id || f.status === 'paid') continue
-      const compra = fechaDeCompra(f, toKey(new Date()))
-      if (!out[f.account_id] || compra < out[f.account_id]) out[f.account_id] = compra
+      if (!f.account_id) continue
+      const marcas = marcasEfectivas(f)
+      const M = Math.max(1, Math.round(Number(f.months_total) || 1))
+      let todas = true
+      for (let n = 1; n <= M; n++) if (marcas[n]?.s !== 'paid') todas = false
+      if (todas) continue
+      const desde = toKey(addDays(fromKey(fechaDeCompra(f, hoyKey)), -35))
+      if (!out[f.account_id] || desde < out[f.account_id]) out[f.account_id] = desde
     }
     return out
   }, [filas])
@@ -177,11 +200,18 @@ export function useInstallments() {
    * de corte salen de aquí también, así un fallo de la consulta de los planes
    * ya no deja a los MSI sin fechas.
    */
+  // Gana la respuesta más nueva: una carga lenta con la ventana vieja no debe
+  // pisar la que ya trajo la ventana ampliada.
+  const pedidos = useRef(0)
   const fetchTarjetas = useCallback(async () => {
     if (!user) return
+    const pedido = ++pedidos.current
+    const vigente = () => pedido === pedidos.current
     // Un fallo conserva la foto anterior (si había una buena); sin ella, se
     // marca para no calcular con datos que faltan.
-    const fallar = () => setFoto((f) => (f.listo && !f.fallo ? f : { ...FOTO_VACIA, listo: true, fallo: true }))
+    const fallar = () => {
+      if (vigente()) setFoto((f) => (f.listo && !f.fallo ? f : { ...FOTO_VACIA, listo: true, fallo: true }))
+    }
     const { data: cuentas, error: errCuentas } = await supabase.from('accounts').select('*').eq('type', 'credit')
     if (errCuentas) return fallar()
     const tarjetas = ((cuentas ?? []) as Account[]).filter((a) => a.type === 'credit')
@@ -189,7 +219,7 @@ export function useInstallments() {
     const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()), ventana)
     const ids = tarjetas.map((t) => t.id)
     if (!desde || ids.length === 0) {
-      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana })
+      if (vigente()) setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana })
       return
     }
     const [movs, corrRes] = await Promise.all([
@@ -197,6 +227,7 @@ export function useInstallments() {
       supabase.from('card_statements').select('*').in('account_id', ids),
     ])
     if (!movs) return fallar()
+    if (!vigente()) return
     const idsSet = new Set(ids)
     setFoto({
       tarjetas,
@@ -240,7 +271,6 @@ export function useInstallments() {
   useEffect(() => {
     if (!user) return
     // fetchTarjetas sólo cambia estado después de un await.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTarjetas()
   }, [user, fetchTarjetas, hoy])
 
@@ -250,12 +280,26 @@ export function useInstallments() {
   useEffect(() => () => {
     if (espera.current) clearTimeout(espera.current)
   }, [])
+  // El temporizador llama a la última versión (con la ventana vigente), no a la
+  // que existía cuando se programó.
+  const fetchRef = useRef(fetchTarjetas)
+  useEffect(() => {
+    fetchRef.current = fetchTarjetas
+  }, [fetchTarjetas])
   const recargarTarjetas = useCallback(() => {
     if (espera.current) clearTimeout(espera.current)
-    espera.current = setTimeout(() => void fetchTarjetas(), 250)
-  }, [fetchTarjetas])
-  // Un pago o un borrado desde otra pantalla de esta pestaña.
-  useEffect(() => alCambiarTarjetas(recargarTarjetas), [recargarTarjetas])
+    espera.current = setTimeout(() => void fetchRef.current(), 250)
+  }, [])
+  // Un pago o un borrado desde otra pantalla de esta pestaña. Los planes
+  // también: un DELETE filtrado no siempre llega por tiempo real.
+  useEffect(
+    () =>
+      alCambiarTarjetas(() => {
+        recargarTarjetas()
+        void fetchInstallments()
+      }),
+    [recargarTarjetas, fetchInstallments],
+  )
 
   useTableChannel(
     'estados',
@@ -290,6 +334,9 @@ export function useInstallments() {
   // cargados (o si fallaron), pediría el saldo completo. Hasta tenerlos, nada.
   const estadosListos = foto.listo && !loading
   const fiables = estadosListos && !foto.fallo && !error
+  // La cobertura necesita además la ventana completa: con la foto de la
+  // ventana corta, una mensualidad vieja sin pagar se daría por pagada.
+  const coberturaLista = fiables && JSON.stringify(foto.ventana) === claveVentana
 
   const { data, estados, planes, coberturas } = useMemo(() => {
     const porId = new Map(foto.tarjetas.map((t) => [t.id, t]))
@@ -300,9 +347,7 @@ export function useInstallments() {
       const embebido = cargoDe(f)
       if (embebido) return embebido
       const m = foto.movs.find((x) => x.installment_id === f.id && x.type === 'installment')
-      return m
-        ? { id: m.id, amount: Number(m.amount), account_id: m.account_id, date: m.date, adoptado: esAdoptado(m, f) }
-        : null
+      return m ? cargoDesde(m, f) : null
     }
     const planes: PlanEdc[] = filas.map((f) => planEdc(sinEmbebidos(f), ciclo(f), cargo(f), hoy))
     const estados = estadosDeCuenta({
@@ -317,10 +362,10 @@ export function useInstallments() {
     })
     // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
     // Sin un estado confiable, no se opina: decide la fecha.
-    const coberturas = fiables ? coberturaMsi(estados, planes) : new Map<string, never>()
+    const coberturas = coberturaLista ? coberturaMsi(estados, planes) : new Map<string, never>()
     const data = filas.map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f), coberturaDe(coberturas, f.id)))
     return { data, estados, planes, coberturas }
-  }, [filas, foto, hoy, fiables])
+  }, [filas, foto, hoy, coberturaLista])
 
   function filaDe(id: string) {
     return filas.find((f) => f.id === id)
@@ -388,12 +433,24 @@ export function useInstallments() {
         .from('transactions')
         .update({ type: 'installment', installment_id: inserted.id })
         .eq('id', adoptar)
+        .eq('account_id', row.account_id ?? '')
         .is('installment_id', null)
         .in('type', ['transaction', 'sync'])
-        .select('id')
+        .select('id, source')
       if (adoptErr || !adoptados || adoptados.length === 0) {
-        await supabase.from('installments').delete().eq('id', inserted.id)
+        // Si la escritura sí llegó (un error de red tras aplicarse), el gasto se
+        // devuelve; sin esto quedaba como «Compra a meses» sin plan.
+        if (adoptErr) {
+          const { data: tx } = await supabase.from('transactions').select('source').eq('id', adoptar).maybeSingle()
+          await supabase
+            .from('transactions')
+            .update({ type: (tx as { source?: string } | null)?.source === 'syncfy' ? 'sync' : 'transaction', installment_id: null })
+            .eq('id', adoptar)
+            .eq('installment_id', inserted.id)
+        }
+        const { error: delErr } = await supabase.from('installments').delete().eq('id', inserted.id)
         setFilas((prev) => prev.filter((i) => i.id !== base.id))
+        if (delErr) throw new Error('No se pudo convertir el gasto y el plan quedó a medias: bórralo desde Cuentas.')
         throw adoptErr ?? new Error('Ese gasto ya no se puede convertir: puede que se haya borrado o que ya sea de otro plan.')
       }
     } else if (chargeToCard && row.account_id) {
@@ -475,8 +532,12 @@ export function useInstallments() {
       ? Math.max(0, Math.round((cargo.amount + (Number(nuevo.total_amount) - Number(plano.total_amount))) * 100) / 100)
       : nuevoCargo(cargo.amount, [plano, cicloAntes], [nuevo, cicloDespues], reg)
 
+    const devuelto = cargo.adoptado && (!cuentaNueva || monto <= 0)
     try {
-      if (!cuentaNueva || monto <= 0) {
+      if (devuelto) {
+        // Un gasto convertido no se borra: vuelve a ser el gasto que era.
+        await devolverGasto(cargo, id)
+      } else if (!cuentaNueva || monto <= 0) {
         // «Sin tarjeta»: el cargo se quita (el formulario lo avisa antes).
         const { error: e } = await supabase.from('transactions').delete().eq('id', cargo.id)
         if (e) throw e
@@ -484,16 +545,27 @@ export function useInstallments() {
         Math.abs(monto - cargo.amount) < 0.005 &&
         cuentaNueva === cargo.account_id &&
         nuevo.start_date === cargo.date &&
-        nuevo.name === prev.name
+        (cargo.adoptado || nuevo.name === prev.name)
       ) {
         // Nada que mover.
       } else if (migrado) {
-        // Con la migración 036 el trigger recalcula el saldo al editar.
+        // Con la migración 036 el trigger recalcula el saldo al editar. Un
+        // gasto convertido conserva su descripción: es la del usuario.
         const { error: e } = await supabase
           .from('transactions')
-          .update({ amount: monto, account_id: cuentaNueva, date: nuevo.start_date, description: nuevo.name })
+          .update({
+            amount: monto,
+            account_id: cuentaNueva,
+            date: nuevo.start_date,
+            ...(cargo.adoptado ? {} : { description: nuevo.name }),
+          })
           .eq('id', cargo.id)
+          .eq('installment_id', id)
         if (e) throw e
+      } else if (cargo.adoptado) {
+        // Sin la 036 habría que borrarlo y crearlo otra vez, y dejaría de ser el
+        // gasto del usuario.
+        throw new Error('Para cambiar el total, la fecha o la tarjeta de un gasto convertido, corre la migración 036 en Supabase.')
       } else {
         // Sin ella, editar no mueve saldos: se borra y se vuelve a crear.
         // Primero el nuevo: si falla, el viejo sigue ahí y el saldo no se pierde.
@@ -532,7 +604,18 @@ export function useInstallments() {
       throw e
     }
     await fetchInstallments()
-    return { antes: cargo.amount, despues: cuentaNueva && monto > 0 ? monto : 0 }
+    avisarCambioEnTarjetas()
+    return { antes: cargo.amount, despues: devuelto ? null : cuentaNueva && monto > 0 ? monto : 0 }
+  }
+
+  /** Un gasto convertido vuelve a ser un gasto (con su tipo de antes). */
+  async function devolverGasto(cargo: CargoMsi, planId: string): Promise<void> {
+    const { error: e } = await supabase
+      .from('transactions')
+      .update({ type: cargo.tipoOriginal ?? 'transaction', installment_id: null })
+      .eq('id', cargo.id)
+      .eq('installment_id', planId)
+    if (e) throw e
   }
 
   /** Marcar una mensualidad pagada, no pagada, o regresarla a lo que digan las fechas. */
@@ -606,11 +689,9 @@ export function useInstallments() {
     // Un gasto convertido vuelve a ser el gasto que era: borrarlo con el plan
     // quitaba de tu historial una compra real.
     if (cargo?.adoptado) {
-      const { error: backErr } = await supabase
-        .from('transactions')
-        .update({ type: 'transaction', installment_id: null })
-        .eq('id', cargo.id)
-      if (backErr) {
+      try {
+        await devolverGasto(cargo, id)
+      } catch (backErr) {
         if (prev) setFilas((cur) => [prev, ...cur])
         throw backErr
       }
@@ -642,6 +723,10 @@ export function useInstallments() {
     tarjetas: foto.tarjetas,
     movsTarjetas: foto.movs,
     estadosListos,
+    /** Se puede confiar en la cobertura de los MSI (para «Liquidar»). */
+    coberturaLista,
+    /** No se pudo traer el estado de cuenta. */
+    estadosFallaron: foto.listo && foto.fallo,
     conCorrecciones: foto.conCorrecciones,
     recargarTarjetas: fetchTarjetas,
     loading: user ? loading : false,

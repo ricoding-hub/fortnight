@@ -341,6 +341,8 @@ export interface CargoMsi {
    * es la compra completa, en su fecha, y vive desde antes que el plan.
    */
   adoptado?: boolean
+  /** El tipo que tenía antes de convertirse, para devolverlo igual. */
+  tipoOriginal?: 'transaction' | 'sync'
 }
 
 /** ¿El movimiento existía antes que el plan? Entonces se adoptó (se convirtió), no se cargó. */
@@ -381,7 +383,11 @@ export function calendarioDe(inst: Installment & { msi?: CalendarioMsi }, ciclo:
   return inst.msi ?? calendarioMsi(inst, ciclo, hoy)
 }
 
-/** ¿Este mes sigue debiéndose en su fecha? Las pagadas a mano antes de tiempo, no. */
+/**
+ * ¿Este mes sigue debiéndose en su fecha? Las pagadas a mano y las que ya
+ * cubrieron tus pagos, no (una «pagada» automática por pagos sólo sale de
+ * «cubierta»: la no cubierta pasada su fecha queda «vencida»).
+ */
 export function cuentaEnSuFecha(m: MesMsi): boolean {
-  return !(m.estado === 'pagada' && m.origen !== 'auto')
+  return !(m.estado === 'pagada' && (m.origen !== 'auto' || m.porPagos))
 }

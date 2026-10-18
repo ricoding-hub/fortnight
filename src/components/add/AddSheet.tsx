@@ -72,7 +72,11 @@ function CuerpoDeLaHoja({
         ariaLabel="Qué vas a agregar"
         ancho="content"
         value={kind}
-        onChange={setKind}
+        onChange={(k) => {
+          // Cambiar de pestaña a mano empieza limpio: lo de «¿Fue a meses?» no se queda pegado.
+          setSemilla(undefined)
+          setKind(k)
+        }}
         options={[
           { value: 'gasto', label: 'Gasto', tone: 'debt' },
           { value: 'ingreso', label: 'Ingreso', tone: 'asset' },

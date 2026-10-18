@@ -216,6 +216,12 @@ describe('estado de cuenta — casos de borde', () => {
     expect(delCorte(e, '2027-02-28').saldoAlCorte).toBe(100)
   })
 
+  it('con planes largos, la ventana llega más atrás (hasta 40 cortes)', () => {
+    const cortes = cortesParaEstados(MP, '2028-01-20', '2026-08-16')
+    expect(cortes[0]).toBe('2026-09-15')
+    expect(cortes).toHaveLength(17)
+  })
+
   it('la ventana de movimientos: la gracia y dos ciclos más', () => {
     expect(ventanaDeMovimientos([MP], '2026-11-05')).toBe('2026-08-15')
     expect(cortesParaEstados(MP, '2026-11-05')).toEqual(['2026-08-15', '2026-09-15', '2026-10-15'])

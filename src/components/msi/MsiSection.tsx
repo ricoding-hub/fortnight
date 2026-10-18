@@ -39,7 +39,8 @@ interface MsiSectionProps {
  * un plan (también abre con `?msi=<id>`, desde el calendario o Movimientos).
  */
 export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
-  const { data: planes, create, update, marcarMes, liquidar, remove, movsTarjetas, estadosListos } = useInstallments()
+  const { data: planes, create, update, marcarMes, liquidar, remove, movsTarjetas, coberturaLista, estadosFallaron } =
+    useInstallments()
   const hoy = useHoy()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -216,7 +217,10 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
           hoy={hoy}
           onClose={cerrar}
           onEdit={() => setEditando(abierto)}
-          estadosListos={estadosListos}
+          // En una tarjeta con corte, las mensualidades las deciden tus pagos:
+          // liquidar sin saberlo dejaría sin marcar las que no cubriste.
+          estadosListos={coberturaLista || accountById.get(abierto.account_id ?? '')?.cut_day == null}
+          textoEspera={estadosFallaron ? 'Sin estado de cuenta' : 'Cargando…'}
           onMarcarMes={(n, e) => notificar(marcarMes(abierto.id, n, e))}
           onPagarTarjeta={
             abierto.account_id && accountById.get(abierto.account_id)?.type === 'credit'
