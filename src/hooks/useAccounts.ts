@@ -230,7 +230,18 @@ export function useAccounts() {
    * compras de antes del corte se fecha en el corte, para que entre en ese
    * estado de cuenta y no en el siguiente.
    */
-  async function updateBalance(account: Account, newBalance: number, fecha?: string) {
+  async function updateBalance(
+    account: Account,
+    newBalance: number,
+    fecha?: string,
+    opciones?: {
+      /**
+       * «Liquidar» un plan a meses: el ajuste paga ESE plan. Sin la etiqueta,
+       * contaba como pago de todo el estado de cuenta y cubría otros planes.
+       */
+      installmentId?: string
+    },
+  ) {
     if (!user) throw new Error('Not authenticated')
     // Synced accounts derive their balance from imported transactions plus
     // the periodic reconciliation adjustment. Manual edits would drift
@@ -256,6 +267,7 @@ export function useAccounts() {
       amount: diff,
       type: 'adjustment',
       date: fecha ?? toKey(new Date()),
+      ...(opciones?.installmentId ? { installment_id: opciones.installmentId } : {}),
     })
 
     if (err) {

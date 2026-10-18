@@ -136,9 +136,9 @@ export function AcercaDe() {
             date="17 oct 2026"
             current
             notes={[
-              'Tus MSI ahora se marcan con tus pagos: una mensualidad de tarjeta queda pagada cuando lo que pagaste a la tarjeta la cubre, no sólo porque pasó la fecha. Si no alcanzó, sale vencida y el detalle te dice por qué',
+              'Tus MSI ahora se marcan con tus pagos: una mensualidad de tarjeta queda pagada cuando lo que pagaste a la tarjeta la cubre, no sólo porque pasó la fecha. Tus pagos se aplican primero a lo más viejo, como lo hace el banco. Si no alcanzaron, sale vencida y el detalle te dice por qué',
               'En un plan con tarjeta, el botón ya no es "Ya pagué la mensualidad" (que no movía dinero) sino "Pagar Nu": registra el pago de verdad. Marcar sin pagar sigue en el detalle, como corrección',
-              'Si anotaste una compra a meses como gasto normal, ábrela en Movimientos y toca "Fue a meses: convertir". Tu estado de cuenta deja de pedirla completa, sin cargarla otra vez',
+              'Si anotaste una compra a meses como gasto normal, ábrela en Movimientos y toca "Fue a meses: convertir". Tu estado de cuenta deja de pedirla completa, sin cargarla otra vez. Si después borras el plan, el gasto vuelve a Movimientos',
               'Al registrar algo a meses, si ya tienes un gasto parecido en esa tarjeta te pregunta si es ese, para no contar la compra dos veces',
               'La tarjeta de tu última compra a meses (o la única que tienes) ya viene elegida, y en un gasto con tarjeta está el atajo "¿Fue a meses?"',
             ]}

@@ -41,6 +41,7 @@ export interface MovEdc {
   installment_id?: string | null
   category_id?: string | null
   description?: string | null
+  created_at?: string | null
 }
 
 /** Un plan MSI visto desde su tarjeta: su calendario por fechas y desde cuándo está en el saldo. */
@@ -136,7 +137,9 @@ export function planEdc(inst: Installment, ciclo: CicloTarjeta | null, cargo: Ca
     id: inst.id,
     account_id: inst.account_id,
     enSaldoDesde: cargo?.date ? String(cargo.date).slice(0, 10) : fechaDeCompra(inst, hoy),
-    registrado: registradoEl(inst, hoy),
+    // Un gasto convertido estaba en la tarjeta desde la compra: sus cortes
+    // también los deciden tus pagos, no sólo los posteriores a convertirlo.
+    registrado: cargo?.adoptado ? fechaDeCompra(inst, hoy) : registradoEl(inst, hoy),
     cal: calendarioMsi(inst, ciclo, hoy),
   }
 }
@@ -147,10 +150,16 @@ function diasHaciaAtras(c: CicloTarjeta): number {
   return (g > 0 ? g : 31) + 62
 }
 
-/** Los cortes ya ocurridos que todavía importan, del más viejo al más nuevo (máx. 13). */
-export function cortesParaEstados(c: CicloTarjeta, hoy: string): string[] {
+/**
+ * Los cortes ya ocurridos que todavía importan, del más viejo al más nuevo
+ * (máx. 13). `desdeMinimo`: si hay planes MSI más viejos que la ventana normal,
+ * se mira hasta su compra — si no, una mensualidad sin pagar «se pagaba sola»
+ * al salir de la ventana.
+ */
+export function cortesParaEstados(c: CicloTarjeta, hoy: string, desdeMinimo?: string | null): string[] {
   const h = fromKey(hoy)
-  const desde = toKey(addDays(h, -diasHaciaAtras(c)))
+  const normal = toKey(addDays(h, -diasHaciaAtras(c)))
+  const desde = desdeMinimo && desdeMinimo < normal ? desdeMinimo : normal
   const inicio = fromKey(desde)
   const out: string[] = []
   for (let i = 0; i < 400; i++) {
@@ -164,11 +173,15 @@ export function cortesParaEstados(c: CicloTarjeta, hoy: string): string[] {
 }
 
 /** Desde qué fecha (exclusiva) hay que traer movimientos de estas tarjetas, o null si ninguna tiene corte. */
-export function ventanaDeMovimientos(tarjetas: CicloTarjeta[], hoy: string): string | null {
+export function ventanaDeMovimientos(
+  tarjetas: (CicloTarjeta & { id?: string })[],
+  hoy: string,
+  desdePorTarjeta?: Readonly<Record<string, string>>,
+): string | null {
   let min: string | null = null
   for (const t of tarjetas) {
     if (t.type !== 'credit') continue
-    const cortes = cortesParaEstados(t, hoy)
+    const cortes = cortesParaEstados(t, hoy, t.id ? desdePorTarjeta?.[t.id] : null)
     if (cortes.length && (min == null || cortes[0] < min)) min = cortes[0]
   }
   return min
@@ -211,6 +224,29 @@ function msiDelCorteEn(planes: PlanEdc[], c: string): number {
   return r2(total)
 }
 
+/**
+ * Cuánto de un abono paga este estado de cuenta. Casi siempre, todo. La
+ * excepción es «Liquidar» con «Restar del saldo»: ese ajuste lleva el plan
+ * (`installment_id`) y paga sus mensualidades, la mayoría futuras, que no están
+ * en este estado. Contarlo completo cubría las mensualidades de otros planes.
+ * Aquí sólo cuenta lo de ese plan que ya estaba en este corte o antes y que la
+ * liquidación marcó pagado.
+ */
+function abonoAplicable(m: MovEdc, c: string, planes: PlanEdc[]): number {
+  const monto = -num(m.amount)
+  if (!m.installment_id || m.type === 'installment' || m.type === 'transfer') return monto
+  const plan = planes.find((p) => p.id === m.installment_id)
+  if (!plan) return monto
+  const fecha = m.date.slice(0, 10)
+  const enEste = plan.cal.meses
+    .filter(
+      (x) =>
+        x.corte != null && x.corte <= c && x.origen === 'manual' && x.estado === 'pagada' && x.marcadaEl != null && x.marcadaEl >= fecha,
+    )
+    .reduce((s, x) => s + x.monto, 0)
+  return Math.min(monto, enEste)
+}
+
 function siguienteCorte(c: CicloTarjeta, hoy: string): string | null {
   const h = fromKey(hoy)
   for (let i = 0; i < 3; i++) {
@@ -228,11 +264,13 @@ export function estadosDeCuenta(i: {
   planes: PlanEdc[]
   correcciones: CorreccionEdc[]
   hoy: string
+  /** Hasta dónde mirar por tarjeta (la compra MSI activa más vieja); ver `cortesParaEstados`. */
+  desdePorTarjeta?: Readonly<Record<string, string>>
 }): Record<string, EstadosTarjeta> {
   const out: Record<string, EstadosTarjeta> = {}
   for (const t of i.tarjetas) {
     if (t.type !== 'credit') continue
-    const cortes = cortesParaEstados(t, i.hoy)
+    const cortes = cortesParaEstados(t, i.hoy, i.desdePorTarjeta?.[t.id])
     if (corteEn(t, 2000, 0) == null) {
       out[t.id] = { accountId: t.id, sinCorte: true, estados: [], proximo: null, ultimo: null, siguiente: null }
       continue
@@ -255,7 +293,7 @@ export function estadosDeCuenta(i: {
       const pngiBanco = numONulo(corr?.no_interest_amount)
       const pngi = pngiBanco ?? pngiCalculado
       const abonos = despues.filter((m) => num(m.amount) < 0)
-      const pagado = r2(abonos.reduce((s, m) => s - num(m.amount), 0))
+      const pagado = r2(abonos.reduce((s, m) => s + abonoAplicable(m, c, planes), 0))
       const falta = r2(Math.max(0, pngi - pagado))
 
       const msiExigible = Math.min(msiDelCorte, pngi)

@@ -336,6 +336,19 @@ export interface CargoMsi {
   amount: number
   account_id: string
   date: string
+  /**
+   * Un gasto que ya estaba registrado y se convirtió a meses («Fue a meses»):
+   * es la compra completa, en su fecha, y vive desde antes que el plan.
+   */
+  adoptado?: boolean
+}
+
+/** ¿El movimiento existía antes que el plan? Entonces se adoptó (se convirtió), no se cargó. */
+export function esAdoptado(tx: { created_at?: string | null }, plan: { created_at?: string | null }): boolean {
+  if (!tx.created_at || !plan.created_at) return false
+  const a = Date.parse(tx.created_at)
+  const b = Date.parse(plan.created_at)
+  return Number.isFinite(a) && Number.isFinite(b) && a < b
 }
 
 /**

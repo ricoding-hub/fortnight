@@ -30,7 +30,7 @@ function avisoVisto(): boolean {
 
 interface MsiSectionProps {
   accounts: Account[]
-  updateBalance: (account: Account, nuevoSaldo: number) => Promise<void>
+  updateBalance: (account: Account, nuevoSaldo: number, fecha?: string, opciones?: { installmentId?: string }) => Promise<void>
 }
 
 /**
@@ -39,7 +39,7 @@ interface MsiSectionProps {
  * un plan (también abre con `?msi=<id>`, desde el calendario o Movimientos).
  */
 export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
-  const { data: planes, create, update, marcarMes, liquidar, remove, movsTarjetas } = useInstallments()
+  const { data: planes, create, update, marcarMes, liquidar, remove, movsTarjetas, estadosListos } = useInstallments()
   const hoy = useHoy()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -216,6 +216,7 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
           hoy={hoy}
           onClose={cerrar}
           onEdit={() => setEditando(abierto)}
+          estadosListos={estadosListos}
           onMarcarMes={(n, e) => notificar(marcarMes(abierto.id, n, e))}
           onPagarTarjeta={
             abierto.account_id && accountById.get(abierto.account_id)?.type === 'credit'
@@ -233,7 +234,11 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
             const monto = abierto.msi.restante
             const cuenta = abierto.account_id ? accountById.get(abierto.account_id) : undefined
             await notificar(liquidar(abierto.id), ['Plan liquidado', abierto.name])
-            if (restar && cuenta) await updateBalance(cuenta, Math.round((Number(cuenta.balance) - monto) * 100) / 100)
+            if (restar && cuenta) {
+              await updateBalance(cuenta, Math.round((Number(cuenta.balance) - monto) * 100) / 100, undefined, {
+                installmentId: abierto.id,
+              })
+            }
           }}
           onEliminar={async (quitarCargo) => {
             await notificar(remove(abierto.id, { quitarCargo }), ['Plan eliminado', abierto.name])

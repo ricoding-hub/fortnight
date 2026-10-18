@@ -406,10 +406,17 @@ describe('«1 solo pago»: una compra a meses que ya estaba anotada', () => {
       },
     )
     await llenar()
+    // Un peso de diferencia: es la misma compra.
+    await escribir('Monto total', '12000.50')
     await asentar(6)
     expect(document.body.textContent).toMatch(/¿Es este\? Ya tienes un gasto de \$12,000\.00 en Nu/)
     await pulsar('Sí, convertir ese gasto')
+    // El total es el del gasto, y ya no se edita: plan y tarjeta dicen lo mismo.
+    const total = screen.getByLabelText('Monto total') as HTMLInputElement
+    expect(total.value).toBe('12000')
+    expect(total.readOnly).toBe(true)
     await pulsar(/Convertir a 12 meses/)
+    expect((doble.llamadas.find((l) => l.tabla === 'installments' && l.op === 'insert')?.payload as { total_amount: number }).total_amount).toBe(12000)
 
     expect(doble.llamadas.some((l) => l.tabla === 'installments' && l.op === 'insert')).toBe(true)
     const convertido = doble.llamadas.find((l) => l.tabla === 'transactions' && l.op === 'update')
@@ -436,5 +443,21 @@ describe('«1 solo pago»: una compra a meses que ya estaba anotada', () => {
     await pulsar(/Registrar · /)
     expect(doble.llamadas.some((l) => l.tabla === 'transactions' && l.op === 'insert')).toBe(true)
     expect(doble.llamadas.some((l) => l.tabla === 'transactions' && l.op === 'update')).toBe(false)
+  })
+
+  it('si ya subiste el saldo de la tarjeta por esa compra, lo dice antes de cargarla otra vez', { timeout: 20_000 }, async () => {
+    await abrir(
+      { initialKind: 'meses', cuentas: [DEBITO, NU] },
+      {
+        ...SPLIT,
+        accounts: [DEBITO, NU],
+        transactions: [
+          { id: 'aj', user_id: 'u-1', account_id: 'a-2', amount: 12000, date: hoy(), type: 'adjustment', description: null, category_id: null, installment_id: null, transfer_id: null, created_at: '' },
+        ],
+      },
+    )
+    await llenar()
+    await asentar(6)
+    expect(document.body.textContent).toMatch(/Subiste el saldo de Nu \$12,000\.00 .* elige «Sí, ya está»/)
   })
 })

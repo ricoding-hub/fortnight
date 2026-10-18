@@ -37,7 +37,9 @@ export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPa
   const linea = lineaDeEstado(inst)
   const showLogo = !!linkedAccount?.logo_domain && !logoFailed
   const enCurso = !!msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
-  const conTarjeta = linkedAccount?.type === 'credit' && !!onPagarTarjeta
+  // Sólo donde tus pagos deciden la mensualidad (hay estado de cuenta para su
+  // corte); si no, pagar la tarjeta no la marcaría y «Ya pagué» es lo honesto.
+  const conTarjeta = linkedAccount?.type === 'credit' && !!onPagarTarjeta && !!msi.actual?.porPagos
   const puedePagar = enCurso && (conTarjeta || !!onPagarActual)
 
   return (

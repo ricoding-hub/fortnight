@@ -131,3 +131,69 @@ describe('useInstallments', () => {
     expect(escrituras('transactions', 'delete')).toHaveLength(1)
   })
 })
+
+describe('un gasto convertido a meses', () => {
+  // El gasto existía desde la compra (jul); el plan se creó al convertirlo (oct).
+  const CONVERTIDO = {
+    ...PLAN,
+    created_at: '2026-10-17T18:00:00Z',
+    vinculados: [{ id: 't1', amount: 12000, account_id: 'c1', date: '2026-07-03', type: 'installment', created_at: '2026-07-03T20:00:00Z' }],
+  }
+  const tablas = (): Filas => ({ installments: [CONVERTIDO], accounts: [{ id: 'c1', ...CICLO }] })
+
+  it('se reconoce como adoptado', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    expect(result.current.data[0].cargo).toMatchObject({ amount: 12000, adoptado: true })
+  })
+
+  it('cambiar el plazo no encoge la compra', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    await act(async () => {
+      await result.current.update('p1', { months_total: 6, monthly_amount: 2000 })
+    })
+    expect(escrituras('transactions')).toHaveLength(0)
+  })
+
+  it('cambiar el total mueve el cargo sólo por la diferencia', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    await act(async () => {
+      await result.current.update('p1', { total_amount: 12500, monthly_amount: 1041.67 })
+    })
+    expect(escrituras('transactions', 'update')[0]?.payload).toMatchObject({ amount: 12500 })
+  })
+
+  it('borrar el plan devuelve el gasto a Movimientos, no lo borra', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    await act(async () => {
+      await result.current.remove('p1', { quitarCargo: true })
+    })
+    expect(escrituras('transactions', 'delete')).toHaveLength(0)
+    expect(escrituras('transactions', 'update')[0]?.payload).toEqual({ type: 'transaction', installment_id: null })
+    expect(escrituras('installments', 'delete')).toHaveLength(1)
+  })
+
+  it('convertir no carga nada nuevo: el gasto pasa a ser el cargo del plan', { timeout: 20_000 }, async () => {
+    const { result } = await montar({ installments: [], accounts: [{ id: 'c1', ...CICLO }], transactions: [{ id: 'tx-x' }] })
+    await act(async () => {
+      await result.current.create({
+        name: 'iPhone', total_amount: 12000, monthly_amount: 1000, months_total: 12,
+        account_id: 'c1', start_date: '2026-07-03', charge_to_card: false, adopt_tx_id: 'tx-x',
+      })
+    })
+    expect(escrituras('transactions', 'insert')).toHaveLength(0)
+    expect(escrituras('transactions', 'update')[0]?.payload).toMatchObject({ type: 'installment' })
+  })
+
+  it('si el gasto ya no se puede convertir, el plan se deshace', { timeout: 20_000 }, async () => {
+    const { result } = await montar({ installments: [], accounts: [{ id: 'c1', ...CICLO }], transactions: [] })
+    await act(async () => {
+      await expect(
+        result.current.create({
+          name: 'iPhone', total_amount: 12000, monthly_amount: 1000, months_total: 12,
+          account_id: 'c1', start_date: '2026-07-03', charge_to_card: false, adopt_tx_id: 'tx-borrado',
+        }),
+      ).rejects.toThrow(/ya no se puede convertir/)
+    })
+    expect(escrituras('installments', 'delete')).toHaveLength(1)
+  })
+})

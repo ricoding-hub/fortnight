@@ -13,6 +13,8 @@ import {
   calendarioMsi,
   conMarca,
   copiaContador,
+  esAdoptado,
+  fechaDeCompra,
   liquidarMarcas,
   marcasGuardables,
   nuevoCargo,
@@ -61,7 +63,7 @@ export type InstallmentPatch = Partial<Omit<NewInstallment, 'charge_to_card' | '
 /** La fila tal como llega, con la tarjeta y el cargo embebidos. */
 type Fila = Installment & {
   cuenta?: CicloTarjeta | null
-  vinculados?: (CargoMsi & { type?: string })[] | null
+  vinculados?: (CargoMsi & { type?: string; created_at?: string | null })[] | null
 }
 
 const EMPTY: InstallmentVivo[] = []
@@ -79,8 +81,12 @@ interface FotoTarjetas {
    * que no has pagado nada. Mejor no decir nada que una cifra falsa.
    */
   fallo: boolean
+  /** La ventana con la que se trajeron los movimientos: los estados no van más atrás. */
+  ventana: Record<string, string>
 }
-const FOTO_VACIA: FotoTarjetas = { tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false }
+const FOTO_VACIA: FotoTarjetas = {
+  tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false, ventana: {},
+}
 
 /** PostgREST corta en 1,000 filas: una tarjeta sincronizada las rebasa en la ventana. */
 const PAGINA = 1000
@@ -115,11 +121,13 @@ async function cicloDeCuenta(accountId: string | null | undefined): Promise<Cicl
   return (data as CicloTarjeta | null) ?? null
 }
 const CON_EMBEBIDOS =
-  '*, cuenta:accounts(type, cut_day, payment_due_day, payment_grace_days), vinculados:transactions(id, amount, account_id, date, type)'
+  '*, cuenta:accounts(type, cut_day, payment_due_day, payment_grace_days), vinculados:transactions(id, amount, account_id, date, type, created_at)'
 
 function cargoDe(f: Fila): CargoMsi | null {
   const c = (f.vinculados ?? []).find((t) => t.type === 'installment') ?? null
-  return c ? { id: c.id, amount: Number(c.amount), account_id: c.account_id, date: c.date } : null
+  return c
+    ? { id: c.id, amount: Number(c.amount), account_id: c.account_id, date: c.date, adoptado: esAdoptado(c, f) }
+    : null
 }
 
 function cicloDe(f: Fila): CicloTarjeta | null {
@@ -146,6 +154,19 @@ export function useInstallments() {
   const { user } = useAuth()
   const hoy = useHoy()
   const [filas, setFilas] = useState<Fila[]>([])
+  // Hasta dónde mirar el estado de cuenta de cada tarjeta: la compra más vieja
+  // de sus planes activos (un plan de 12 meses rebasa la ventana normal).
+  const desdePorTarjeta = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of filas) {
+      if (!f.account_id || f.status === 'paid') continue
+      const compra = fechaDeCompra(f, toKey(new Date()))
+      if (!out[f.account_id] || compra < out[f.account_id]) out[f.account_id] = compra
+    }
+    return out
+  }, [filas])
+  // Como texto: la carga se repite sólo cuando la fecha cambia, no con cada plan.
+  const claveVentana = JSON.stringify(desdePorTarjeta)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | null>(null)
   const [foto, setFoto] = useState<FotoTarjetas>(FOTO_VACIA)
@@ -164,10 +185,11 @@ export function useInstallments() {
     const { data: cuentas, error: errCuentas } = await supabase.from('accounts').select('*').eq('type', 'credit')
     if (errCuentas) return fallar()
     const tarjetas = ((cuentas ?? []) as Account[]).filter((a) => a.type === 'credit')
-    const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()))
+    const ventana = JSON.parse(claveVentana) as Record<string, string>
+    const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()), ventana)
     const ids = tarjetas.map((t) => t.id)
     if (!desde || ids.length === 0) {
-      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false })
+      setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana })
       return
     }
     const [movs, corrRes] = await Promise.all([
@@ -185,8 +207,9 @@ export function useInstallments() {
       conCorrecciones: !corrRes.error || !esTablaFaltante(corrRes.error),
       listo: true,
       fallo: false,
+      ventana,
     })
-  }, [user])
+  }, [user, claveVentana])
 
   const fetchInstallments = useCallback(async () => {
     if (!user) return
@@ -277,7 +300,9 @@ export function useInstallments() {
       const embebido = cargoDe(f)
       if (embebido) return embebido
       const m = foto.movs.find((x) => x.installment_id === f.id && x.type === 'installment')
-      return m ? { id: m.id, amount: Number(m.amount), account_id: m.account_id, date: m.date } : null
+      return m
+        ? { id: m.id, amount: Number(m.amount), account_id: m.account_id, date: m.date, adoptado: esAdoptado(m, f) }
+        : null
     }
     const planes: PlanEdc[] = filas.map((f) => planEdc(sinEmbebidos(f), ciclo(f), cargo(f), hoy))
     const estados = estadosDeCuenta({
@@ -285,6 +310,9 @@ export function useInstallments() {
       movs: foto.movs,
       planes,
       correcciones: foto.correcciones,
+      // La de la foto, no la de los planes: sin los movimientos de más atrás,
+      // un estado viejo diría que no pagaste.
+      desdePorTarjeta: foto.ventana,
       hoy,
     })
     // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
@@ -355,14 +383,18 @@ export function useInstallments() {
       // El gasto ya está en el saldo: sólo cambia de tipo y apunta al plan. Si
       // no se puede, el plan se deshace — un plan con su compra contada dos
       // veces (como gasto y en el plan) es justo lo que esto evita.
-      const { error: adoptErr } = await supabase
+      // Sólo un gasto suelto: si ya es de otro plan o se borró, no se toca.
+      const { data: adoptados, error: adoptErr } = await supabase
         .from('transactions')
         .update({ type: 'installment', installment_id: inserted.id })
         .eq('id', adoptar)
-      if (adoptErr) {
+        .is('installment_id', null)
+        .in('type', ['transaction', 'sync'])
+        .select('id')
+      if (adoptErr || !adoptados || adoptados.length === 0) {
         await supabase.from('installments').delete().eq('id', inserted.id)
         setFilas((prev) => prev.filter((i) => i.id !== base.id))
-        throw adoptErr
+        throw adoptErr ?? new Error('Ese gasto ya no se puede convertir: puede que se haya borrado o que ya sea de otro plan.')
       }
     } else if (chargeToCard && row.account_id) {
       // Lo que falta por pagar: sin pagos es el total exacto (la última
@@ -437,7 +469,11 @@ export function useInstallments() {
     }
     const reg = registradoEl(plano, hoyLocal)
     const cuentaNueva = cuentaCambia ? patch.account_id ?? null : prev.account_id
-    const monto = nuevoCargo(cargo.amount, [plano, cicloAntes], [nuevo, cicloDespues], reg)
+    // Un gasto convertido es la compra completa: cambiar el plazo o la fecha no
+    // lo encoge (sus mensualidades se pagaron por la tarjeta); sólo el total.
+    const monto = cargo.adoptado
+      ? Math.max(0, Math.round((cargo.amount + (Number(nuevo.total_amount) - Number(plano.total_amount))) * 100) / 100)
+      : nuevoCargo(cargo.amount, [plano, cicloAntes], [nuevo, cicloDespues], reg)
 
     try {
       if (!cuentaNueva || monto <= 0) {
@@ -567,8 +603,19 @@ export function useInstallments() {
     const prev = filaDe(id)
     setFilas((cur) => cur.filter((i) => i.id !== id))
     const cargo = prev ? cargoDe(prev) : null
-    // El cargo va primero: la llave foránea es `on delete set null`.
-    if (cargo && opciones.quitarCargo) {
+    // Un gasto convertido vuelve a ser el gasto que era: borrarlo con el plan
+    // quitaba de tu historial una compra real.
+    if (cargo?.adoptado) {
+      const { error: backErr } = await supabase
+        .from('transactions')
+        .update({ type: 'transaction', installment_id: null })
+        .eq('id', cargo.id)
+      if (backErr) {
+        if (prev) setFilas((cur) => [prev, ...cur])
+        throw backErr
+      }
+    } else if (cargo && opciones.quitarCargo) {
+      // El cargo va primero: la llave foránea es `on delete set null`.
       const { error: chargeErr } = await supabase.from('transactions').delete().eq('id', cargo.id)
       if (chargeErr) {
         if (prev) setFilas((cur) => [prev, ...cur])
@@ -580,6 +627,7 @@ export function useInstallments() {
       if (prev) setFilas((cur) => [prev, ...cur])
       throw err
     }
+    avisarCambioEnTarjetas()
   }
 
   const active = useMemo(() => data.filter((i) => i.status === 'active'), [data])

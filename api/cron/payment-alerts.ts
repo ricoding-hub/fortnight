@@ -61,7 +61,7 @@ export async function GET(req: Request): Promise<Response> {
       if (pago.corte && account.cut_day != null) {
         const corte = pago.corte
         const [movsRes, corrRes, planesRes] = await Promise.all([
-          sb.from('transactions').select('amount, date').eq('account_id', account.id).gt('date', corte),
+          sb.from('transactions').select('amount, date, type, installment_id').eq('account_id', account.id).gt('date', corte),
           sb.from('card_statements').select('no_interest_amount').eq('account_id', account.id).eq('cut_date', corte).maybeSingle(),
           sb.from('installments').select('*').eq('account_id', account.id),
         ])

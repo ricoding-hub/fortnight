@@ -107,6 +107,7 @@ export function InstallmentFields({
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -205,6 +206,27 @@ export function InstallmentFields({
       : null
   const sugerirConvertir = parecida && parecida.id !== noEsEse ? parecida : null
 
+  // Si subiste el saldo de la tarjeta a mano desde la compra por al menos su
+  // monto, cargarla otra vez la contaría dos veces: se dice antes de guardar.
+  const ajusteReciente =
+    !isEditing && !adoptado && selectedCard && chargeToCard && totalAmount > 0 && fechaValida && movimientos
+      ? (movimientos.find(
+          (m) =>
+            m.account_id === selectedCard.id &&
+            m.type === 'adjustment' &&
+            Number(m.amount) >= totalAmount - 1 &&
+            m.date.slice(0, 10) >= startDate!,
+        ) ?? null)
+      : null
+
+  /** Convertir ese gasto: el plan toma su monto, su fecha y su tarjeta. */
+  function convertir(m: NonNullable<typeof parecida>) {
+    setValue('total_amount', String(Number(m.amount)), { shouldValidate: true })
+    setValue('start_date', m.date.slice(0, 10), { shouldValidate: true })
+    setValue('is_zero_interest', true)
+    setAdoptado({ id: m.id, accountId: m.account_id })
+  }
+
   // Un error en un campo que está dentro de «Más opciones» no se puede quedar
   // escondido: se abre para que se vea.
   useEffect(() => {
@@ -286,6 +308,9 @@ export function InstallmentFields({
           autoComplete="off"
           placeholder="0.00"
           error={errors.total_amount?.message}
+          // Al convertir un gasto, el total ES ese gasto: si cambiara, el plan y
+          // la tarjeta dirían cosas distintas.
+          readOnly={!!adoptado}
           // Texto y no type="number": su paso por omisión es 1 y rechaza "574.5", y
           // descarta la coma decimal antes de que el valor llegue al código.
           {...register('total_amount')}
@@ -366,7 +391,7 @@ export function InstallmentFields({
             en vez de cargarla otra vez.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button type="button" compact onClick={() => setAdoptado({ id: sugerirConvertir.id, accountId: selectedCard.id })}>
+            <Button type="button" compact onClick={() => convertir(sugerirConvertir)}>
               Sí, convertir ese gasto
             </Button>
             <Button type="button" compact variant="secondary" onClick={() => setNoEsEse(sugerirConvertir.id)}>
@@ -417,6 +442,12 @@ export function InstallmentFields({
                   )}
                 </p>
               )}
+              {ajusteReciente && (
+                <p className="mt-1.5 rounded-lg bg-warning/10 px-2.5 py-1.5 text-[12px] leading-snug text-text" role="status">
+                  Subiste el saldo de {selectedCard.name} {formatMXN(Number(ajusteReciente.amount))} el{' '}
+                  {fechaCorta(ajusteReciente.date.slice(0, 10))}. Si eso ya incluye esta compra, elige «Sí, ya está».
+                </p>
+              )}
             </div>
           )}
         />
@@ -434,6 +465,7 @@ export function InstallmentFields({
 
       {masOpciones && (
         <div className="flex animate-[fade-in_160ms_ease-out] flex-col gap-3 motion-reduce:animate-none">
+          {!adoptado && (
           <div>
             <p className="mb-1.5 text-[13px] font-medium text-text">Tipo de plan</p>
             <Controller
@@ -455,6 +487,7 @@ export function InstallmentFields({
               <p className="mt-1.5 text-[12px] text-text-secondary">Escribe el monto total ya con los intereses.</p>
             )}
           </div>
+          )}
 
           {selectedCard?.cut_day != null && (
             <Select label="Primera mensualidad" error={errors.billing_offset?.message} {...register('billing_offset')}>

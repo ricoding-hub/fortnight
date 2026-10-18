@@ -22,6 +22,11 @@ interface InstallmentDetailModalProps {
   onCambiarFechaDeCompra: (fecha: string) => Promise<void>
   /** Pagar la tarjeta del plan (el pago real que cubre la mensualidad). */
   onPagarTarjeta?: () => void
+  /**
+   * El estado de cuenta ya cargó. Antes, «Liquidar» calculaba con las fechas y
+   * dejaba sin marcar las mensualidades que tus pagos no cubrieron.
+   */
+  estadosListos?: boolean
 }
 
 const ESTADO: Record<EstadoMes, { texto: string; clase: string }> = {
@@ -40,7 +45,7 @@ function porQue(m: MesMsi, tarjeta: string | undefined): string {
   }
   if (m.porPagos) {
     if (m.estado === 'pagada') return `Cubierta con tus pagos a ${tarjeta ?? 'la tarjeta'}`
-    if (m.estado === 'vencida') return 'Tu pago no alcanzó esta mensualidad'
+    if (m.estado === 'vencida') return 'Tus pagos no la cubrieron'
   }
   if (m.estado === 'pagada') return 'Pagada sola: pasó su fecha límite'
   if (m.estado === 'por-pagar') return 'Ya está en tu estado de cuenta'
@@ -65,6 +70,7 @@ export function InstallmentDetailModal({
   onEliminar,
   onCambiarFechaDeCompra,
   onPagarTarjeta,
+  estadosListos = true,
 }: InstallmentDetailModalProps) {
   const { msi, cargo } = inst
   const M = msi.meses.length
@@ -81,6 +87,10 @@ export function InstallmentDetailModal({
   const linea = lineaDeEstado(inst)
   const conTarjeta = linkedAccount?.type === 'credit'
   const enCurso = !!msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
+  // Pagar la tarjeta sólo cubre la mensualidad donde los pagos deciden (hay
+  // estado de cuenta confiable para ese corte). Si no, marcarla es lo honesto.
+  const pagoDecide = conTarjeta && !!msi.actual?.porPagos
+  const algunoPorPagos = msi.meses.some((m) => m.porPagos)
 
   async function correr(clave: string, f: () => Promise<void>) {
     setOcupado(clave)
@@ -114,7 +124,7 @@ export function InstallmentDetailModal({
               {msi.pagadas} pagada{msi.pagadas === 1 ? '' : 's'} · {formatMXN(Number(inst.total_amount))} en {M} meses
               {linkedAccount ? ` · ${linkedAccount.name}` : ' · sin tarjeta'}
             </p>
-            {conTarjeta && enCurso && onPagarTarjeta && (
+            {pagoDecide && enCurso && onPagarTarjeta && (
               <Button compact className="mt-2.5" onClick={onPagarTarjeta}>
                 <IconCreditCardPay size={15} /> Pagar {linkedAccount!.name}
               </Button>
@@ -208,8 +218,8 @@ export function InstallmentDetailModal({
               })}
             </ol>
             <p className="mt-1.5 text-[11.5px] leading-snug text-text-secondary">
-              {conTarjeta
-                ? `Cada mensualidad se marca sola cuando tus pagos a ${linkedAccount!.name} la cubren. Marcarla a mano no mueve tu saldo.`
+              {conTarjeta && algunoPorPagos
+                ? `Las mensualidades con estado de cuenta se marcan solas cuando tus pagos a ${linkedAccount!.name} las cubren. Marcarlas a mano no mueve tu saldo.`
                 : 'Marcar una mensualidad no mueve tu saldo: el pago lo registras como siempre.'}
               {linkedAccount?.cut_day ? ` Calculado con el corte actual (día ${linkedAccount.cut_day}).` : ''}
             </p>
@@ -217,7 +227,12 @@ export function InstallmentDetailModal({
 
           {/* El movimiento que lo respalda */}
           <div className="rounded-xl bg-bg-secondary px-3.5 py-2.5 text-[12.5px] text-text-secondary">
-            {cargo ? (
+            {cargo?.adoptado ? (
+              <>
+                Es tu gasto de <b className="font-mono text-text">{formatMXN(cargo.amount)}</b> del {fechaCorta(cargo.date)} en{' '}
+                <b className="text-text">{linkedAccount?.name ?? 'la tarjeta'}</b>, convertido a meses.
+              </>
+            ) : cargo ? (
               <>
                 Cargo a <b className="text-text">{linkedAccount?.name ?? 'la tarjeta'}</b> ·{' '}
                 <b className="font-mono text-text">{formatMXN(cargo.amount)}</b> · {fechaCorta(cargo.date)}
@@ -236,8 +251,8 @@ export function InstallmentDetailModal({
               <IconPencil size={15} /> Editar
             </Button>
             {!msi.terminado ? (
-              <Button variant="secondary" onClick={() => setConfirmarLiquidar(true)}>
-                <IconCheck size={15} /> Liquidar
+              <Button variant="secondary" disabled={!estadosListos} onClick={() => setConfirmarLiquidar(true)}>
+                <IconCheck size={15} /> {estadosListos ? 'Liquidar' : 'Cargando…'}
               </Button>
             ) : (
               <span />
@@ -274,11 +289,15 @@ export function InstallmentDetailModal({
         title="Eliminar plan"
         destructive
         confirmLabel="Eliminar"
-        message={`Se borra «${inst.name}» y su calendario de mensualidades.`}
+        message={
+          cargo?.adoptado
+            ? `Se borra «${inst.name}» y su calendario. Tu gasto de ${formatMXN(cargo.amount)} vuelve a Movimientos como gasto normal.`
+            : `Se borra «${inst.name}» y su calendario de mensualidades.`
+        }
         onClose={() => setConfirmarBorrar(false)}
-        onConfirm={() => void correr('borrar', () => onEliminar(quitarCargo && !!cargo))}
+        onConfirm={() => void correr('borrar', () => onEliminar(quitarCargo && !!cargo && !cargo.adoptado))}
       >
-        {cargo && (
+        {cargo && !cargo.adoptado && (
           <label className="flex min-h-[44px] items-start gap-2.5 text-[13px] text-text">
             <input type="checkbox" checked={quitarCargo} onChange={(e) => setQuitarCargo(e.target.checked)} className="mt-0.5 h-5 w-5 accent-primary" />
             <span>

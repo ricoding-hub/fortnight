@@ -58,4 +58,19 @@ describe('el aviso del cron usa el mismo estado de cuenta que la app', () => {
     const p = { ...PLAN, start_date: '2027-01-31', months_total: 3, total_amount: 3000 }
     expect(msiNoFacturado([p], new Map(), 31, '2027-02-28')).toBe(1000)
   })
+
+  it('el ajuste de «Liquidar» sólo paga lo de ese plan que ya estaba en el estado', () => {
+    const marcas: Record<string, unknown> = { _v: 2 }
+    for (const n of [1, 2, 3, 4, 5, 6]) marcas[n] = { s: 'paid', at: '2026-11-01' }
+    const liquidado = { ...PLAN, month_status: marcas }
+    // Sin pagos aparte, liquidar el plan (−6,000) paga su 1ª mensualidad (1,000)
+    // de este estado; el resto era capital futuro. Faltan los 4,000 de compras.
+    const r = faltaDelEstado({
+      ...base,
+      saldo: 4000,
+      planes: [liquidado],
+      movs: [{ amount: -6000, date: '2026-11-01', type: 'adjustment', installment_id: 'p1' }],
+    })
+    expect(r).toMatchObject({ pagado: 1000, falta: 4000 })
+  })
 })
