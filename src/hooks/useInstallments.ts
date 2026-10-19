@@ -7,7 +7,7 @@ import { useTableChannel } from '@/hooks/useTableChannel'
 import { alCambiarTarjetas, avisarCambioEnTarjetas } from '@/lib/avisoTarjetas'
 import { coberturaDe, coberturaMsi } from '@/lib/coberturaMsi'
 import { esTablaFaltante, tieneEsquemaMsi } from '@/lib/esquema'
-import { addDays, fromKey, toKey } from '@/lib/localDate'
+import { addDays, dayInMonth, fromKey, toKey } from '@/lib/localDate'
 import type { CicloTarjeta } from '@/lib/cardCycle'
 import {
   calendarioMsi,
@@ -84,10 +84,20 @@ interface FotoTarjetas {
   fallo: boolean
   /** La ventana con la que se trajeron los movimientos: los estados no van más atrás. */
   ventana: Record<string, string>
+  /** La ventana pedida cuya carga falló (se conserva la foto anterior). */
+  falloVentana: string | null
 }
 const FOTO_VACIA: FotoTarjetas = {
-  tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false, ventana: {},
+  tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false, ventana: {}, falloVentana: null,
 }
+
+/** ¿La foto trae al menos la ventana pedida (cada tarjeta desde esa fecha o antes)? */
+function cubreVentana(foto: Record<string, string>, pedida: Record<string, string>): boolean {
+  return Object.entries(pedida).every(([id, desde]) => foto[id] != null && foto[id] <= desde)
+}
+
+/** Reintentos tras una carga fallida: 5, 15 y 45 s. */
+const ESPERAS_REINTENTO = [5_000, 15_000, 45_000]
 
 /** PostgREST corta en 1,000 filas: una tarjeta sincronizada las rebasa en la ventana. */
 const PAGINA = 1000
@@ -106,9 +116,11 @@ async function movimientosDesde(ids: string[], desde: string): Promise<MovEdc[] 
     if (error) return null
     const filas = (data ?? []) as MovEdc[]
     out.push(...filas)
-    if (filas.length < PAGINA) break
+    if (filas.length < PAGINA) return out
   }
-  return out
+  // 20 páginas llenas: hay más. Recortar en silencio dejaba fuera justo lo más
+  // nuevo; mejor decir que no se pudo.
+  return null
 }
 
 /** El ciclo de una tarjeta, para saber qué mensualidades ya vencieron. */
@@ -147,6 +159,12 @@ function cicloDe(f: Fila): CicloTarjeta | null {
   return f.account_id && f.cuenta ? f.cuenta : null
 }
 
+/** Un plan liquidado que se «borró» y se guarda sólo para los estados de cuenta. */
+function archivado(f: Installment): boolean {
+  const ms = f.month_status as Record<string, unknown> | null | undefined
+  return !!ms && ms._oculto === true
+}
+
 /** Sólo las columnas de la tabla, sin lo embebido. */
 function sinEmbebidos(f: Fila): Installment {
   const { cuenta: _c, vinculados: _v, ...resto } = f
@@ -176,6 +194,9 @@ export function useInstallments() {
   const desdePorTarjeta = useMemo(() => {
     const out: Record<string, string> = {}
     const hoyKey = toKey(new Date())
+    // Un plan cuya última mensualidad venció hace más de ~13 meses ya no
+    // sostiene la ventana: lo de entonces lo deciden las fechas.
+    const limite = toKey(addDays(fromKey(hoyKey), -400))
     for (const f of filas) {
       if (!f.account_id) continue
       const marcas = marcasEfectivas(f)
@@ -183,7 +204,12 @@ export function useInstallments() {
       let todas = true
       for (let n = 1; n <= M; n++) if (marcas[n]?.s !== 'paid') todas = false
       if (todas) continue
-      const desde = toKey(addDays(fromKey(fechaDeCompra(f, hoyKey)), -35))
+      const compra = fromKey(fechaDeCompra(f, hoyKey))
+      const offset = Math.max(0, Math.round(Number(f.billing_offset) || 0))
+      // Última fecha límite, a lo más tarde: compra + plazo + promoción + 2 meses.
+      const termina = toKey(dayInMonth(compra.getFullYear(), compra.getMonth() + M + offset + 2, compra.getDate()))
+      if (termina < limite) continue
+      const desde = toKey(addDays(compra, -35))
       if (!out[f.account_id] || desde < out[f.account_id]) out[f.account_id] = desde
     }
     return out
@@ -203,6 +229,11 @@ export function useInstallments() {
   // Gana la respuesta más nueva: una carga lenta con la ventana vieja no debe
   // pisar la que ya trajo la ventana ampliada.
   const pedidos = useRef(0)
+  const reintentos = useRef(0)
+  const reintento = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (reintento.current) clearTimeout(reintento.current)
+  }, [])
   const fetchTarjetas = useCallback(async () => {
     if (!user) return
     const pedido = ++pedidos.current
@@ -210,35 +241,55 @@ export function useInstallments() {
     // Un fallo conserva la foto anterior (si había una buena); sin ella, se
     // marca para no calcular con datos que faltan.
     const fallar = () => {
-      if (vigente()) setFoto((f) => (f.listo && !f.fallo ? f : { ...FOTO_VACIA, listo: true, fallo: true }))
+      if (!vigente()) return
+      setFoto((f) =>
+        f.listo && !f.fallo
+          ? { ...f, falloVentana: claveVentana }
+          : { ...FOTO_VACIA, listo: true, fallo: true, falloVentana: claveVentana },
+      )
+      // Una falla de red no debe dejar el estado de cuenta apagado para siempre.
+      const n = reintentos.current++
+      if (n < ESPERAS_REINTENTO.length) {
+        if (reintento.current) clearTimeout(reintento.current)
+        reintento.current = setTimeout(() => void fetchRef.current(), ESPERAS_REINTENTO[n])
+      }
     }
     const { data: cuentas, error: errCuentas } = await supabase.from('accounts').select('*').eq('type', 'credit')
     if (errCuentas) return fallar()
     const tarjetas = ((cuentas ?? []) as Account[]).filter((a) => a.type === 'credit')
     const ventana = JSON.parse(claveVentana) as Record<string, string>
-    const desde = ventanaDeMovimientos(tarjetas, toKey(new Date()), ventana)
+    const hoyKey = toKey(new Date())
+    // Cada tarjeta con su propia ventana: un plan viejo en una no obliga a
+    // traer años de movimientos de las demás.
+    const porTarjeta = tarjetas
+      .map((t) => ({ id: t.id, desde: ventanaDeMovimientos([t], hoyKey, ventana) }))
+      .filter((x): x is { id: string; desde: string } => x.desde != null)
     const ids = tarjetas.map((t) => t.id)
-    if (!desde || ids.length === 0) {
-      if (vigente()) setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana })
+    if (porTarjeta.length === 0) {
+      if (vigente()) {
+        reintentos.current = 0
+        setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana, falloVentana: null })
+      }
       return
     }
-    const [movs, corrRes] = await Promise.all([
-      movimientosDesde(ids, desde),
+    const [listas, corrRes] = await Promise.all([
+      Promise.all(porTarjeta.map((x) => movimientosDesde([x.id], x.desde))),
       supabase.from('card_statements').select('*').in('account_id', ids),
     ])
-    if (!movs) return fallar()
+    if (listas.some((l) => l == null)) return fallar()
     if (!vigente()) return
-    const idsSet = new Set(ids)
+    reintentos.current = 0
     setFoto({
       tarjetas,
       // Se vuelve a filtrar aquí: el cálculo no debe depender de que el filtro
       // del servidor haya llegado intacto.
-      movs: movs.filter((m) => idsSet.has(m.account_id) && m.date > desde),
+      movs: porTarjeta.flatMap((x, i) => (listas[i] ?? []).filter((m) => m.account_id === x.id && m.date > x.desde)),
       correcciones: corrRes.error ? [] : ((corrRes.data ?? []) as CorreccionEdc[]),
       conCorrecciones: !corrRes.error || !esTablaFaltante(corrRes.error),
       listo: true,
       fallo: false,
       ventana,
+      falloVentana: null,
     })
   }, [user, claveVentana])
 
@@ -336,7 +387,7 @@ export function useInstallments() {
   const fiables = estadosListos && !foto.fallo && !error
   // La cobertura necesita además la ventana completa: con la foto de la
   // ventana corta, una mensualidad vieja sin pagar se daría por pagada.
-  const coberturaLista = fiables && JSON.stringify(foto.ventana) === claveVentana
+  const coberturaLista = fiables && cubreVentana(foto.ventana, JSON.parse(claveVentana) as Record<string, string>)
 
   const { data, estados, planes, coberturas } = useMemo(() => {
     const porId = new Map(foto.tarjetas.map((t) => [t.id, t]))
@@ -363,7 +414,10 @@ export function useInstallments() {
     // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
     // Sin un estado confiable, no se opina: decide la fecha.
     const coberturas = coberturaLista ? coberturaMsi(estados, planes) : new Map<string, never>()
-    const data = filas.map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f), coberturaDe(coberturas, f.id)))
+    // Los archivados no se ven, pero sus mensualidades siguen en los estados.
+    const data = filas
+      .filter((f) => !archivado(f))
+      .map((f) => vivo(sinEmbebidos(f), ciclo(f), hoy, cargo(f), coberturaDe(coberturas, f.id)))
     return { data, estados, planes, coberturas }
   }, [filas, foto, hoy, coberturaLista])
 
@@ -495,6 +549,17 @@ export function useInstallments() {
     const hoyLocal = toKey(new Date())
     const plano = sinEmbebidos(prev)
     const nuevo: Installment = { ...plano, ...patch, updated_at: ahora } as Installment
+    // El cargo de la base, no el embebido: pudo convertirse desde otro dispositivo.
+    const cargo = await cargoActual(prev)
+    if (cargo?.adoptado) {
+      // Un gasto convertido no se queda sin tarjeta ni en cero: el plan seguiría
+      // vivo y el gasto contaría dos veces. Para deshacerlo, se elimina el plan.
+      const sinTarjeta = patch.account_id !== undefined && !patch.account_id
+      const total = Number(nuevo.total_amount) - Number(plano.total_amount)
+      if (sinTarjeta || cargo.amount + total <= 0) {
+        throw new Error('Un gasto convertido no puede quedarse sin tarjeta: para deshacerlo, elimina el plan y el gasto vuelve a Movimientos.')
+      }
+    }
     // Recortar el plazo deja marcas de meses que ya no existen.
     const marcas = migrado ? marcasGuardables(plano, patch.months_total ?? undefined) : null
     if (marcas) nuevo.month_status = marcas
@@ -519,7 +584,6 @@ export function useInstallments() {
       throw err
     }
 
-    const cargo = cargoDe(prev)
     if (!cargo) {
       await fetchInstallments()
       return { antes: null, despues: null }
@@ -532,19 +596,22 @@ export function useInstallments() {
       ? Math.max(0, Math.round((cargo.amount + (Number(nuevo.total_amount) - Number(plano.total_amount))) * 100) / 100)
       : nuevoCargo(cargo.amount, [plano, cicloAntes], [nuevo, cicloDespues], reg)
 
-    const devuelto = cargo.adoptado && (!cuentaNueva || monto <= 0)
+    // La fecha de un gasto convertido es la de la compra del usuario: sólo
+    // cambia si se cambió la fecha de compra, no con cualquier edición.
+    const fechaCargo = cargo.adoptado
+      ? patch.start_date !== undefined && patch.start_date !== String(prev.start_date ?? '').slice(0, 10)
+        ? patch.start_date
+        : cargo.date
+      : nuevo.start_date
     try {
-      if (devuelto) {
-        // Un gasto convertido no se borra: vuelve a ser el gasto que era.
-        await devolverGasto(cargo, id)
-      } else if (!cuentaNueva || monto <= 0) {
+      if (!cuentaNueva || monto <= 0) {
         // «Sin tarjeta»: el cargo se quita (el formulario lo avisa antes).
         const { error: e } = await supabase.from('transactions').delete().eq('id', cargo.id)
         if (e) throw e
       } else if (
         Math.abs(monto - cargo.amount) < 0.005 &&
         cuentaNueva === cargo.account_id &&
-        nuevo.start_date === cargo.date &&
+        fechaCargo === cargo.date &&
         (cargo.adoptado || nuevo.name === prev.name)
       ) {
         // Nada que mover.
@@ -556,7 +623,7 @@ export function useInstallments() {
           .update({
             amount: monto,
             account_id: cuentaNueva,
-            date: nuevo.start_date,
+            date: fechaCargo,
             ...(cargo.adoptado ? {} : { description: nuevo.name }),
           })
           .eq('id', cargo.id)
@@ -605,7 +672,21 @@ export function useInstallments() {
     }
     await fetchInstallments()
     avisarCambioEnTarjetas()
-    return { antes: cargo.amount, despues: devuelto ? null : cuentaNueva && monto > 0 ? monto : 0 }
+    return { antes: cargo.amount, despues: cuentaNueva && monto > 0 ? monto : 0 }
+  }
+
+  /** El cargo del plan como está en la base ahora; si no se puede leer, el embebido. */
+  async function cargoActual(f: Fila): Promise<CargoMsi | null> {
+    const { data } = await supabase
+      .from('transactions')
+      .select('id, amount, account_id, date, created_at, source, installment_id, type')
+      .eq('installment_id', f.id)
+      .eq('type', 'installment')
+      .limit(1)
+    const fila = ((data ?? []) as (MovEdc & { installment_id?: string | null })[]).find(
+      (t) => t.installment_id === f.id && t.type === 'installment',
+    )
+    return fila ? cargoDesde(fila, f) : cargoDe(f)
   }
 
   /** Un gasto convertido vuelve a ser un gasto (con su tipo de antes). */
@@ -684,8 +765,30 @@ export function useInstallments() {
    */
   async function remove(id: string, opciones: { quitarCargo: boolean }): Promise<void> {
     const prev = filaDe(id)
+    // Un plan liquidado con «Restar del saldo» tiene un ajuste que dice qué
+    // pagó. Borrarlo dejaba ese ajuste sin plan (la llave se pone en null) y
+    // contaba como pago de todo el estado de cuenta, cubriendo otros planes.
+    // Se archiva: deja de verse, pero los estados de cuenta lo siguen usando.
+    const conAjuste =
+      !!prev &&
+      ((prev.vinculados ?? []).some((t) => t.type === 'adjustment') ||
+        foto.movs.some((m) => m.installment_id === id && m.type === 'adjustment'))
+    if (prev && conAjuste && (await tieneEsquemaMsi())) {
+      const month_status = { ...marcasGuardables(sinEmbebidos(prev)), _oculto: true }
+      parchar(id, { month_status })
+      const { error: err } = await supabase
+        .from('installments')
+        .update({ month_status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (err) {
+        setFilas((cur) => cur.map((f) => (f.id === id ? prev : f)))
+        throw err
+      }
+      avisarCambioEnTarjetas()
+      return
+    }
+    const cargo = prev ? await cargoActual(prev) : null
     setFilas((cur) => cur.filter((i) => i.id !== id))
-    const cargo = prev ? cargoDe(prev) : null
     // Un gasto convertido vuelve a ser el gasto que era: borrarlo con el plan
     // quitaba de tu historial una compra real.
     if (cargo?.adoptado) {
@@ -726,7 +829,7 @@ export function useInstallments() {
     /** Se puede confiar en la cobertura de los MSI (para «Liquidar»). */
     coberturaLista,
     /** No se pudo traer el estado de cuenta. */
-    estadosFallaron: foto.listo && foto.fallo,
+    estadosFallaron: foto.listo && (foto.fallo || foto.falloVentana === claveVentana),
     conCorrecciones: foto.conCorrecciones,
     recargarTarjetas: fetchTarjetas,
     loading: user ? loading : false,

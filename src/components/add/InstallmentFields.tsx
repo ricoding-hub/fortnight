@@ -171,7 +171,22 @@ export function InstallmentFields({
           billing_offset: offset,
         } as Installment
       : null
-  const cal = borrador ? calendarioMsi(borrador, selectedCard ?? null, hoy) : null
+  // Al editar sin cambiar fechas, plazo ni tarjeta, el plan ya trae su
+  // calendario con lo que cubrieron tus pagos: el de las fechas solas diría
+  // «ya pagada» de una mensualidad que no cubriste.
+  const sinCambiosDeCalendario =
+    !!editingInstallment &&
+    startDate === String(editingInstallment.start_date ?? '').slice(0, 10) &&
+    monthsTotal === Number(editingInstallment.months_total) &&
+    offset === Number(editingInstallment.billing_offset ?? 0) &&
+    (accountId || null) === (editingInstallment.account_id ?? null) &&
+    Math.abs(totalAmount - Number(editingInstallment.total_amount)) < 0.005
+  const cal = sinCambiosDeCalendario
+    ? editingInstallment!.msi
+    : borrador
+      ? calendarioMsi(borrador, selectedCard ?? null, hoy)
+      : null
+  const segunFechas = !sinCambiosDeCalendario && !!selectedCard
   const primera = cal?.meses[0] ?? null
   const pendingPrincipal = cal?.restante ?? 0
   const balanceAfter = selectedCard ? Number(selectedCard.balance) + pendingPrincipal : 0
@@ -181,11 +196,11 @@ export function InstallmentFields({
   let efectoCargo: string | null = null
   if (isEditing && cargo?.adoptado && borrador && editingInstallment) {
     // Un gasto convertido: la misma regla que `update()` — sólo cambia con el
-    // total, y sin tarjeta vuelve a ser un gasto normal.
+    // total. No se queda sin tarjeta (para deshacerlo, se elimina el plan).
     const nuevaTarjeta = accountId || null
     const monto = Math.max(0, Math.round((cargo.amount + (totalAmount - Number(editingInstallment.total_amount))) * 100) / 100)
     if (!nuevaTarjeta || monto <= 0) {
-      efectoCargo = `Tu gasto de ${formatMXN(cargo.amount)} vuelve a Movimientos como gasto normal.`
+      efectoCargo = 'Un gasto convertido no puede quedarse sin tarjeta. Para deshacerlo, elimina el plan: el gasto vuelve a Movimientos.'
     } else if (nuevaTarjeta !== cargo.account_id) {
       efectoCargo = `Tu gasto de ${formatMXN(monto)} se mueve a ${selectedCard?.name ?? 'la otra tarjeta'}.`
     } else if (Math.abs(monto - cargo.amount) >= 0.005) {
@@ -338,7 +353,8 @@ export function InstallmentFields({
 
       {creditAccounts.length > 0 && !adoptado && (
         <Select label="Tarjeta" {...register('account_id')}>
-          <option value="">Sin asociar</option>
+          {/* Un plan convertido no se desliga de su tarjeta: se elimina el plan. */}
+          {!editingInstallment?.cargo?.adoptado && <option value="">Sin asociar</option>}
           {creditAccounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -353,6 +369,9 @@ export function InstallmentFields({
         max={hoy}
         className="w-full min-w-0"
         error={errors.start_date?.message}
+        // Al convertir, la fecha es la del gasto: si cambiara, plan y gasto
+        // dirían fechas distintas.
+        readOnly={!!adoptado}
         {...register('start_date')}
       />
 
@@ -375,6 +394,7 @@ export function InstallmentFields({
                 {cal.pagadas > 0 && cal.actual && (
                   <span>
                     Vas en la mensualidad {cal.actual.n} de {monthsTotal} · {cal.pagadas} ya pagada{cal.pagadas === 1 ? '' : 's'}
+                    {segunFechas ? ' según las fechas' : ''}
                   </span>
                 )}
                 <span>Termina el {fechaCorta(cal.termina)}</span>

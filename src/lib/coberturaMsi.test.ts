@@ -283,3 +283,86 @@ describe('revisión v1.18, ronda 2: el arrastre es el mínimo vencido', () => {
     expect(cuentaEnSuFecha(m)).toBe(false)
   })
 })
+
+describe('revisión v1.18, ronda 3: un solo libro de arrastre', () => {
+  const TRES: Installment = { ...PLAN, total_amount: 3000, monthly_amount: 1000, months_total: 3 }
+  const cargo3 = { ...CARGO, amount: 3000 }
+  const base3 = [mov('msi', 3000, '2026-09-20', { type: 'installment', installment_id: 'p1' })]
+
+  it('un solo pago de 2,300 tras dos meses sin pagar no alcanza para la 3ª', () => {
+    const pagos = [pago('p', 2300, '2026-12-20')]
+    const c = calendario({ hoy: '2027-01-06', desde: '2026-08-16', tarjeta: { balance: 700 }, base: [...base3, ...pagos], planes: [{ inst: TRES, cargo: cargo3 }] }).cal(TRES)
+    expect(c.meses.map((m) => m.estado)).toEqual(['pagada', 'pagada', 'vencida'])
+    expect(c.restante).toBe(1000)
+  })
+
+  it('un pago tardío para lo viejo no se cuenta otra vez para lo nuevo', () => {
+    const pagos = [pago('a', 1000, '2026-11-20'), pago('b', 1300, '2026-12-20')]
+    const c = calendario({ hoy: '2027-01-06', desde: '2026-08-16', tarjeta: { balance: 700 }, base: [...base3, ...pagos], planes: [{ inst: TRES, cargo: cargo3 }] }).cal(TRES)
+    expect(c.meses[2].estado).toBe('vencida')
+  })
+
+  it('Plata: dos pagos de 1,300 cubren dos mensualidades, no tres', () => {
+    const plata = { cut_day: 1, payment_due_day: null, payment_grace_days: 60, balance: 400 }
+    const tele = { ...TRES, start_date: '2026-07-15', created_at: '2026-07-15T18:00:00Z' }
+    const caso = (hoy: string) =>
+      calendario({
+        hoy,
+        desde: '2026-06-10',
+        tarjeta: plata,
+        base: [mov('msi', 3000, '2026-07-15', { type: 'installment', installment_id: 'p1' }), pago('a', 1300, '2026-09-25'), pago('b', 1300, '2026-10-25')],
+        planes: [{ inst: tele, cargo: { ...cargo3, date: '2026-07-15' } }],
+      }).cal(tele)
+    expect(caso('2026-11-05').meses.map((m) => m.estado)).toEqual(['pagada', 'pagada', 'por-pagar'])
+    expect(caso('2026-12-05').meses[2].estado).toBe('vencida')
+  })
+
+  it('cambiar el límite de la tarjeta no voltea meses ya cubiertos', () => {
+    const conLimite = (credit_limit: number) =>
+      calendario({
+        hoy: '2026-12-06',
+        desde: '2026-08-16',
+        tarjeta: { balance: 16000 - 2500, credit_limit },
+        base: [mov('r', 10000, '2026-09-16'), mov('msi', 6000, '2026-09-20', { type: 'installment', installment_id: 'p1' })],
+        pagos: [pago('p1', 1250, '2026-11-03'), pago('p2', 1250, '2026-12-03')],
+      }).cal(PLAN)
+    expect(conLimite(20000).meses[1].estado).toBe('pagada')
+    expect(conLimite(100000).meses[1].estado).toBe('pagada')
+  })
+})
+
+describe('quien paga el mínimo que le sugiere la app nunca ve vencidas (Plata, gracia 60)', () => {
+  it('simulación día a día', () => {
+    const plata: TarjetaEdc = { ...MP, cut_day: 1, payment_due_day: null, payment_grace_days: 60, balance: 0 }
+    const a: Installment = { ...PLAN, id: 'a', start_date: '2026-09-20', created_at: '2026-09-20T18:00:00Z' }
+    const b: Installment = { ...PLAN, id: 'b', total_amount: 3000, monthly_amount: 1000, months_total: 3, start_date: '2026-10-02', created_at: '2026-10-02T18:00:00Z' }
+    const movs: MovEdc[] = [
+      mov('r1', 4000, '2026-09-05'),
+      mov('ca', 6000, '2026-09-20', { type: 'installment', installment_id: 'a' }),
+      mov('cb', 3000, '2026-10-02', { type: 'installment', installment_id: 'b' }),
+      mov('r2', 2500, '2026-10-10'),
+      mov('r3', 1800, '2026-11-22'),
+    ]
+    const cargos = { a: { ...CARGO, id: 'ca', date: '2026-09-20' }, b: { ...CARGO, id: 'cb', amount: 3000, date: '2026-10-02' } }
+    const al = (hoy: string) => {
+      const tarjeta = { ...plata, balance: movs.filter((m) => m.date <= hoy).reduce((s, m) => s + Number(m.amount), 0) }
+      const vistos = movs.filter((m) => m.date <= hoy)
+      const planes = [planEdc(a, tarjeta, cargos.a, hoy), planEdc(b, tarjeta, cargos.b, hoy)]
+      const estados = estadosDeCuenta({ tarjetas: [tarjeta], movs: vistos, planes, correcciones: [], hoy, desdePorTarjeta: { mp: '2026-08-16' } })
+      return { tarjeta, estados, planes }
+    }
+    // En cada fecha límite paga exactamente el mínimo que la app le dice.
+    for (const dia of ['2026-11-30', '2026-12-31', '2027-01-30', '2027-03-02']) {
+      const { estados } = al(dia)
+      const e = estados.mp.estados.find((x) => x.vence === dia)
+      if (e && e.minimoFalta > 0) movs.push(pago(`p-${dia}`, e.minimoFalta, dia))
+    }
+    const hoy = '2027-03-10'
+    const { tarjeta, estados, planes } = al(hoy)
+    const mapa = coberturaMsi(estados, planes)
+    for (const inst of [a, b]) {
+      const c = calendarioMsi(inst, tarjeta, hoy, coberturaDe(mapa, inst.id))
+      expect(c.meses.filter((m) => m.estado === 'vencida')).toEqual([])
+    }
+  })
+})

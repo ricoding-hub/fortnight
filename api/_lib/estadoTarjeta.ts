@@ -135,8 +135,11 @@ function abonoAplicable(m: MovFila, c: string, planes: PlanFila[], cutDay: numbe
   if (!m.installment_id || m.type === 'installment' || m.type === 'transfer') return monto
   const plan = planes.find((p) => p.id === m.installment_id)
   if (!plan) return monto
+  const meses = mesesDelPlan(plan, cutDay)
+  // Sin marcas con fecha (sin la migración 036): cuenta completo, como antes.
+  if (!meses.some((x) => x.pagadaEl != null)) return monto
   const fecha = String(m.date).slice(0, 10)
-  const enEste = mesesDelPlan(plan, cutDay)
+  const enEste = meses
     .filter((x) => x.corte <= c && x.pagadaEl != null && x.pagadaEl >= fecha)
     .reduce((s, x) => s + x.monto, 0)
   return Math.min(monto, enEste)

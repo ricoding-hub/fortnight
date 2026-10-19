@@ -197,16 +197,79 @@ describe('un gasto convertido a meses', () => {
     expect(escrituras('installments', 'delete')).toHaveLength(1)
   })
 
-  it('quitarle la tarjeta lo devuelve a Movimientos con su tipo (uno del banco sigue siendo del banco)', { timeout: 20_000 }, async () => {
-    const delBanco = {
-      ...CONVERTIDO,
-      vinculados: [{ ...CONVERTIDO.vinculados[0], source: 'syncfy' }],
-    }
+  it('no se puede quedar sin tarjeta: no se escribe nada', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    await act(async () => {
+      await expect(result.current.update('p1', { account_id: null })).rejects.toThrow(/elimina el plan/)
+    })
+    expect(escrituras('transactions')).toHaveLength(0)
+    expect(escrituras('installments')).toHaveLength(0)
+  })
+
+  it('borrarlo devuelve el gasto con su tipo: uno del banco sigue siendo del banco', { timeout: 20_000 }, async () => {
+    const delBanco = { ...CONVERTIDO, vinculados: [{ ...CONVERTIDO.vinculados[0], source: 'syncfy' }] }
     const { result } = await montar({ installments: [delBanco], accounts: [{ id: 'c1', ...CICLO }] })
     await act(async () => {
-      await result.current.update('p1', { account_id: null })
+      await result.current.remove('p1', { quitarCargo: true })
+    })
+    expect(escrituras('transactions', 'update')[0]?.payload).toEqual({ type: 'sync', installment_id: null })
+  })
+
+  it('renombrarlo no le cambia la fecha ni la descripción al gasto', { timeout: 20_000 }, async () => {
+    const { result } = await montar(tablas())
+    await act(async () => {
+      await result.current.update('p1', { name: 'iPhone 15' })
+    })
+    expect(escrituras('transactions')).toHaveLength(0)
+  })
+
+  it('si el embebido está viejo, el cargo se lee de la base antes de escribir', { timeout: 20_000 }, async () => {
+    // Convertido desde otro dispositivo: el embebido aún no trae el cargo.
+    const viejo = { ...CONVERTIDO, vinculados: [] }
+    const { result } = await montar({
+      installments: [viejo],
+      accounts: [{ id: 'c1', ...CICLO }],
+      transactions: [{ id: 't1', amount: 12000, account_id: 'c1', date: '2026-07-03', type: 'installment', installment_id: 'p1', created_at: '2026-07-03T20:00:00Z', source: 'manual' }],
+    })
+    await act(async () => {
+      await result.current.remove('p1', { quitarCargo: true })
     })
     expect(escrituras('transactions', 'delete')).toHaveLength(0)
-    expect(escrituras('transactions', 'update')[0]?.payload).toEqual({ type: 'sync', installment_id: null })
+    expect(escrituras('transactions', 'update')[0]?.payload).toEqual({ type: 'transaction', installment_id: null })
+  })
+})
+
+describe('borrar un plan liquidado con «Restar del saldo»', () => {
+  it('se archiva: deja de verse, pero su ajuste sigue diciendo qué pagó', { timeout: 20_000 }, async () => {
+    const liquidado = {
+      ...PLAN,
+      vinculados: [...PLAN.vinculados, { id: 'aj', amount: -9000, account_id: 'c1', date: '2026-10-18', type: 'adjustment' }],
+    }
+    const { result } = await montar({ installments: [liquidado], accounts: [{ id: 'c1', ...CICLO }] })
+    await act(async () => {
+      await result.current.remove('p1', { quitarCargo: false })
+    })
+    expect(escrituras('installments', 'delete')).toHaveLength(0)
+    expect(escrituras('installments', 'update')[0]?.payload).toMatchObject({ month_status: { _oculto: true } })
+  })
+
+  it('un plan archivado no se ve, pero sigue en los estados de cuenta', { timeout: 20_000 }, async () => {
+    const archivado = { ...PLAN, month_status: { _v: 2, _oculto: true } }
+    const { result } = await montar({ installments: [archivado], accounts: [{ id: 'c1', ...CICLO }] })
+    expect(result.current.data).toHaveLength(0)
+    expect(result.current.planesTarjeta).toHaveLength(1)
+  })
+})
+
+describe('si el estado de cuenta no se puede traer', () => {
+  it('lo dice, en vez de quedarse «cargando»', { timeout: 20_000 }, async () => {
+    doble = crearSupabaseDoble({ tablas: { installments: [PLAN], accounts: [{ id: 'c1', ...CICLO }] }, errores: { transactions: { message: 'fallo de red' } } })
+    const { useInstallments } = await import('./useInstallments')
+    const { AuthProvider } = await import('./useAuth')
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>
+    const { result } = renderHook(() => useInstallments(), { wrapper })
+    await asentar(10)
+    expect(result.current.estadosFallaron).toBe(true)
+    expect(result.current.coberturaLista).toBe(false)
   })
 })

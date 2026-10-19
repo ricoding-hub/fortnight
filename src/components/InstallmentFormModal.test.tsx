@@ -130,11 +130,18 @@ describe('editar un plan a meses', () => {
     })
     await asentar(2)
     expect(document.body.textContent).not.toMatch(/pasa de/)
-    // Sin tarjeta, el gasto vuelve a Movimientos (no se borra).
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '' } })
-    })
-    await asentar(2)
-    expect(screen.getByText('Tu gasto de $9,000.00 vuelve a Movimientos como gasto normal.')).toBeTruthy()
+    // No se puede dejar sin tarjeta: para deshacerlo se elimina el plan.
+    const opciones = Array.from((screen.getByLabelText('Tarjeta') as HTMLSelectElement).options).map((o) => o.textContent)
+    expect(opciones).not.toContain('Sin asociar')
+  })
+
+  it('al editar sin cambiar fechas, la vista previa usa lo que cubrieron tus pagos', { timeout: 20_000 }, async () => {
+    // Por fechas irían 3 pagadas; con la cobertura, la 3ª no la cubrieron tus pagos.
+    const sinMarcas = { ...CRUDO, months_paid: 0, month_status: { _v: 2 } } as Installment
+    const conCobertura: InstallmentVivo = vivo(sinMarcas, null, '2026-10-12', { id: 't-1', amount: 9000, account_id: 'a-2', date: '2026-06-29' }, (n) =>
+      n === 3 ? 'no-cubierta' : null,
+    )
+    await abrir(conCobertura)
+    expect(document.body.textContent).toMatch(/Vas en la mensualidad 3 de 12 · 2 ya pagadas/)
   })
 })

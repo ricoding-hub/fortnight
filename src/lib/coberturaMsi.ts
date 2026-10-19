@@ -10,11 +10,11 @@ import type { CoberturaMsi } from '@/lib/msi'
  *
  * Aquí, para cada estado de cuenta, lo pagado después de su corte se aplica
  * como lo hace el banco, a lo más viejo primero:
- *   1. lo que quedó sin pagar del MÍNIMO del estado anterior (el pago vencido
- *      va primero): sin esto, un solo pago cubría las mensualidades de dos
- *      cortes. Es el mínimo, no todo el pago para no generar intereses: quien
- *      paga el mínimo cada mes sí cubre sus mensualidades, porque el mínimo
- *      las incluye;
+ *   1. las mensualidades de cortes anteriores que tus pagos no alcanzaron
+ *      (`arrastreMsi`, un libro que lleva el estado de cuenta desde el corte
+ *      más viejo): sin esto, un solo pago cubría las mensualidades de varios
+ *      cortes. Sólo las mensualidades, no todo lo que se debía: quien paga el
+ *      mínimo cada mes sí las cubre, porque el mínimo las incluye;
  *   2. las mensualidades de este corte que marcaste pagadas a mano después del
  *      corte (siguen en el saldo, así que consumen el pago);
  *   3. las demás mensualidades de este corte, el plan más viejo primero.
@@ -57,8 +57,9 @@ export function coberturaMsi(porTarjeta: Record<string, EstadosTarjeta>, planes:
       // Un anterior aproximado (de antes de dar de alta la tarjeta) no dice
       // cuánto se arrastra: si éste no está pagado, decide la fecha.
       if (anterior?.aproximado && !pagadoCompleto) continue
-      const arrastre = anterior ? Math.max(0, anterior.minimo - anterior.pagadoAntesDelSiguiente) : 0
-      let disponible = pagadoCompleto ? Infinity : Math.max(0, e.pagado - arrastre)
+      // El mismo libro del estado de cuenta: lo que quedó sin cubrir de las
+      // mensualidades de cortes anteriores va primero.
+      let disponible = pagadoCompleto ? Infinity : Math.max(0, e.pagado - e.arrastreMsi)
       for (const p of delTarjeta) {
         if (p.enSaldoDesde > e.corte) continue
         for (const m of p.cal.meses) {

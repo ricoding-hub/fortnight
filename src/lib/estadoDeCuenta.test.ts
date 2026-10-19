@@ -162,6 +162,15 @@ describe('estado de cuenta — el caso de Tony', () => {
     expect(delCorte(e, '2026-10-15')).toMatchObject({ pngi: 5000, falta: 0, estado: 'pagado' })
   })
 
+  it('sin marcas a mano (sin la migración 036), el ajuste de «Liquidar» cuenta completo', () => {
+    const { e } = calcular({
+      balance: 4000,
+      movs: [...BASE, mov('liq', -6000, '2026-11-01', { type: 'adjustment', installment_id: 'p1' })],
+      plan: { ...PLAN, month_status: undefined, months_paid: 6, status: 'paid' },
+    })
+    expect(delCorte(e, '2026-10-15')).toMatchObject({ pagado: 6000 })
+  })
+
   it('la cifra del banco manda sobre el cálculo', () => {
     const { e } = calcular({
       balance: 5000,

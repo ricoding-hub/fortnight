@@ -60,11 +60,17 @@ export async function GET(req: Request): Promise<Response> {
       let falta: number | null = null
       if (pago.corte && account.cut_day != null) {
         const corte = pago.corte
-        const [movsRes, corrRes, planesRes] = await Promise.all([
+        const [movsCompletos, corrRes, planesRes] = await Promise.all([
           sb.from('transactions').select('amount, date, type, installment_id').eq('account_id', account.id).gt('date', corte),
           sb.from('card_statements').select('no_interest_amount').eq('account_id', account.id).eq('cut_date', corte).maybeSingle(),
           sb.from('installments').select('*').eq('account_id', account.id),
         ])
+        // Sin la migración 031 no existe `installment_id`: se piden sólo los
+        // montos (los ajustes de «Liquidar» cuentan completos, como antes).
+        const movsRes =
+          movsCompletos.error && ['42703', 'PGRST204'].includes(String(movsCompletos.error.code))
+            ? await sb.from('transactions').select('amount, date').eq('account_id', account.id).gt('date', corte)
+            : movsCompletos
         const banco =
           !corrRes.error && corrRes.data?.no_interest_amount != null ? Number(corrRes.data.no_interest_amount) : null
         if (!movsRes.error && (!planesRes.error || banco != null)) {

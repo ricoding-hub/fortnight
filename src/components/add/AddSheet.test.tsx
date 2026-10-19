@@ -415,6 +415,7 @@ describe('«1 solo pago»: una compra a meses que ya estaba anotada', () => {
     const total = screen.getByLabelText('Monto total') as HTMLInputElement
     expect(total.value).toBe('12000')
     expect(total.readOnly).toBe(true)
+    expect((screen.getByLabelText('Fecha de compra') as HTMLInputElement).readOnly).toBe(true)
     await pulsar(/Convertir a 12 meses/)
     expect((doble.llamadas.find((l) => l.tabla === 'installments' && l.op === 'insert')?.payload as { total_amount: number }).total_amount).toBe(12000)
 

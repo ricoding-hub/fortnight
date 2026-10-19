@@ -86,10 +86,23 @@ export interface EstadoDeCuenta {
    */
   pagadoAntesDelSiguiente: number
   falta: number
+  /**
+   * Pago mínimo (aprox.): el de este corte más lo que quedó sin pagar del
+   * mínimo de los anteriores, como lo suma el banco. O el que capturaste.
+   */
   minimo: number
   /** El pago mínimo que capturaste de tu estado de cuenta, si lo hiciste. */
   minimoBanco: number | null
   minimoFalta: number
+  /**
+   * Mensualidades MSI de cortes anteriores que tus pagos no alcanzaron a cubrir
+   * antes de este corte: lo primero que se lleva lo que pagues. Es un libro que
+   * corre desde el corte más viejo, así que un faltante de hace dos estados no
+   * se pierde, y no depende del límite ni del % de la tarjeta.
+   */
+  arrastreMsi: number
+  /** Lo que quedó sin pagar de los mínimos anteriores (va dentro de `minimo`). */
+  arrastreMinimo: number
   /** Compras después del corte: van al siguiente estado. */
   compras: number
   /** Ajustes al alza después del corte: se toman como compras nuevas. */
@@ -246,6 +259,9 @@ function abonoAplicable(m: MovEdc, c: string, planes: PlanEdc[]): number {
   if (!m.installment_id || m.type === 'installment' || m.type === 'transfer') return monto
   const plan = planes.find((p) => p.id === m.installment_id)
   if (!plan) return monto
+  // Sin marcas a mano (sin la migración 036 «Liquidar» sólo mueve el
+  // contador): no se sabe qué pagó, así que cuenta completo, como antes.
+  if (!plan.cal.meses.some((x) => x.origen === 'manual')) return monto
   const fecha = m.date.slice(0, 10)
   const enEste = plan.cal.meses
     .filter(
@@ -292,6 +308,8 @@ export function estadosDeCuenta(i: {
     const limite = num(t.credit_limit)
 
     const vencimientos = cortes.map((c) => venceDelCorte(t, fromKey(c)))
+    // Lo propio de cada corte, para el libro de arrastre de abajo.
+    const propios: { msiExigible: number; minRev: number }[] = []
     const estados: EstadoDeCuenta[] = cortes.map((c, idx) => {
       const despues = movs.filter((m) => m.date.slice(0, 10) > c)
       const saldoAlCorte = r2(saldo - despues.reduce((s, m) => s + num(m.amount), 0))
@@ -319,8 +337,7 @@ export function estadosDeCuenta(i: {
       // las mensualidades de ese corte. Nunca más de lo que se debe.
       const minRev = revolvente > EPS ? Math.min(revolvente, Math.max((revolvente * pct) / 100, limite * 0.0125)) : 0
       const minimoBanco = numONulo(corr?.min_amount)
-      const minimo = r2(minimoBanco ?? Math.min(pngi, minRev + msiExigible))
-      const minimoFalta = r2(Math.max(0, minimo - pagado))
+      propios[idx] = { msiExigible, minRev }
 
       const compras = r2(despues.filter((m) => num(m.amount) > 0).reduce((s, m) => s + num(m.amount), 0))
       const ajustesAlAlza = r2(
@@ -353,9 +370,12 @@ export function estadosDeCuenta(i: {
         pagado,
         pagadoAntesDelSiguiente,
         falta,
-        minimo,
+        // `minimo`, `minimoFalta` y los arrastres los llena el libro de abajo.
+        minimo: 0,
         minimoBanco,
-        minimoFalta,
+        minimoFalta: 0,
+        arrastreMsi: 0,
+        arrastreMinimo: 0,
         compras,
         ajustesAlAlza,
         estado,
@@ -363,6 +383,31 @@ export function estadosDeCuenta(i: {
         aproximado,
       }
     })
+
+    // El libro: del corte más viejo al más nuevo. Lo pagado entre un corte y el
+    // siguiente se aplica primero a lo que se debía; lo que no alcanzó pasa al
+    // siguiente. El banco suma el mínimo vencido al mínimo nuevo, y las
+    // mensualidades MSI no cubiertas siguen debiéndose.
+    let arrastreMsi = 0
+    let arrastreMinimo = 0
+    for (let k = 0; k < estados.length; k++) {
+      const e = estados[k]
+      const { msiExigible, minRev } = propios[k]
+      e.arrastreMsi = r2(Math.min(e.pngi, arrastreMsi))
+      e.arrastreMinimo = r2(Math.min(e.pngi, arrastreMinimo))
+      e.minimo = r2(e.minimoBanco ?? Math.min(e.pngi, minRev + msiExigible + e.arrastreMinimo))
+      e.minimoFalta = r2(Math.max(0, e.minimo - e.pagado))
+      const deudaMsi = Math.min(e.pngi, msiExigible + e.arrastreMsi)
+      arrastreMsi = Math.max(0, deudaMsi - e.pagadoAntesDelSiguiente)
+      arrastreMinimo = Math.max(0, e.minimo - e.pagadoAntesDelSiguiente)
+      // Un estado aproximado (de antes de dar de alta la tarjeta) no sabe qué
+      // se debía: no se arrastra nada de él. `coberturaMsi` tampoco opina del
+      // que le sigue.
+      if (e.aproximado) {
+        arrastreMsi = 0
+        arrastreMinimo = 0
+      }
+    }
 
     const porVence = [...estados].sort((a, b) => a.vence.localeCompare(b.vence))
     const proximo = porVence.find((e) => !e.absorbido && e.falta > EPS && e.estado !== 'sin-saldo') ?? null
