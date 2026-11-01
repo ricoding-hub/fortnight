@@ -304,5 +304,15 @@ describe('Inicio limpio (v1.19)', () => {
     const anillo = screen.getByRole('button', { name: /desglose del score/ })
     expect(anillo.textContent).toMatch(/\d\.\d\s*\/ 10/)
   })
+
+  it('una tapa opaca cubre el área del reloj (sin franja borrosa)', { timeout: 20_000 }, async () => {
+    await montar(COMPLETO)
+    // jsdom no entiende `env()` en estilos: se ubica por su marca.
+    const tapa = document.querySelector<HTMLElement>('[data-tapa-reloj]')
+    expect(tapa).toBeTruthy()
+    expect(tapa!.className).toMatch(/\bfixed\b/)
+    expect(tapa!.className).toMatch(/\bbg-bg\b/)
+    expect(tapa!.className).not.toMatch(/backdrop-blur/)
+  })
 })
 

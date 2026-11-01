@@ -80,6 +80,17 @@ export function Layout() {
         </div>
       </div>
 
+      {/* Tapa opaca sobre el área del reloj. Con la barra «estándar» mide 0 y no
+          existe. Si iOS dejó la app con la barra translúcida (instalación vieja),
+          el reloj quedaba sobre el fondo con degradados y el efecto de borde de
+          iOS 26 lo difuminaba: la franja borrosa. Sobre un color liso no se nota. */}
+      <div
+        aria-hidden
+        data-tapa-reloj
+        className="pointer-events-none fixed inset-x-0 top-0 z-[70] bg-bg"
+        style={{ height: 'env(safe-area-inset-top, 0px)' }}
+      />
+
       <BottomNav />
       <PetCompanion />
 

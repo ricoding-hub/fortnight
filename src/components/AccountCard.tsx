@@ -13,7 +13,7 @@ import {
 import { CreditCycleBadge } from '@/components/CreditCycleBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatMXN } from '@/lib/format'
-import { bankLogoUrl } from '@/lib/banks'
+import { useLogoMarca } from '@/hooks/useLogoMarca'
 import { moneyNum } from '@/lib/money'
 import { fechaCorta } from '@/lib/movementDates'
 import type { EstadosTarjeta } from '@/lib/estadoDeCuenta'
@@ -63,8 +63,8 @@ interface AvatarProps {
 }
 
 function Avatar({ account }: AvatarProps) {
-  const [logoFailed, setLogoFailed] = useState(false)
-  const showLogo = account.logo_domain && !logoFailed
+  const logo = useLogoMarca(account.logo_domain)
+  const showLogo = logo.mostrar
   return (
     <div
       className={clsx(
@@ -74,12 +74,7 @@ function Avatar({ account }: AvatarProps) {
       style={!showLogo ? { backgroundColor: account.color ?? '#6B7194' } : undefined}
     >
       {showLogo ? (
-        <img
-          src={bankLogoUrl(account.logo_domain!)}
-          alt={account.name}
-          className="h-7 w-7 object-contain"
-          onError={() => setLogoFailed(true)}
-        />
+        <img {...logo.img} alt={account.name} className={clsx('h-7 w-7 object-contain', !logo.cargado && 'opacity-0')} />
       ) : (
         initialsOf(account.name)
       )}

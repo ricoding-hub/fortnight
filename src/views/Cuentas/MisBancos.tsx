@@ -17,7 +17,8 @@ import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
 import { useAccounts } from '@/hooks/useAccounts'
 import { BankStatusPill } from '@/components/syncfy/BankStatusPill'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
-import { bankLogoUrl, presetForInstitutionName } from '@/lib/banks'
+import { presetForInstitutionName } from '@/lib/banks'
+import { useLogoMarca } from '@/hooks/useLogoMarca'
 import { ComingSoonBadge } from '@/components/ComingSoonBadge'
 import { BANK_LINKING_ENABLED } from '@/lib/features'
 import type { SyncfyCredential } from '@/types'
@@ -312,11 +313,7 @@ function BankRow({
           }
         >
           {preset ? (
-            <img
-              src={bankLogoUrl(preset.domain)}
-              alt={preset.name}
-              className="h-7 w-7 object-contain"
-            />
+            <LogoBanco dominio={preset.domain} nombre={preset.name} />
           ) : (
             <IconBuildingBank size={20} />
           )}
@@ -420,3 +417,11 @@ function BankRow({
     </li>
   )
 }
+
+/** Logo del banco sin parpadeo; sin logo, el icono genérico. */
+function LogoBanco({ dominio, nombre }: { dominio: string; nombre: string }) {
+  const logo = useLogoMarca(dominio)
+  if (!logo.mostrar) return <IconBuildingBank size={20} className="text-primary" />
+  return <img {...logo.img} alt={nombre} className={'h-7 w-7 object-contain' + (logo.cargado ? '' : ' opacity-0')} />
+}
+

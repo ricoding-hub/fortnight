@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import { IconCalendarEvent, IconCheck, IconChevronRight, IconCreditCardPay } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
 import { formatMXN } from '@/lib/format'
 import { lineaDeEstado } from '@/lib/msiTexto'
-import { bankLogoUrl } from '@/lib/banks'
+import { useLogoMarca } from '@/hooks/useLogoMarca'
 import type { InstallmentVivo } from '@/lib/msi'
 import type { Account } from '@/types'
 
@@ -30,12 +29,12 @@ interface InstallmentCardProps {
  * la tarjeta, y el detalle (al tocarla) deja corregir cualquier mes.
  */
 export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPagarActual, onPagarTarjeta }: InstallmentCardProps) {
-  const [logoFailed, setLogoFailed] = useState(false)
+  const logo = useLogoMarca(linkedAccount?.logo_domain)
   const { msi } = inst
   const M = msi.meses.length
   const enEstado = msi.meses.filter((m) => m.estado === 'por-pagar' || m.estado === 'vencida').length
   const linea = lineaDeEstado(inst)
-  const showLogo = !!linkedAccount?.logo_domain && !logoFailed
+  const showLogo = logo.mostrar
   const enCurso = !!msi.actual && (msi.actual.estado === 'por-pagar' || msi.actual.estado === 'vencida')
   // Sólo donde tus pagos deciden la mensualidad (hay estado de cuenta para su
   // corte); si no, pagar la tarjeta no la marcaría y «Ya pagué» es lo honesto.
@@ -57,12 +56,7 @@ export function InstallmentCard({ installment: inst, linkedAccount, onOpen, onPa
           )}
         >
           {showLogo ? (
-            <img
-              src={bankLogoUrl(linkedAccount!.logo_domain!)}
-              alt=""
-              className="h-6 w-6 object-contain"
-              onError={() => setLogoFailed(true)}
-            />
+            <img {...logo.img} alt="" className={clsx('h-6 w-6 object-contain', !logo.cargado && 'opacity-0')} />
           ) : (
             <IconCalendarEvent size={18} stroke={1.75} className={msi.terminado ? 'text-asset-deep' : 'text-primary-deep'} />
           )}

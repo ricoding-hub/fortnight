@@ -53,7 +53,32 @@ export default defineConfig({
             },
           },
           {
-            // Lectura offline: sólo las tablas (rest/v1), nunca auth ni storage.
+            // Logos de bancos y marcas (favicons). Sin esto cada visita los
+            // volvía a pedir y la lista se pintaba dos veces. Las respuestas
+            // son opacas (img sin CORS): por eso status 0 y purga si falta cuota.
+            urlPattern: /^https:\/\/(www\.google\.com\/s2\/favicons|[a-z0-9-]+\.gstatic\.com\/favicon)/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'logos-cache',
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Fotos de perfil y de grupo: cada subida lleva su propia ruta con
+            // marca de tiempo, así que una URL nunca cambia de contenido y se
+            // puede servir del disco sin volver a preguntar.
+            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/avatars\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'avatars-cache',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Lectura offline: sólo las tablas (rest/v1), nunca auth ni storage
+            // privado (las fotos públicas tienen su regla arriba).
             // NetworkFirst para que con red siempre gane el dato fresco y la
             // caché sólo entre cuando la petición falla. Ventana corta: son
             // datos financieros, no queremos historial viejo en el disco.
@@ -112,7 +137,7 @@ export default defineConfig({
         ],
         shortcuts: [
           { name: 'Movimientos', short_name: 'Movimientos', url: '/cuentas/movimientos' },
-          { name: 'Préstamos', short_name: 'Préstamos', url: '/cuentas/prestamos' },
+          { name: 'Préstamos', short_name: 'Préstamos', url: '/prestamos' },
           { name: 'Plan', short_name: 'Plan', url: '/plan' },
         ],
       },

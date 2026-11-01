@@ -1,6 +1,5 @@
-import { useState } from 'react'
 import clsx from 'clsx'
-import { logoUrl } from '@/lib/logos'
+import { useLogoMarca } from '@/hooks/useLogoMarca'
 import { findBrand } from '@/lib/brands'
 import { ICONO_GENERICO, servicePreset } from '@/lib/services'
 import type { Subscription } from '@/types'
@@ -10,9 +9,9 @@ import type { Subscription } from '@/types'
  *
  *   logo real  →  si la imagen falla, icono del proveedor  →  si no hay, genérico
  *
- * El `onError` no es adorno: el favicon de un dominio puede no existir, y sin
- * esa caída queda un hueco roto en la lista. Es exactamente lo que ya hace la
- * pantalla de cuentas, así que las dos se ven igual.
+ * La imagen no se ve hasta que carga y los dominios sin logo se recuerdan
+ * (`useLogoMarca`): sin destello del globo genérico ni cambio de imagen a
+ * media lista. Es lo mismo que hace la pantalla de cuentas.
  *
  * El proveedor sale de `brand_id`, que ya existía en la tabla: sirve tanto para
  * las marcas de suscripción (Netflix) como para los presets de servicio (CFE),
@@ -27,8 +26,6 @@ export function RecurringLogo({
   size?: number
   className?: string
 }) {
-  const [falló, setFalló] = useState(false)
-
   // Por id primero, y si no hay, por el nombre escrito. Eso es lo que hace que
   // los cargos ya guardados — los que nunca pasaron por el selector — enseñen
   // su logo sin tener que editarlos uno por uno.
@@ -37,7 +34,8 @@ export function RecurringLogo({
   const dominio = servicio?.domain ?? marca?.domain ?? null
   const color = servicio?.color ?? marca?.color ?? sub.color ?? '#6B7194'
   const Icono = servicio?.icon ?? ICONO_GENERICO
-  const conLogo = !!dominio && !falló
+  const logo = useLogoMarca(dominio)
+  const conLogo = logo.mostrar
 
   const iniciales =
     marca?.initials ?? (sub.name ? sub.name.trim().slice(0, 2).toUpperCase() : '?')
@@ -59,11 +57,10 @@ export function RecurringLogo({
     >
       {conLogo ? (
         <img
-          src={logoUrl(dominio!)}
+          {...logo.img}
           alt={sub.name}
-          className="object-contain"
+          className={clsx('object-contain', !logo.cargado && 'opacity-0')}
           style={{ width: size * 0.66, height: size * 0.66 }}
-          onError={() => setFalló(true)}
         />
       ) : servicio ? (
         <Icono size={size * 0.5} stroke={2} />

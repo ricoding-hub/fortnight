@@ -194,7 +194,7 @@ export function Movimientos() {
         <div className="pb-4">
           {groups.map((group) => (
             <section key={group.date}>
-              <h2 className="sticky top-0 z-10 bg-bg-elevated/90 px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-widest text-text-secondary backdrop-blur-sm">
+              <h2 className="sticky top-0 z-10 bg-bg px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-widest text-text-secondary">
                 {formatDateGroupMX(group.date)}
               </h2>
               <div>
