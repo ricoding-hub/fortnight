@@ -132,15 +132,20 @@ export function AcercaDe() {
       <div className="px-4">
         <Card className="flex flex-col gap-3">
           <VersionRow
-            version="1.18.0"
-            date="17 oct 2026"
+            version="1.19.0"
+            date="1 nov 2026"
             current
             notes={[
-              'Tus MSI ahora se marcan con tus pagos: una mensualidad de tarjeta queda pagada cuando lo que pagaste a la tarjeta la cubre, no sólo porque pasó la fecha. Tus pagos se aplican primero a lo más viejo, como lo hace el banco. Si no alcanzaron, sale vencida y el detalle te dice por qué',
-              'En un plan con tarjeta, el botón ya no es "Ya pagué la mensualidad" (que no movía dinero) sino "Pagar Nu": registra el pago de verdad. Marcar sin pagar sigue en el detalle, como corrección',
-              'Si anotaste una compra a meses como gasto normal, ábrela en Movimientos y toca "Fue a meses: convertir". Tu estado de cuenta deja de pedirla completa, sin cargarla otra vez. Si después borras el plan, el gasto vuelve a Movimientos',
-              'Al registrar algo a meses, si ya tienes un gasto parecido en esa tarjeta te pregunta si es ese, para no contar la compra dos veces',
-              'La tarjeta de tu última compra a meses (o la única que tienes) ya viene elegida, y en un gasto con tarjeta está el atajo "¿Fue a meses?"',
+              'El estado de cuenta ahora es opcional, por tarjeta, y viene apagado. Sin él, la app usa sólo tus saldos y fechas: el aviso de Inicio dice cuándo vence tu tarjeta y "Pagar" te deja poner el monto que quieras, sin cifras calculadas que no cuadran cuando no registras todo',
+              'Si registras todos los movimientos de una tarjeta, enciende "Calcular mi estado de cuenta" al editarla o desde su estado de cuenta. Encendido tienes el pago para no generar intereses, lo que te falta y tus MSI marcados con tus pagos (primero lo más viejo, como el banco). Apagado, tus MSI avanzan por fechas',
+              'Si anotaste una compra a meses como gasto normal, ábrela en Movimientos y toca "Fue a meses: convertir". Al registrar algo a meses, si ya tienes un gasto parecido en esa tarjeta te pregunta si es ese, para no contar la compra dos veces',
+              'Tu score ya se mueve: mide dónde estás (efectivo de colchón, uso de tus tarjetas y deuda contra tu ingreso) y cuánto avanzaste en los últimos 30 días. Pagar deuda o juntar efectivo lo sube. Lleva un decimal, al tocarlo ves qué lo mueve, e Inicio y Perfil dicen la misma cifra',
+              'Inicio más limpio: tu nivel y tu racha van en un chip junto al saludo, el mes sin deuda va en tu balance y queda una sola misión, discreta, al final. Se quitaron las misiones que se ganaban solas',
+              'Préstamos tiene su lugar en la barra de abajo. Tu perfil se abre tocando tu foto en Inicio',
+              'En Cuentas, los MSI tienen su pestaña y un resumen arriba de tus cuentas que te lleva directo. "Conecta tu banco" ya no está en la pantalla: sale al agregar una cuenta',
+              'La franja borrosa de arriba: ahora hay un fondo sólido detrás del reloj, aunque tu app esté instalada con el ajuste viejo de la barra',
+              'Tu foto y los logos de bancos y marcas ya no cambian al cargar (antes salía un momento la foto de Google o un cuadro en blanco), y se guardan para la siguiente vez',
+              'En el calendario, un pago de tarjeta sale una sola vez y una compra con tarjeta cuenta como gasto. Las tarjetas tienen "Pago mínimo (% del saldo)" para el cálculo del mínimo',
             ]}
           />
           <VersionRow

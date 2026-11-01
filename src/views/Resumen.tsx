@@ -485,7 +485,7 @@ export function Resumen() {
 
           {/* Big number */}
           <p
-            className="relative mt-2 font-display text-[44px] font-extrabold leading-[1.05] tracking-tight"
+            className="relative mt-2 whitespace-nowrap font-display text-[clamp(30px,11vw,44px)] font-extrabold leading-[1.05] tracking-tight"
             style={{
               background: 'linear-gradient(180deg, #FFFFFF 0%, #FFB7BA 130%)',
               WebkitBackgroundClip: 'text',
@@ -593,9 +593,9 @@ export function Resumen() {
             <div className="flex items-center gap-3.5">
               <ScoreRing score={score} color={scoreColor} />
               <div className="min-w-0 flex-1">
-                <div className="mb-0.5 flex items-center gap-1.5">
-                  <span className="text-sm font-extrabold text-text">Score financiero</span>
-                  <span className="rounded-full bg-lavender-soft px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-lavender-deep">
+                <div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span className="whitespace-nowrap text-sm font-extrabold text-text">Score financiero</span>
+                  <span className="whitespace-nowrap rounded-full bg-lavender-soft px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-lavender-deep">
                     {scoreTier}
                   </span>
                   <IconInfoCircle size={13} className="ml-auto text-text-tertiary" />
