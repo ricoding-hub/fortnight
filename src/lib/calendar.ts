@@ -1,7 +1,8 @@
 import { getRevolvingBalance, msiDelVencimiento, msiVencido } from '@/lib/debt'
 import { calendarioDe, type CalendarioMsi, type EstadoMes } from '@/lib/msi'
 import { pagosProyectados, type EstadosTarjeta, type PlanEdc } from '@/lib/estadoDeCuenta'
-import type { Account, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
+import { clasificar, efectoEnPatrimonio, ETIQUETA_CLASE } from '@/lib/movimiento'
+import type { Account, Category, Goal, Installment, Subscription, Transaction, UserConfig } from '@/types'
 import { computePaydays, payFreqOf } from '@/lib/paydays'
 import { corteEn, tieneVencimiento, vencimientosEntre } from '@/lib/cardCycle'
 import { dayInMonth, fromKey, noon, toKey } from '@/lib/localDate'
@@ -17,7 +18,8 @@ import { dayInMonth, fromKey, noon, toKey } from '@/lib/localDate'
  * Cash model — deliberately avoids double counting:
  *   · A payday adds cash.
  *   · A credit-card payment removes cash, and its amount already includes the
- *     MSI due that cycle (getExigibleEsteCiclo).
+ *     MSI due that cycle (lo que falta de su estado de cuenta). En modo ligero
+ *     el pago no lleva monto y las mensualidades salen en su fecha.
  *   · An MSI instalment is therefore informational: it is paid THROUGH the
  *     card, so counting it again would double it.
  *   · A subscription charged to a credit card does not move cash on its charge
@@ -175,6 +177,8 @@ export interface CalendarInput {
    */
   estados?: Record<string, EstadosTarjeta>
   planesTarjeta?: PlanEdc[]
+  /** Para saber si un abono a una tarjeta es pago o reembolso. */
+  categories?: Category[]
 }
 
 export function buildCalendarEvents(
@@ -404,15 +408,32 @@ export function buildCalendarEvents(
   }
 
   // Past movements: already reflected in the balance, so never projected.
+  // Por clase, no por signo: una compra con tarjeta (+ en la tarjeta) es un
+  // gasto, no un «Ingreso». Un pago son dos renglones y sale una vez, el de
+  // la tarjeta.
+  const categoriaPorId = new Map((input.categories ?? []).map((c) => [c.id, c]))
+  const pagosConTarjeta = new Set(
+    transactions.filter((t) => t.transfer_id && accountById.get(t.account_id)?.type === 'credit').map((t) => t.transfer_id),
+  )
+  const pagosVistos = new Set<string>()
   for (const t of transactions) {
     const d = fromKey(t.date.slice(0, 10))
     if (d < start || d > end) continue
+    const cuenta = accountById.get(t.account_id)
+    if (t.transfer_id) {
+      if (pagosVistos.has(t.transfer_id)) continue
+      if (cuenta?.type !== 'credit' && pagosConTarjeta.has(t.transfer_id)) continue
+      pagosVistos.add(t.transfer_id)
+    }
+    const clase = clasificar(t, cuenta, t.category_id ? categoriaPorId.get(t.category_id) : null)
+    const esPago = clase === 'pago-tarjeta' || clase === 'transferencia'
     out.push({
       id: `tx:${t.id}`,
       kind: 'transaction',
       date: toKey(d),
-      title: t.description || (Number(t.amount) >= 0 ? 'Ingreso' : 'Gasto'),
-      amount: Number(t.amount),
+      title: t.description || (esPago && cuenta?.type === 'credit' ? `Pago ${cuenta.name}` : ETIQUETA_CLASE[clase]),
+      // Un pago es dinero que sale; lo demás, lo que cambió tu patrimonio.
+      amount: esPago ? -Math.abs(Number(t.amount)) : efectoEnPatrimonio(t, cuenta),
       countsToCash: false,
       accountId: t.account_id ?? undefined,
       tags: ['Movimiento'],

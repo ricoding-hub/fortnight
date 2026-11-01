@@ -1,8 +1,7 @@
 import { addMonths, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { calendarioDe, cuentaEnSuFecha, type CalendarioMsi } from '@/lib/msi'
-import { proximoVencimiento } from '@/lib/cardCycle'
-import { fromKey, toKey } from '@/lib/localDate'
+import { toKey } from '@/lib/localDate'
 import type { Account, Installment as InstallmentRow } from '@/types'
 
 /**
@@ -133,42 +132,6 @@ export function msiDelVencimiento(account: Account, installments: Installment[],
     .flatMap((i) => calendarioDe(i, account, hoy).meses)
     .filter((m) => m.vence === vence && cuentaEnSuFecha(m))
     .reduce((s, m) => s + m.monto, 0)
-}
-
-/**
- * Minimum payment due this cycle for a single credit account.
- * = min-revolving-payment + Σ MSI monthly amounts − prepay buffer used.
- * Result is clamped to ≥ 0 (buffer can make it $0).
- */
-export function getExigibleEsteCiclo(account: Account, installments: Installment[], hoy = hoyKey()): number {
-  if (account.type !== 'credit') return 0
-  const revolvingBal = getRevolvingBalance(account, installments, hoy)
-  const pct = safeNum(account.min_payment_pct, 1.5)
-  const minRevolving =
-    costType(account) === 'con_costo' ? Math.max(0, revolvingBal) * (pct / 100) : 0
-
-  // Lo de MSI que toca en el próximo pago: lo vencido sin pagar y lo que vence
-  // en esa fecha. Sin fechas de la tarjeta, una mensualidad por plan activo.
-  const prox = proximoVencimiento(account, fromKey(hoy))
-  const calendarios = deLaTarjeta(account, installments, hoy)
-  const msiMonthly = prox
-    ? calendarios
-        .flatMap((c) => c.meses)
-        .filter((m) => m.estado === 'vencida' || (m.vence === toKey(prox.vence) && cuentaEnSuFecha(m)))
-        .reduce((s, m) => s + m.monto, 0)
-    : calendarios.reduce((s, c) => s + (c.actual?.monto ?? 0), 0)
-  const bufferUsed = Math.min(safeNum(account.prepay_buffer), msiMonthly)
-  return Math.max(0, minRevolving + msiMonthly - bufferUsed)
-}
-
-/**
- * Total monthly payment due across all credit accounts.
- * Used as the Resumen hero "A pagar este mes".
- */
-export function getTotalExigible(accounts: Account[], installments: Installment[]): number {
-  return accounts
-    .filter((a) => a.type === 'credit')
-    .reduce((s, a) => s + getExigibleEsteCiclo(a, installments), 0)
 }
 
 /**

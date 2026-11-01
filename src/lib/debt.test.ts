@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getDeudaALaVista, getExigibleEsteCiclo, getMsiUncovered, getRevolvingBalance } from '@/lib/debt'
+import { getDeudaALaVista, getMsiUncovered, getRevolvingBalance } from '@/lib/debt'
 
 /** El día de la compra de los planes de prueba: nada ha vencido aún. */
 const HOY = '2026-01-01'
@@ -23,42 +23,6 @@ function msi(over: Partial<Installment> = {}): Installment {
     status: 'active', is_zero_interest: true, created_at: '', updated_at: '', ...over,
   } as Installment
 }
-
-describe('getExigibleEsteCiclo — mínimo cuando la tarjeta no define porcentaje', () => {
-  // Number(null) === 0 passes isFinite, so the documented 1.5% default was
-  // never reached: a plain revolving card reported nothing due, and that fed
-  // "A pagar este mes" on Home.
-  it('cae al 1.5% cuando min_payment_pct es null', () => {
-    expect(getExigibleEsteCiclo(card(), [], HOY)).toBeCloseTo(60, 5)
-  })
-
-  it('respeta un porcentaje explícito', () => {
-    expect(getExigibleEsteCiclo(card({ min_payment_pct: 5 }), [], HOY)).toBeCloseTo(200, 5)
-  })
-
-  // An explicit 0 is a real choice and must not be replaced by the default.
-  it('respeta un cero explícito', () => {
-    expect(getExigibleEsteCiclo(card({ min_payment_pct: 0 }), [], HOY)).toBe(0)
-  })
-
-  it('deja en cero el mínimo de una tarjeta sin costo', () => {
-    expect(getExigibleEsteCiclo(card({ cost_type: 'sin_costo' }), [], HOY)).toBe(0)
-  })
-
-  it('suma la mensualidad del MSI al mínimo revolvente', () => {
-    // saldo 4000 con 12000 de MSI pendiente -> revolvente 0, exigible = MSI
-    expect(getExigibleEsteCiclo(card(), [msi()], HOY)).toBeCloseTo(1000, 5)
-  })
-
-  it('descuenta el colchón adelantado, sin bajar de cero', () => {
-    expect(getExigibleEsteCiclo(card({ prepay_buffer: 400 }), [msi()], HOY)).toBeCloseTo(600, 5)
-    expect(getExigibleEsteCiclo(card({ prepay_buffer: 99999 }), [msi()], HOY)).toBe(0)
-  })
-
-  it('ignora cuentas de débito', () => {
-    expect(getExigibleEsteCiclo(card({ type: 'debit' }), [], HOY)).toBe(0)
-  })
-})
 
 describe('getRevolvingBalance', () => {
   it('resta el principal de MSI del saldo', () => {
@@ -133,13 +97,5 @@ describe('getDeudaALaVista', () => {
     const bbva = card({ balance: 5000 })
     const suelto = msi({ account_id: null, start_date: '2026-10-03' })
     expect(getDeudaALaVista([bbva], [suelto], '2026-10-03')).toBe(6000)
-  })
-})
-
-describe('getExigibleEsteCiclo — por fechas', () => {
-  it('cuando el plan terminó, ya no suma', () => {
-    const bbva = card({ cut_day: 15, payment_due_day: 5, balance: 0, cost_type: 'sin_costo' })
-    const corto = msi({ start_date: '2026-01-03', months_total: 3, total_amount: 3000 })
-    expect(getExigibleEsteCiclo(bbva, [corto], '2026-10-20')).toBe(0)
   })
 })

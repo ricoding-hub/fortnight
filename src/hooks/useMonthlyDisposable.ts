@@ -57,8 +57,10 @@ export function useMonthlyDisposable(): MonthlyDisposable {
     return { subsMonthly: suscripciones, fijosMonthly: fijos }
   }, [subs])
 
+  // La mensualidad que toca de cada plan (la última absorbe el redondeo; un
+  // plan ya cubierto no suma), no el `monthly_amount` guardado.
   const installmentsMonthly = useMemo(
-    () => activeInstallments.reduce((sum, i) => sum + Number(i.monthly_amount), 0),
+    () => activeInstallments.reduce((sum, i) => sum + (i.msi.actual?.monto ?? 0), 0),
     [activeInstallments],
   )
 

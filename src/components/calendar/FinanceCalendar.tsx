@@ -48,7 +48,7 @@ export function FinanceCalendar({ startCash, onOpenAccount, onMarcarMes, onVerPl
   const allEvents = useMemo(
     () => buildCalendarEvents(data, rangeFrom, rangeTo, hoy),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, data.estados, data.planesTarjeta, rangeFrom, rangeTo, hoy],
+    [data.accounts, data.installments, data.subscriptions, data.transactions, data.goals, data.config, data.estados, data.planesTarjeta, data.categories, rangeFrom, rangeTo, hoy],
   )
   const events = useMemo(
     () => allEvents.filter((e) => !hidden.has(e.kind)),

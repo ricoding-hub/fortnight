@@ -4,7 +4,7 @@ import {
   eventsByDay, fromKey, monthGrid, monthTotals, projectDailyBalance,
   startOfWeekMx, subscriptionDates, toKey, weekdayIndex, type CalendarEvent,
 } from '@/lib/calendar'
-import type { Account, Installment, Subscription, UserConfig } from '@/types'
+import type { Account, Category, Installment, Subscription, Transaction, UserConfig } from '@/types'
 
 const d = (s: string) => fromKey(s)
 
@@ -381,5 +381,43 @@ describe('modo ligero en el calendario', () => {
     expect(pagos.length).toBeGreaterThan(0)
     expect(pagos.every((e) => e.amount === 0 && !e.countsToCash && e.tags.includes('Fecha'))).toBe(true)
     expect(ev.filter((e) => e.kind === 'installment' && e.mes?.estado !== 'pagada').every((e) => e.countsToCash)).toBe(true)
+  })
+})
+
+describe('movimientos pasados en el calendario', () => {
+  const debito = account({ id: 'd1', name: 'BBVA', type: 'debit' })
+  const tarjeta = account({ id: 'a1', name: 'Nu', payment_due_day: 15, cut_day: 1 })
+  const salario = { id: 'k-sal', name: 'Salario', kind: 'income' } as Category
+  const tx = (o: Partial<Transaction>) =>
+    ({ id: 't', date: '2026-09-08', amount: 0, description: null, type: 'transaction', category_id: null, ...o }) as Transaction
+  const eventos = (transactions: Transaction[]) =>
+    buildCalendarEvents(
+      { accounts: [debito, tarjeta], installments: [], subscriptions: [], transactions, goals: [], config: null, categories: [salario] },
+      d('2026-09-01'),
+      d('2026-09-30'),
+    ).filter((e) => e.kind === 'transaction')
+
+  it('una compra con tarjeta es un gasto, no un «Ingreso»', () => {
+    const [e] = eventos([tx({ id: 'c', account_id: 'a1', amount: 800 })])
+    expect(e).toMatchObject({ title: 'Gasto', amount: -800 })
+  })
+
+  it('un pago de tarjeta sale una vez, como dinero que sale', () => {
+    const ev = eventos([
+      tx({ id: 'p1', account_id: 'a1', amount: -5000, type: 'transfer', transfer_id: 'x' }),
+      tx({ id: 'p2', account_id: 'd1', amount: -5000, type: 'transfer', transfer_id: 'x' }),
+    ])
+    expect(ev).toHaveLength(1)
+    expect(ev[0]).toMatchObject({ title: 'Pago Nu', amount: -5000 })
+  })
+
+  it('el «Ingreso con Salario» viejo en una tarjeta se ve como pago', () => {
+    const [e] = eventos([tx({ id: 'v', account_id: 'a1', amount: -3000, category_id: 'k-sal' })])
+    expect(e).toMatchObject({ title: 'Pago Nu', amount: -3000 })
+  })
+
+  it('un ingreso en débito sigue siendo ingreso', () => {
+    const [e] = eventos([tx({ id: 'i', account_id: 'd1', amount: 8000, category_id: 'k-sal' })])
+    expect(e).toMatchObject({ title: 'Ingreso', amount: 8000 })
   })
 })

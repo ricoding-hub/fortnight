@@ -862,6 +862,7 @@ export function Resumen() {
           config={config}
           estados={estados}
           planesTarjeta={planesTarjeta}
+          categories={categories}
           onOpen={() => navigate('/plan/proyeccion')}
         />
       </section>

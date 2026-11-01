@@ -23,6 +23,7 @@ import { useGoals } from '@/hooks/useGoals'
 import { useConfig } from '@/hooks/useConfig'
 import { useSubscriptions } from '@/hooks/useSubscriptions'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useCategories } from '@/hooks/useCategories'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useToast } from '@/hooks/useToast'
 import { useUiStore } from '@/store/uiStore'
@@ -72,6 +73,7 @@ export function Proyeccion() {
   const { data: config } = useConfig()
   const { data: subs } = useSubscriptions()
   const { data: accounts } = useAccounts()
+  const { data: categories } = useCategories()
 
   const { data: installments, active: activeInstallments, marcarMes, estados, planesTarjeta } = useInstallments()
   const abrirPago = useUiStore((s) => s.abrirPago)
@@ -361,6 +363,7 @@ export function Proyeccion() {
           config={config}
           estados={estados}
           planesTarjeta={planesTarjeta}
+          categories={categories}
           onPagarTarjeta={abrirPago}
           startCash={liquidCash}
           onMarcarMes={async (id, n) => {
