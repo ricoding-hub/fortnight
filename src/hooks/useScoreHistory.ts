@@ -29,12 +29,17 @@ export function useScoreHistory() {
 
   const fetchHistory = useCallback(async () => {
     if (!user) return
+    // Los últimos 30 DÍAS, no 30 filas: con huecos (días sin abrir la app) la
+    // gráfica abarcaba meses y la «semana» no cuadraba.
+    const desde = new Date()
+    desde.setDate(desde.getDate() - WINDOW_DAYS)
     const { data: rows } = await supabase
       .from('score_history')
       .select('*')
       .eq('user_id', user.id)
+      .gte('day', `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-${String(desde.getDate()).padStart(2, '0')}`)
       .order('day', { ascending: false })
-      .limit(WINDOW_DAYS)
+      .limit(WINDOW_DAYS + 1)
     const list = (rows ?? []) as ScoreSnapshot[]
     setSnapshots(list)
     const latest = list[0]
@@ -77,14 +82,17 @@ export function useScoreHistory() {
         return
       }
       lastRecordedRef.current = { day, score }
+      // Las columnas son de la fórmula anterior; se reusan para el desglose
+      // nuevo: utilización, colchón (liquidity), deuda vs. ingreso
+      // (savings_rate) y avance llevado a 0..1 (budget_adherence).
       const payload = {
         user_id: user.id,
         day,
         score,
-        utilization: breakdown?.utilization ?? null,
-        liquidity: breakdown?.liquidity ?? null,
-        savings_rate: breakdown?.savingsRate ?? null,
-        budget_adherence: breakdown?.budgetAdherence ?? null,
+        utilization: breakdown?.utilizacion ?? null,
+        liquidity: breakdown?.colchon ?? null,
+        savings_rate: breakdown?.deudaVsIngreso ?? null,
+        budget_adherence: breakdown ? (breakdown.avance + 1) / 2 : null,
         recorded_at: new Date().toISOString(),
       }
       await supabase

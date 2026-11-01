@@ -5,7 +5,7 @@ interface ScoreSparklineProps {
   height?: number
 }
 
-/** Last-N score points as an inline SVG sparkline with gradient area fill. */
+/** Last-N score points as an inline SVG sparkline with gradient area fill, scaled to the data. */
 export function ScoreSparkline({ data, width = 150, height = 28 }: ScoreSparklineProps) {
   if (data.length < 2) {
     // Single data point can't form a path — render the dot only.
@@ -17,9 +17,16 @@ export function ScoreSparkline({ data, width = 150, height = 28 }: ScoreSparklin
     )
   }
 
+  // Escala a los propios datos (con al menos 1 punto de rango): en 0..10 un
+  // cambio de 0.1 medía 0.3 px y la línea se veía plana.
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const medio = (min + max) / 2
+  const rango = Math.max(1, max - min)
+  const bajo = medio - rango / 2
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * width
-    const y = height - (Math.max(0, Math.min(10, v)) / 10) * height
+    const y = height - ((v - bajo) / rango) * height
     return [x, y] as const
   })
 

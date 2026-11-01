@@ -5,30 +5,60 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 /* ------------------------------------------------------------------ */
-/* Score V2 — behaviour + balance-sheet blend                          */
+/* Score V3 — dónde estás (posición) + qué hiciste en 30 días (avance)  */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Hasta v1.18 el score casi no se movía: el apego al presupuesto valía siempre
+ * 0.5 (nadie lo pasaba), la tasa de ahorro 0.5 sin ingresos registrados — y 0
+ * al registrar uno —, la racha casi siempre 1/21, y sólo la utilización
+ * cambiaba (+0.03 por cada $1,000). El anillo además redondeaba a enteros.
+ *
+ * Ahora son dos partes:
+ *
+ *   posición ∈ [0,1]  = 0.35·utilización + 0.25·deuda vs. ingreso + 0.40·colchón
+ *                       (las que no se pueden medir no cuentan y su peso se reparte)
+ *   avance   ∈ [−1,1] = lo que bajó tu deuda y subió tu efectivo en 30 días,
+ *                       medido con los movimientos (el saldo sólo cambia por ellos)
+ *
+ *   score = 1 + 7·posición + 1.5·avance, entre 1 y 10, con un decimal.
+ *
+ * Sin cambios en 30 días el avance es 0 y el score dice dónde estás. Pagar deuda
+ * o juntar colchón lo sube semana a semana; endeudarte lo baja.
+ */
+
+export interface MovimientoScore {
+  account_id: string
+  amount: number | string
+  date: string
+}
 
 export interface ScoreInput {
   accounts: Account[]
-  /** Streak length from `user_gamification.streak_days`. */
-  streakDays?: number
-  /** Sum of income transactions over the last 30 days (positive number). */
-  monthlyIncome?: number
-  /** Sum of expense transactions over the last 30 days (positive number). */
-  monthlyExpense?: number
-  /**
-   * Ratio of actual spend to planned spend across the current budget cycle.
-   * 0 = nothing spent, 1 = on plan, 2+ = double over. Null when no plan yet.
-   */
-  budgetSpendRatio?: number | null
+  /** Ingreso mensual neto (configurado). 0 = desconocido. */
+  ingresoMensual?: number
+  /** Gastos fijos al mes (renta, servicios, suscripciones). 0 = desconocido. */
+  gastosFijosMensuales?: number
+  /** Movimientos de las cuentas desde `desde` (inclusive), para el avance. */
+  movimientos?: MovimientoScore[]
+  /** Inicio de la ventana del avance (`YYYY-MM-DD`): hoy − 30 días. */
+  desde?: string
 }
 
 export interface ScoreBreakdown {
-  utilization: number
-  liquidity: number
-  savingsRate: number
-  streak: number
-  budgetAdherence: number
+  /** 1 − deuda/límite en tarjetas con límite. null = no aplica. */
+  utilizacion: number | null
+  /** 1 − deuda/(6 meses de ingreso). null = sin ingreso configurado. */
+  deudaVsIngreso: number | null
+  /** Efectivo vs. 3 meses de gastos fijos (o un mes de ingreso). */
+  colchon: number
+  posicion: number
+  /** −1..1: lo que mejoraste (o empeoraste) en 30 días. */
+  avance: number
+  deudaHoy: number
+  deudaHace30: number
+  efectivoHoy: number
+  efectivoHace30: number
 }
 
 export interface ScoreResult {
@@ -36,103 +66,78 @@ export interface ScoreResult {
   breakdown: ScoreBreakdown
 }
 
+const PESOS = { utilizacion: 0.35, deudaVsIngreso: 0.25, colchon: 0.4 } as const
+
 /**
- * Each signal is normalised to 0..1 (higher is better) and weighted.
- * Weights are inspired by FICO's payment-history / utilization split,
- * adapted to the signals we actually have:
- *
- *   utilization        0.30   debt ÷ limit
- *   liquidity          0.20   cash ÷ debt
- *   savings rate       0.20   (income − expense) ÷ income
- *   streak             0.15   daily activity over 3 weeks
- *   budget adherence   0.15   actual ÷ planned spend
+ * Lo que de verdad sale cada mes sin falta: gastos fijos con fecha,
+ * suscripciones y mensualidades MSI. Sin nada de eso, la parte «necesidades»
+ * del presupuesto (o el estimado del onboarding).
  */
-const WEIGHTS = {
-  utilization: 0.30,
-  liquidity: 0.20,
-  savingsRate: 0.20,
-  streak: 0.15,
-  budgetAdherence: 0.15,
-} as const
-
-export function calculateScoreV2(input: ScoreInput): ScoreResult {
-  const {
-    accounts,
-    streakDays = 0,
-    monthlyIncome = 0,
-    monthlyExpense = 0,
-    budgetSpendRatio = null,
-  } = input
-
-  const credit = accounts.filter((a) => a.type === 'credit')
-  const debit = accounts.filter((a) => a.type === 'debit')
-
-  const creditDebt = credit.reduce((s, a) => s + Number(a.balance), 0)
-  const creditLimit = credit.reduce(
-    (s, a) => s + Number(a.credit_limit ?? 0),
-    0,
-  )
-  const debitTotal = debit.reduce((s, a) => s + Number(a.balance), 0)
-
-  // Utilization: 1 when no debt or no cards, 0 when fully maxed.
-  // Missing limits count as fully used so we don't reward unknowns.
-  let utilization: number
-  if (credit.length === 0) {
-    utilization = 1
-  } else if (creditLimit <= 0) {
-    utilization = 0
-  } else {
-    utilization = 1 - clamp(creditDebt / creditLimit, 0, 1)
-  }
-
-  // Liquidity: cash ÷ debt. No debt → fully liquid.
-  const liquidity =
-    creditDebt > 0 ? clamp(debitTotal / creditDebt, 0, 1) : 1
-
-  // Savings rate: 40% saved → full credit, 0% → zero. No income → neutral.
-  let savingsRate: number
-  if (monthlyIncome <= 0) {
-    savingsRate = 0.5
-  } else {
-    const rate = (monthlyIncome - monthlyExpense) / monthlyIncome
-    savingsRate = clamp(rate, 0, 0.4) / 0.4
-  }
-
-  // Streak: 3 weeks of activity = full credit.
-  const streak = clamp(streakDays / 21, 0, 1)
-
-  // Budget adherence: 1.0 = on plan, 2.0 = double over. No plan → neutral.
-  let budgetAdherence: number
-  if (budgetSpendRatio === null || budgetSpendRatio === undefined) {
-    budgetAdherence = 0.5
-  } else {
-    const over = Math.max(0, budgetSpendRatio - 1)
-    budgetAdherence = 1 - clamp(over, 0, 1)
-  }
-
-  const weighted =
-    utilization * WEIGHTS.utilization +
-    liquidity * WEIGHTS.liquidity +
-    savingsRate * WEIGHTS.savingsRate +
-    streak * WEIGHTS.streak +
-    budgetAdherence * WEIGHTS.budgetAdherence
-
-  const score = Math.round(clamp(weighted * 10, 1, 10) * 10) / 10
-
-  return {
-    score,
-    breakdown: { utilization, liquidity, savingsRate, streak, budgetAdherence },
-  }
+export function gastosFijosDe(md: {
+  fijosMonthly: number
+  subsMonthly: number
+  installmentsMonthly: number
+  fixedMonthly: number
+}): number {
+  const conocidos = md.fijosMonthly + md.subsMonthly + md.installmentsMonthly
+  return conocidos > 0 ? conocidos : Math.max(0, md.fixedMonthly)
 }
 
-/**
- * Legacy adapter — callers that haven't been refactored yet still pass just
- * an `Account[]`. We fill in neutral defaults so the score still moves with
- * balance sheet changes, just without the behavioural signals.
- */
-export function calculateScore(accounts: Account[]): number {
-  const { score } = calculateScoreV2({ accounts })
-  return Math.round(score)
+const num = (v: unknown): number => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function calculateScore(input: ScoreInput): ScoreResult {
+  const { accounts, ingresoMensual = 0, gastosFijosMensuales = 0, movimientos = [], desde } = input
+  const credito = accounts.filter((a) => a.type === 'credit')
+  const debito = accounts.filter((a) => a.type === 'debit')
+  const tipoDe = new Map(accounts.map((a) => [a.id, a.type]))
+
+  // Un saldo negativo en una tarjeta es dinero a tu favor, no deuda negativa.
+  const deudaHoy = credito.reduce((s, a) => s + Math.max(0, num(a.balance)), 0)
+  const efectivoHoy = debito.reduce((s, a) => s + num(a.balance), 0)
+
+  // Utilización: sólo con las tarjetas que tienen límite (una sin límite no
+  // debe contar como «al tope»: su deuda ya pesa en deuda vs. ingreso).
+  const conLimite = credito.filter((a) => num(a.credit_limit) > 0)
+  const limite = conLimite.reduce((s, a) => s + num(a.credit_limit), 0)
+  const deudaConLimite = conLimite.reduce((s, a) => s + Math.max(0, num(a.balance)), 0)
+  const utilizacion = limite > 0 ? 1 - clamp(deudaConLimite / limite, 0, 1) : null
+
+  const deudaVsIngreso =
+    ingresoMensual > 0 ? 1 - clamp(deudaHoy / (6 * ingresoMensual), 0, 1) : deudaHoy <= 0 ? 1 : null
+
+  const baseColchon = gastosFijosMensuales > 0 ? 3 * gastosFijosMensuales : ingresoMensual > 0 ? ingresoMensual : 0
+  const colchon =
+    baseColchon > 0 ? clamp(efectivoHoy / baseColchon, 0, 1) : deudaHoy > 0 ? clamp(efectivoHoy / deudaHoy, 0, 1) : efectivoHoy > 0 ? 1 : 0
+
+  const partes: [number, number][] = [[colchon, PESOS.colchon]]
+  if (utilizacion != null) partes.push([utilizacion, PESOS.utilizacion])
+  if (deudaVsIngreso != null) partes.push([deudaVsIngreso, PESOS.deudaVsIngreso])
+  const pesoTotal = partes.reduce((s, [, w]) => s + w, 0)
+  const posicion = partes.reduce((s, [v, w]) => s + v * w, 0) / pesoTotal
+
+  // Avance: cómo estaban tu deuda y tu efectivo hace 30 días, deshaciendo los
+  // movimientos (ajustes de saldo incluidos: es como más se actualiza).
+  let enTarjetas = 0
+  let enDebito = 0
+  for (const m of movimientos) {
+    if (desde && m.date.slice(0, 10) < desde) continue
+    const tipo = tipoDe.get(m.account_id)
+    if (tipo === 'credit') enTarjetas += num(m.amount)
+    else if (tipo === 'debit') enDebito += num(m.amount)
+  }
+  const deudaHace30 = Math.max(0, deudaHoy - enTarjetas)
+  const efectivoHace30 = efectivoHoy - enDebito
+  const base = Math.max(ingresoMensual, deudaHace30 * 0.25, 1000)
+  const avance = clamp((4 * (deudaHace30 - deudaHoy) + 1.5 * (efectivoHoy - efectivoHace30)) / base, -1, 1)
+
+  const score = Math.round(clamp(1 + 7 * posicion + 1.5 * avance, 1, 10) * 10) / 10
+  return {
+    score,
+    breakdown: { utilizacion, deudaVsIngreso, colchon, posicion, avance, deudaHoy, deudaHace30, efectivoHoy, efectivoHace30 },
+  }
 }
 
 /**

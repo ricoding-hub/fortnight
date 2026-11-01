@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useGoals } from '@/hooks/useGoals'
-import { useMonthlyDisposable } from '@/hooks/useMonthlyDisposable'
+import { useMonthlyDisposable, type MonthlyDisposable } from '@/hooks/useMonthlyDisposable'
 import { debtFreeMonth, resolveDebtGoal } from '@/lib/goals'
 import type { Goal } from '@/types'
 
@@ -17,6 +17,8 @@ export interface DebtFreeMonth {
   /** Why there's no month, so the UI can say something useful. */
   reason: 'no-goal' | 'no-disposable' | null
   loading: boolean
+  /** El disponible y sus partes (ingreso, fijos): el score también los usa. */
+  md: MonthlyDisposable
 }
 
 /**
@@ -32,7 +34,8 @@ export interface DebtFreeMonth {
 export function useDebtFreeMonth(): DebtFreeMonth {
   const { data: goals, loading: goalsLoading } = useGoals()
   const { data: accounts, loading: accountsLoading } = useAccounts()
-  const { disposable } = useMonthlyDisposable()
+  const md = useMonthlyDisposable()
+  const { disposable } = md
 
   const primary = useMemo(
     () => goals.find((g) => g.is_primary) ?? goals.find((g) => g.is_debt) ?? null,
@@ -47,11 +50,11 @@ export function useDebtFreeMonth(): DebtFreeMonth {
   return useMemo(() => {
     const loading = goalsLoading || accountsLoading
     if (!primary) {
-      return { month: null, monthly: 0, goal: null, isDerived: false, reason: 'no-goal' as const, loading }
+      return { month: null, monthly: 0, goal: null, isDerived: false, reason: 'no-goal' as const, loading, md }
     }
     const resolved = resolveDebtGoal(primary, { creditDebt, disposable })
     if (!resolved) {
-      return { month: null, monthly: 0, goal: null, isDerived: false, reason: 'no-disposable' as const, loading }
+      return { month: null, monthly: 0, goal: null, isDerived: false, reason: 'no-disposable' as const, loading, md }
     }
     return {
       month: debtFreeMonth(resolved),
@@ -60,6 +63,7 @@ export function useDebtFreeMonth(): DebtFreeMonth {
       isDerived: resolved.monthly !== primary.monthly,
       reason: null,
       loading,
+      md,
     }
-  }, [primary, creditDebt, disposable, goalsLoading, accountsLoading])
+  }, [primary, creditDebt, disposable, goalsLoading, accountsLoading, md])
 }

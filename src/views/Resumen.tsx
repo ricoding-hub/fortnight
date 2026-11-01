@@ -47,7 +47,7 @@ import { useUiStore } from '@/store/uiStore'
 
 import { formatMXN } from '@/lib/format'
 import { getDeudaALaVista } from '@/lib/debt'
-import { calculateScoreV2, weeklyScoreDelta } from '@/lib/score'
+import { calculateScore, gastosFijosDe, weeklyScoreDelta } from '@/lib/score'
 import { useDebtFreeMonth } from '@/hooks/useDebtFreeMonth'
 import { startOfWeekMx, toKey } from '@/lib/calendar'
 import { daysUntilPayment } from '@/lib/dates'
@@ -162,25 +162,19 @@ export function Resumen() {
     return days[0] ?? null
   }, [config])
 
-  // ── Score V2: blends balance sheet + behavioural signals from the last 30 days
-  const { monthlyIncome, monthlyExpense } = useMemo(() => {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - 30)
-    const r = resumenDeMovimientos(recentTx, cuentasPorId, categoriasPorId, toKey(cutoff))
-    return { monthlyIncome: r.ingresos, monthlyExpense: r.gastos }
-  }, [recentTx, cuentasPorId, categoriasPorId])
-
-  const { score, breakdown } = useMemo(
-    () =>
-      calculateScoreV2({
-        accounts,
-        streakDays: gami.streak_days,
-        monthlyIncome,
-        monthlyExpense,
-        budgetSpendRatio: null,
-      }),
-    [accounts, gami.streak_days, monthlyIncome, monthlyExpense],
-  )
+  // ── Score: dónde estás (deuda, colchón) + lo que mejoraste en 30 días.
+  const { month: mesLibre, reason: mesLibreReason, md } = useDebtFreeMonth()
+  const { score, breakdown } = useMemo(() => {
+    const desde = new Date()
+    desde.setDate(desde.getDate() - 30)
+    return calculateScore({
+      accounts,
+      ingresoMensual: md.monthlyIncome,
+      gastosFijosMensuales: gastosFijosDe(md),
+      movimientos: recentTx,
+      desde: toKey(desde),
+    })
+  }, [accounts, md, recentTx])
 
   // Persist today's snapshot when the live score deviates from the last record.
   useEffect(() => {
@@ -198,9 +192,8 @@ export function Resumen() {
     return points
   }, [scoreSnapshots, score])
 
-  const scoreInt = Math.round(score)
-  const scoreTier = scoreInt >= 8 ? 'Top' : scoreInt >= 5 ? 'Mejorando' : 'En reto'
-  const scoreColor = scoreInt >= 8 ? '#2BB673' : scoreInt >= 5 ? '#9B7BFF' : '#FF5A5F'
+  const scoreTier = score >= 8 ? 'Top' : score >= 5 ? 'Mejorando' : 'En reto'
+  const scoreColor = score >= 8 ? '#2BB673' : score >= 5 ? '#9B7BFF' : '#FF5A5F'
   const scoreDelta = useMemo(
     () => weeklyScoreDelta(scoreSnapshots, score, toKey(startOfWeekMx(new Date()))),
     [scoreSnapshots, score],
@@ -220,7 +213,6 @@ export function Resumen() {
   // Shared with Proyección so the two screens can't disagree, and so the month
   // stops coming from the seeded goal's `monthly`, which cancels the debt out
   // and hands every user the same six months.
-  const { month: mesLibre, reason: mesLibreReason } = useDebtFreeMonth()
 
   // Pago próximo: lo que FALTA del estado de cuenta, no el saldo completo (que
   // trae todas las mensualidades MSI que aún no se cobran). Desaparece al pagar.
@@ -593,7 +585,7 @@ export function Resumen() {
         >
           <Card className="p-4">
             <div className="flex items-center gap-3.5">
-              <ScoreRing score={scoreInt} color={scoreColor} />
+              <ScoreRing score={score} color={scoreColor} />
               <div className="min-w-0 flex-1">
                 <div className="mb-0.5 flex items-center gap-1.5">
                   <span className="text-sm font-extrabold text-text">Score financiero</span>
@@ -606,7 +598,7 @@ export function Resumen() {
                   {scoreDelta != null && (
                     <>
                       <span className={`font-extrabold ${scoreDelta >= 0 ? 'text-asset-deep' : 'text-debt'}`}>
-                        {scoreDelta >= 0 ? `+${scoreDelta}` : String(scoreDelta)}
+                        {scoreDelta >= 0 ? `+${scoreDelta.toFixed(1)}` : scoreDelta.toFixed(1)}
                       </span>{' '}
                       esta semana ·{' '}
                     </>
@@ -1035,7 +1027,7 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
       <div className="absolute inset-0 grid place-items-center">
         <div className="text-center">
           <p className="font-display text-xl font-extrabold leading-none" style={{ color }}>
-            {score}
+            {score.toFixed(1)}
           </p>
           <p className="text-[8.5px] font-bold tracking-wide text-text-tertiary">/ 10</p>
         </div>
@@ -1105,42 +1097,24 @@ interface ScoreBreakdownSheetProps {
 
 const SIGNAL_META = [
   {
-    key: 'utilization' as const,
-    label: 'Utilización de crédito',
-    weight: 30,
-    description: 'Qué tan lejos estás de tu límite total de tarjetas.',
-    goodLabel: 'baja utilización',
+    key: 'colchon' as const,
+    label: 'Colchón',
+    weight: 40,
+    description: 'Tu efectivo contra 3 meses de gastos fijos. Sube juntando dinero en débito.',
   },
   {
-    key: 'liquidity' as const,
-    label: 'Liquidez',
-    weight: 20,
-    description: 'Efectivo en cuentas versus deuda total.',
-    goodLabel: 'más efectivo que deuda',
+    key: 'utilizacion' as const,
+    label: 'Uso de tus tarjetas',
+    weight: 35,
+    description: 'Qué tan lejos estás del límite de las tarjetas que lo tienen. Sube pagando.',
   },
   {
-    key: 'savingsRate' as const,
-    label: 'Tasa de ahorro',
-    weight: 20,
-    description: 'Porcentaje del ingreso que no gastas (últimos 30 días). Meta: 40%.',
-    goodLabel: 'ahorrando 40%+',
-  },
-  {
-    key: 'streak' as const,
-    label: 'Racha de registro',
-    weight: 15,
-    description: 'Consistencia diaria. 21 días continuos = puntaje completo.',
-    goodLabel: '21 días de racha',
-  },
-  {
-    key: 'budgetAdherence' as const,
-    label: 'Apego al presupuesto',
-    weight: 15,
-    description: 'Qué tan cerca estás del gasto planeado. Sin plan activo = neutro.',
-    goodLabel: 'dentro del plan',
+    key: 'deudaVsIngreso' as const,
+    label: 'Deuda contra ingreso',
+    weight: 25,
+    description: 'Tu deuda contra 6 meses de ingreso. Sube pagando deuda.',
   },
 ]
-
 function SignalBar({ value, color }: { value: number; color: string }) {
   return (
     <div
@@ -1173,7 +1147,7 @@ function ScoreBreakdownSheet({
     <Modal open={open} onClose={onClose} title="Score financiero">
       {/* Hero row */}
       <div className="mb-4 flex items-center gap-4 rounded-xl p-4" style={{ background: scoreColor + '12' }}>
-        <ScoreRing score={Math.round(score)} color={scoreColor} />
+        <ScoreRing score={score} color={scoreColor} />
         <div>
           <p className="font-display text-3xl font-extrabold leading-none" style={{ color: scoreColor }}>
             {score}
@@ -1192,24 +1166,17 @@ function ScoreBreakdownSheet({
       </div>
 
       {/* Signal breakdown */}
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-text-secondary">Dónde estás</p>
       <div className="flex flex-col gap-3.5">
         {SIGNAL_META.map((sig) => {
           const val = breakdown[sig.key]
+          if (val == null) return null
           const col = signalColor(val)
-          const pts = Math.round(val * sig.weight * 10) / 10
           return (
             <div key={sig.key}>
               <div className="mb-1.5 flex items-center gap-2">
                 <span className="flex-1 text-[12.5px] font-bold text-text">{sig.label}</span>
-                <span
-                  className="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-extrabold"
-                  style={{ background: col + '18', color: col }}
-                >
-                  {pts.toFixed(1)} pts
-                </span>
-                <span className="shrink-0 text-[10px] font-semibold text-text-tertiary">
-                  peso {sig.weight}%
-                </span>
+                <span className="shrink-0 text-[10px] font-semibold text-text-tertiary">peso {sig.weight}%</span>
               </div>
               <div className="flex items-center gap-2">
                 <SignalBar value={val} color={col} />
@@ -1217,16 +1184,33 @@ function ScoreBreakdownSheet({
                   {Math.round(val * 100)}%
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-text-tertiary">
-                {sig.description}
-              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-text-tertiary">{sig.description}</p>
             </div>
           )
         })}
       </div>
 
+      <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wider text-text-secondary">Tu avance en 30 días</p>
+      <div className="rounded-xl bg-bg-secondary px-3.5 py-3 text-[12px] leading-relaxed text-text-secondary">
+        <p>
+          Deuda: <b className="font-mono text-text">{formatMXN(breakdown.deudaHace30)}</b> →{' '}
+          <b className="font-mono text-text">{formatMXN(breakdown.deudaHoy)}</b>
+        </p>
+        <p>
+          Efectivo: <b className="font-mono text-text">{formatMXN(breakdown.efectivoHace30)}</b> →{' '}
+          <b className="font-mono text-text">{formatMXN(breakdown.efectivoHoy)}</b>
+        </p>
+        <p className="mt-1">
+          {breakdown.avance > 0.05
+            ? `Vas mejorando: suma ${(1.5 * breakdown.avance).toFixed(1)} a tu score.`
+            : breakdown.avance < -0.05
+              ? `Vas para atrás: resta ${(1.5 * -breakdown.avance).toFixed(1)} a tu score.`
+              : 'Sin cambios: tu score sólo refleja dónde estás.'}
+        </p>
+      </div>
+
       <p className="mt-5 text-center text-[10.5px] text-text-tertiary">
-        Basado en tus últimos 30 días · Se recalcula al cambiar saldos
+        Se recalcula con cada saldo y movimiento · Paga deuda o junta colchón para subirlo
       </p>
     </Modal>
   )

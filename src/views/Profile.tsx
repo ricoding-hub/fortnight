@@ -38,6 +38,7 @@ import { Confetti } from '@/components/Confetti'
 import { supabase } from '@/lib/supabase'
 import { PAY_FREQS, computePaydays, fmtPayday, payFreqOf} from '@/lib/paydays'
 import { calculateScore } from '@/lib/score'
+import { useScoreHistory } from '@/hooks/useScoreHistory'
 import { moneyOr } from '@/lib/money'
 import type { PayFreq, UserConfig } from '@/types'
 
@@ -167,7 +168,11 @@ export function Profile() {
 
   // Achievement signals
   const txCount = transactions.length
-  const score = useMemo(() => calculateScore(accounts), [accounts])
+  // El mismo score que Inicio: Inicio lo guarda cada día en el historial. Sin
+  // historial todavía, el de hoy sólo con los saldos.
+  const { snapshots: scoreSnapshots } = useScoreHistory()
+  const scoreGuardado = scoreSnapshots[0] ? Number(scoreSnapshots[0].score) : null
+  const score = useMemo(() => scoreGuardado ?? calculateScore({ accounts }).score, [scoreGuardado, accounts])
   const achievements = useAchievements(gami.xp, gami.streak_days, txCount, score)
 
   // Level info
