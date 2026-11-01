@@ -4,13 +4,11 @@ import {
   IconArrowDown,
   IconBell,
   IconCalendarEvent,
-  IconCash,
-  IconCreditCard,
   IconFlame,
   IconInfoCircle,
   IconRocket,
   IconTrendingUp,
-  IconTrophy,
+  IconTarget,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 
@@ -40,8 +38,6 @@ import { Modal } from '@/components/ui/Modal'
 import { SkeletonStatCard } from '@/components/ui/Skeleton'
 import { PaydayBanner } from '@/components/PaydayBanner'
 import { ScoreSparkline } from '@/components/ScoreSparkline'
-import { Podium, type PodiumFriend } from '@/components/Podium'
-import { YourRank, type RankFriend } from '@/components/YourRank'
 import { MisionesCompact } from '@/components/MisionesCompact'
 import { useUiStore } from '@/store/uiStore'
 
@@ -163,7 +159,7 @@ export function Resumen() {
   }, [config])
 
   // ── Score: dónde estás (deuda, colchón) + lo que mejoraste en 30 días.
-  const { month: mesLibre, reason: mesLibreReason, md } = useDebtFreeMonth()
+  const { month: mesLibre, md } = useDebtFreeMonth()
   const { score, breakdown } = useMemo(() => {
     const desde = new Date()
     desde.setDate(desde.getDate() - 30)
@@ -198,15 +194,6 @@ export function Resumen() {
     () => weeklyScoreDelta(scoreSnapshots, score, toKey(startOfWeekMx(new Date()))),
     [scoreSnapshots, score],
   )
-
-  const unlockedAchievements = [
-    // «Primer movimiento»: con la ventana de 45 días ya no se ve todo el
-    // historial; el XP es la señal de que alguna vez registraste algo.
-    recentTx.length >= 1 || gami.xp > 0,
-    gami.streak_days >= 7,
-    score >= 5,
-    gami.xp >= 500,
-  ].filter(Boolean).length
 
   // Mes libre de deuda — projected month/year from the primary goal (falling
   // back to any debt goal so existing users see something on day one).
@@ -261,7 +248,15 @@ export function Resumen() {
         : 'Fecha límite de pago'
     : ''
 
-  const streak = gami.streak_days
+  // La racha sólo cuenta si sigue viva: registraste algo hoy o ayer. Si no,
+  // el número guardado está viejo (nada lo baja hasta el siguiente registro).
+  const rachaViva = (() => {
+    const ultimo = gami.last_activity_date ? String(gami.last_activity_date).slice(0, 10) : null
+    if (!ultimo || !gami.streak_days) return 0
+    const ayer = new Date()
+    ayer.setDate(ayer.getDate() - 1)
+    return ultimo >= toKey(ayer) ? gami.streak_days : 0
+  })()
 
   // Missions — driven by useMissions, which fetches this week's claims and
   // auto-awards XP the moment a mission hits 100%.
@@ -297,20 +292,27 @@ export function Resumen() {
       score,
       weekDebtPayments,
       weekAdjustmentCount,
-      hasActiveLoan: activeLoans.length > 0,
-      hasActiveSubscription: subs.some((s) => s.active),
+      scoreSubio: (scoreDelta ?? 0) > 0,
       loanPaidThisWeek,
       weekCategorizedTxCount,
     }
-  }, [recentTx, accounts, categories, score, allLoans, activeLoans, subs])
+  }, [recentTx, accounts, categories, score, scoreDelta, allLoans])
 
   // `enabled` off while accounts load — a transient empty-accounts render
   // inflates the score and would falsely auto-claim the "score ≥ 7" mission.
   const { missions } = useMissions(missionCtx, { enabled: !loading })
+  // La que está más cerca de completarse (y no está hecha). Ninguna = no se muestra.
+  const misionVisible = useMemo(
+    () =>
+      missions
+        .filter((m) => !(m.done ?? false) && (m.current ?? 0) < m.total)
+        .sort((a, b) => (b.current ?? 0) / b.total - (a.current ?? 0) / a.total)[0] ?? null,
+    [missions],
+  )
+  const [misionesOpen, setMisionesOpen] = useState(false)
 
   // Friends data is gated behind a future gamification migration — Liga is
   // hidden when there's nothing to show.
-  const friends: (PodiumFriend & RankFriend)[] = []
 
   /* --------------------------------- loading / error */
 
@@ -343,9 +345,6 @@ export function Resumen() {
 
   /* --------------------------------- render */
 
-  const activosShown = debitTotal
-  const deudaShown = creditDebt
-
   return (
     <div className="flex flex-col animate-[fade-in_300ms_ease-out]">
       {/* ── Header: avatar + greeting + XP bar + bell ── */}
@@ -353,7 +352,7 @@ export function Resumen() {
         <button
           type="button"
           onClick={() => navigate('/perfil')}
-          aria-label="Abrir perfil"
+          aria-label="Tu perfil"
           className="relative shrink-0 transition-transform active:scale-95"
         >
           {avatarUrl ? (
@@ -370,14 +369,6 @@ export function Resumen() {
               {avatarInitial}
             </span>
           )}
-          {!gamiLoading && (
-            <span
-              className="absolute -bottom-1 -right-1 rounded-md bg-lavender px-1.5 py-0.5 font-mono text-[9px] font-extrabold text-white"
-              style={{ boxShadow: '0 0 0 2px var(--color-bg)' }}
-            >
-              LV{gami.level}
-            </span>
-          )}
         </button>
 
         <button
@@ -392,7 +383,16 @@ export function Resumen() {
             <div className="mt-1 h-[5px] max-w-[130px] rounded-full shimmer" />
           ) : (
             <div className="mt-1 flex items-center gap-1.5">
-              <div className="h-[5px] max-w-[130px] flex-1 overflow-hidden rounded-full bg-primary-soft">
+              <span className="shrink-0 rounded-md bg-lavender-soft px-1.5 py-px font-mono text-[10px] font-extrabold text-lavender-deep">
+                Nv {gami.level}
+              </span>
+              {rachaViva > 0 && (
+                <span className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[10.5px] font-extrabold text-peach-ink" aria-label={`Racha de ${rachaViva} día${rachaViva === 1 ? '' : 's'}`}>
+                  <IconFlame size={11} stroke={2.25} aria-hidden />
+                  {rachaViva}
+                </span>
+              )}
+              <div className="h-[4px] max-w-[110px] flex-1 overflow-hidden rounded-full bg-primary-soft">
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{
@@ -498,9 +498,15 @@ export function Resumen() {
           <div className="relative mt-1 flex items-center gap-3">
             <p className="text-[11.5px] font-medium text-white/55">activos — deuda total</p>
             {nextPayday && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75 backdrop-blur-sm">
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75">
                 <IconCalendarEvent size={10} stroke={2} />
                 Cobro: {fmtPayday(nextPayday)}
+              </span>
+            )}
+            {mesLibre && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/75">
+                <IconRocket size={10} stroke={2} />
+                Sin deuda: {shortMonth(mesLibre)}
               </span>
             )}
           </div>
@@ -733,53 +739,6 @@ export function Resumen() {
         )}
       </Modal>
 
-      {/* ── Streak + Mes libre dual cards ── */}
-      <section className="grid grid-cols-2 gap-2 px-4 pt-2">
-        <Card className="flex items-center gap-2.5 p-3">
-          <div
-            className="grid h-[34px] w-[34px] place-items-center rounded-md"
-            style={{
-              background: 'linear-gradient(135deg, #FF5A5F 0%, #FF8A65 100%)',
-              boxShadow: '0 4px 10px rgba(255,90,95,0.3)',
-            }}
-          >
-            <IconFlame size={18} fill="#fff" stroke="#fff" />
-          </div>
-          <div>
-            <p className="font-display text-base font-extrabold leading-none text-text">
-              {streak} días
-            </p>
-            <p className="mt-1 text-[10.5px] font-semibold text-text-tertiary">
-              de racha
-            </p>
-          </div>
-        </Card>
-        <Card className="flex items-center gap-2.5 p-3">
-          <div
-            className="grid h-[34px] w-[34px] place-items-center rounded-md"
-            style={{
-              background: 'linear-gradient(135deg, #2BB673 0%, #5DD296 100%)',
-              boxShadow: '0 4px 10px rgba(43,182,115,0.3)',
-            }}
-          >
-            <IconRocket size={18} stroke={2} color="#fff" />
-          </div>
-          <div>
-            <p className="font-display text-base font-extrabold leading-none text-text">
-              {mesLibre ? shortMonth(mesLibre) : '—'}
-            </p>
-            <p className="mt-1 text-[10.5px] font-semibold text-text-tertiary">
-              {/* Better an honest dash with a way forward than a date we made up. */}
-              {mesLibre
-                ? 'libre de deuda'
-                : mesLibreReason === 'no-disposable'
-                  ? 'configura tu plan'
-                  : 'libre de deuda'}
-            </p>
-          </div>
-        </Card>
-      </section>
-
       {/* ── Pago próximo: lo que falta del estado de cuenta (≤5 días o vencido) ── */}
       {nextUrgent && (
         <section className="px-4 pt-2" aria-label="Pago próximo">
@@ -815,50 +774,34 @@ export function Resumen() {
         </section>
       )}
 
-      {/* ── Liga de amigos — hidden until friends data exists ── */}
-      {friends.length >= 3 && (
-        <>
-          <SectionHeader right={<span className="text-[11px] font-bold text-primary">Ver todos</span>}>
-            Liga de amigos
-          </SectionHeader>
-          <section className="px-4 pb-2">
-            <Card className="p-3.5">
-              <Podium friends={friends.slice(0, 3)} />
-              <YourRank friends={friends} />
-            </Card>
-          </section>
-        </>
-      )}
-
       {/* ── Calendario: lo que viene y qué queda hasta el próximo pago ── */}
-      <SectionHeader
-        right={
-          <button
-            type="button"
-            onClick={() => navigate('/plan/proyeccion')}
-            className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+      <CalendarSummary
+        accounts={accounts}
+        installments={allInstallments}
+        subscriptions={subs}
+        transactions={recentTx}
+        goals={goals}
+        config={config}
+        estados={estados}
+        planesTarjeta={planesTarjeta}
+        categories={categories}
+        onOpen={() => navigate('/plan/proyeccion')}
+        encabezado={
+          <SectionHeader
+            right={
+              <button
+                type="button"
+                onClick={() => navigate('/plan/proyeccion')}
+                className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
+              >
+                Ver calendario
+              </button>
+            }
           >
-            Ver calendario
-          </button>
+            Tu calendario
+          </SectionHeader>
         }
-      >
-        Tu calendario
-      </SectionHeader>
-      <section className="px-4 pb-2">
-        <CalendarSummary
-          accounts={accounts}
-          installments={allInstallments}
-          subscriptions={subs}
-          transactions={recentTx}
-          goals={goals}
-          config={config}
-          estados={estados}
-          planesTarjeta={planesTarjeta}
-          categories={categories}
-          onOpen={() => navigate('/plan/proyeccion')}
-        />
-      </section>
-
+      />
 
       {/* ── Saldos (préstamos) — por persona/grupo, tap para el detalle ── */}
       {topBalances.length > 0 && (
@@ -902,47 +845,26 @@ export function Resumen() {
         </>
       )}
 
-      {/* ── Misiones de la semana ── */}
-      <SectionHeader right={<span className="text-[11px] font-bold text-primary">{missions.length} activas</span>}>
-        Misiones de la semana
-      </SectionHeader>
-      <section className="px-4 pb-2">
+      {/* ── Una misión, discreta: la más cercana a lograrse ── */}
+      {misionVisible && (
+        <section className="px-4 pb-2 pt-3">
+          <button
+            type="button"
+            onClick={() => setMisionesOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12px] text-text-secondary transition-colors hover:bg-bg-secondary"
+          >
+            <IconTarget size={14} className="shrink-0 text-text-tertiary" />
+            <span className="min-w-0 flex-1 truncate">
+              Misión: <span className="font-semibold text-text">{misionVisible.title}</span> · {misionVisible.current ?? 0}/
+              {misionVisible.total}
+            </span>
+            <span className="shrink-0 font-semibold text-primary">Ver todas</span>
+          </button>
+        </section>
+      )}
+      <Modal open={misionesOpen} onClose={() => setMisionesOpen(false)} title="Misiones de la semana">
         <MisionesCompact missions={missions} />
-      </section>
-
-      {/* Bottom spacer for tab bar */}
-      {/* ── Tu mes grid ── */}
-      <SectionHeader>Tu mes</SectionHeader>
-      <section className="grid grid-cols-2 gap-2.5 px-4 pb-2">
-        <MiniStat
-          icon={IconCash}
-          label="Activos"
-          value={`$${activosShown.toLocaleString()}`}
-          color="#2BB673"
-          softColor="var(--color-asset-soft)"
-        />
-        <MiniStat
-          icon={IconCreditCard}
-          label="Deuda"
-          value={`$${deudaShown.toLocaleString()}`}
-          color="#FF5A5F"
-          softColor="var(--color-debt-soft)"
-        />
-        <button
-          type="button"
-          onClick={() => navigate('/perfil')}
-          aria-label="Ver logros"
-          className="relative text-left transition-transform active:scale-[0.96]"
-        >
-          <MiniStat
-            icon={IconTrophy}
-            label="Logros"
-            value={`${unlockedAchievements} / 4`}
-            color="#9B7BFF"
-            softColor="var(--color-lavender-soft)"
-          />
-        </button>
-      </section>
+      </Modal>
 
       <div className="h-4" />
 
@@ -1033,37 +955,6 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
         </div>
       </div>
     </div>
-  )
-}
-
-function MiniStat({
-  icon: Icon,
-  label,
-  value,
-  color,
-  softColor,
-}: {
-  icon: typeof IconCash
-  label: string
-  value: string
-  color: string
-  softColor: string
-}) {
-  return (
-    <Card className="p-3.5">
-      <div
-        className="mb-2 grid h-[30px] w-[30px] place-items-center rounded-md"
-        style={{ background: softColor }}
-      >
-        <Icon size={16} stroke={2} color={color} />
-      </div>
-      <p className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-text-tertiary">
-        {label}
-      </p>
-      <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-text">
-        {value}
-      </p>
-    </Card>
   )
 }
 

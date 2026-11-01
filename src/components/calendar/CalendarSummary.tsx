@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { IconChevronRight } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
@@ -16,11 +16,16 @@ interface CalendarSummaryProps extends CalendarInput {
   /** How many upcoming events to list. */
   limit?: number
   onOpen: () => void
+  /**
+   * Encabezado de la sección. Va aquí y no afuera para que, sin nada que
+   * mostrar, no quede un título suelto sobre un hueco.
+   */
+  encabezado?: ReactNode
 }
 
 const DAY_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
 
-export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryProps) {
+export function CalendarSummary({ limit = 4, onOpen, encabezado, ...data }: CalendarSummaryProps) {
   // Cambia sola a medianoche: la PWA se queda abierta días.
   const hoy = useHoy()
   const today = useMemo(() => fromKey(hoy), [hoy])
@@ -55,7 +60,7 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
 
   const todayKey = toKey(today)
 
-  return (
+  const tarjeta = (
     <button
       type="button"
       onClick={onOpen}
@@ -148,5 +153,13 @@ export function CalendarSummary({ limit = 4, onOpen, ...data }: CalendarSummaryP
         )}
       </Card>
     </button>
+  )
+
+  if (!encabezado) return tarjeta
+  return (
+    <>
+      {encabezado}
+      <section className="px-4 pb-2">{tarjeta}</section>
+    </>
   )
 }

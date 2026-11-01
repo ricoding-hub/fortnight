@@ -16,7 +16,7 @@
  */
 import '@/test/dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { crearSupabaseDoble, type Filas } from '@/test/supabaseDoble'
 
@@ -280,3 +280,29 @@ describe('los hooks que siembran filas', () => {
     expect(doble.consultas.filter((q) => q === 'budget_plans.insert').length).toBeLessThanOrEqual(1)
   })
 })
+
+describe('Inicio limpio (v1.19)', () => {
+  afterEach(cleanup)
+
+  it('sin tarjeta de racha, sin «Tu mes» ni lista de misiones; una sola misión discreta', { timeout: 20_000 }, async () => {
+    await montar(COMPLETO)
+    const texto = document.body.textContent ?? ''
+    expect(texto).not.toMatch(/días\s*de racha/)
+    expect(texto).not.toMatch(/Tu mes/)
+    expect(texto).not.toMatch(/Misiones de la semana/)
+    expect(texto).toMatch(/Misión:/)
+  })
+
+  it('el nivel va junto al saludo y la foto lleva a tu perfil', { timeout: 20_000 }, async () => {
+    await montar(COMPLETO)
+    expect(document.body.textContent).toMatch(/Nv \d/)
+    expect(screen.getByRole('button', { name: 'Tu perfil' })).toBeTruthy()
+  })
+
+  it('el score muestra un decimal', { timeout: 20_000 }, async () => {
+    await montar(COMPLETO)
+    const anillo = screen.getByRole('button', { name: /desglose del score/ })
+    expect(anillo.textContent).toMatch(/\d\.\d\s*\/ 10/)
+  })
+})
+

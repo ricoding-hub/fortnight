@@ -1,10 +1,8 @@
 import {
   IconAdjustments,
-  IconBuildingBank,
   IconCalendarCheck,
   IconFlame,
   IconRocket,
-  IconStar,
   IconTag,
   IconTarget,
   IconWriting,
@@ -15,10 +13,10 @@ import {
 export interface MissionContext {
   weekTxCount: number
   score: number
+  /** El score subió en lo que va de la semana. */
+  scoreSubio: boolean
   weekDebtPayments: number
   weekAdjustmentCount: number
-  hasActiveLoan: boolean
-  hasActiveSubscription: boolean
   loanPaidThisWeek: boolean
   weekCategorizedTxCount: number
 }
@@ -44,6 +42,9 @@ export interface MissionDef {
  * Canonical weekly missions. Order = render order. IDs are stable — they're
  * persisted in `mission_completions.mission_id`, so renaming an existing one
  * would lose claim history.
+ *
+ * Ninguna se gana sola: «Registra un préstamo» y «Agrega una suscripción» se
+ * cumplían cada semana por tener uno activo, y se quitaron.
  */
 export const MISSION_CATALOG: MissionDef[] = [
   {
@@ -80,26 +81,15 @@ export const MISSION_CATALOG: MissionDef[] = [
     }),
   },
   {
+    // Antes «Mantén tu score en 5+» (y otra en 7+): con mucha deuda eran
+    // inalcanzables. Subirlo un poco sí se puede cada semana.
     id: 'score-up',
-    title: 'Mantén tu score en 5+',
+    title: 'Sube tu score esta semana',
     reward: 50,
     icon: IconTarget,
     color: '#2A4BFF',
-    maintain: true,
-    progress: ({ score }) => ({
-      current: score >= 5 ? 1 : 0,
-      total: 1,
-    }),
-  },
-  {
-    id: 'score-7',
-    title: 'Mantén tu score financiero en 7+',
-    reward: 75,
-    icon: IconStar,
-    color: '#9B7BFF',
-    maintain: true,
-    progress: ({ score }) => ({
-      current: score >= 7 ? 1 : 0,
+    progress: ({ scoreSubio }) => ({
+      current: scoreSubio ? 1 : 0,
       total: 1,
     }),
   },
@@ -125,17 +115,7 @@ export const MISSION_CATALOG: MissionDef[] = [
       total: 1,
     }),
   },
-  {
-    id: 'add-loan',
-    title: 'Registra un préstamo',
-    reward: 15,
-    icon: IconBuildingBank,
-    color: '#2A4BFF',
-    progress: ({ hasActiveLoan }) => ({
-      current: hasActiveLoan ? 1 : 0,
-      total: 1,
-    }),
-  },
+
   {
     id: 'pay-loan',
     title: 'Marca un préstamo como pagado',
@@ -147,17 +127,7 @@ export const MISSION_CATALOG: MissionDef[] = [
       total: 1,
     }),
   },
-  {
-    id: 'add-sub',
-    title: 'Agrega una suscripción activa',
-    reward: 20,
-    icon: IconTag,
-    color: '#6366F1',
-    progress: ({ hasActiveSubscription }) => ({
-      current: hasActiveSubscription ? 1 : 0,
-      total: 1,
-    }),
-  },
+
   {
     id: 'categorize-3',
     title: 'Categoriza 3 movimientos esta semana',
