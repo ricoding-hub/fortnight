@@ -47,9 +47,10 @@ const titulos = () =>
   screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
 
 describe('Cuentas para un usuario nuevo', () => {
-  it('muestra débito, crédito y MSI desde el primer día', { timeout: 20_000 }, async () => {
+  it('muestra débito y crédito desde el primer día (los MSI tienen su pestaña) y sin «Conecta tu banco»', { timeout: 20_000 }, async () => {
     await montar()
-    expect(titulos()).toEqual(['Débito', 'Crédito', 'Meses sin intereses'])
+    expect(titulos()).toEqual(['Débito', 'Crédito'])
+    expect(document.body.textContent).not.toMatch(/Conecta tu banco/)
     expect(screen.getByRole('button', { name: /Agregar tarjeta de crédito/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /Agregar cuenta de débito/ })).toBeTruthy()
   })

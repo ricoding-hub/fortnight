@@ -22,6 +22,8 @@ import { MisBancos } from '@/views/Cuentas/MisBancos'
 import { MisPrestamos } from '@/views/Cuentas/MisPrestamos'
 import { PrestamoGrupo } from '@/views/Cuentas/PrestamoGrupo'
 import { MisSuscripciones } from '@/views/Cuentas/MisSuscripciones'
+import { MisMsi } from '@/views/Cuentas/MisMsi'
+import { PrestamosLayout, RedirigePrestamos } from '@/views/PrestamosLayout'
 import { Movimientos } from '@/views/Movimientos'
 import { Profile } from '@/views/Profile'
 import { AcercaDe } from '@/views/AcercaDe'
@@ -118,11 +120,16 @@ export default function App() {
             <Route path="/cuentas" element={<CuentasLayout />}>
               <Route index element={<Navigate to="mis" replace />} />
               <Route path="mis" element={<MisCuentas />} />
+              <Route path="msi" element={<MisMsi />} />
               <Route path="movimientos" element={<Movimientos />} />
               <Route path="bancos" element={<MisBancos />} />
               <Route path="suscripciones" element={<MisSuscripciones />} />
-              <Route path="prestamos" element={<MisPrestamos />} />
-              <Route path="prestamos/:groupId" element={<PrestamoGrupo />} />
+              <Route path="prestamos" element={<RedirigePrestamos />} />
+              <Route path="prestamos/:groupId" element={<RedirigePrestamos />} />
+            </Route>
+            <Route path="/prestamos" element={<PrestamosLayout />}>
+              <Route index element={<MisPrestamos />} />
+              <Route path=":groupId" element={<PrestamoGrupo />} />
             </Route>
             <Route
               path="/movimientos"
@@ -136,7 +143,6 @@ export default function App() {
             </Route>
             {/* Legacy URLs */}
             <Route path="/proyeccion" element={<Navigate to="/plan/proyeccion" replace />} />
-            <Route path="/prestamos" element={<Navigate to="/cuentas/prestamos" replace />} />
             <Route path="/perfil" element={<Profile />} />
             <Route path="/notificaciones" element={<Notificaciones />} />
             <Route path="/acerca-de" element={<AcercaDe />} />

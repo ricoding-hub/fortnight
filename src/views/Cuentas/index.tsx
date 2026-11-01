@@ -1,10 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
 
+// Préstamos se fue a la barra de abajo; los MSI tienen su pestaña (antes
+// eran lo último de la lista de cuentas).
 const TABS = [
   { to: '/cuentas/mis', label: 'Cuentas' },
+  { to: '/cuentas/msi', label: 'MSI' },
   { to: '/cuentas/suscripciones', label: 'Recurrentes' },
-  { to: '/cuentas/prestamos', label: 'Préstamos' },
 ] as const
 
 export function CuentasLayout() {
@@ -17,7 +19,7 @@ export function CuentasLayout() {
             Cuentas
           </h1>
           <p className="mt-0.5 text-[12.5px] font-medium text-text-secondary">
-            Tu dinero, lo que te deben y lo que debes
+            Tu dinero, tus tarjetas y tus meses sin intereses
           </p>
         </div>
       </header>
@@ -29,6 +31,7 @@ export function CuentasLayout() {
             <NavLink
               key={t.to}
               to={t.to}
+              id={t.to === '/cuentas/msi' ? 'tour-cuentas-msi' : undefined}
               className={({ isActive }) =>
                 clsx(
                   'rounded-full px-2 py-2 text-center text-xs font-bold transition-all duration-200',

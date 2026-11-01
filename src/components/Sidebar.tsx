@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { IconPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
-import { NAV_TABS } from '@/components/nav'
+import { SIDEBAR_TABS, enGrupo, enPrestamos } from '@/components/nav'
 import { useUiStore } from '@/store/uiStore'
 
 /**
@@ -24,7 +24,7 @@ export function Sidebar() {
       {/* Nav items */}
       <nav aria-label="Navegación lateral">
         <ul className="flex flex-col gap-1">
-          {NAV_TABS.map(({ to, label, icon: Icon }) => {
+          {SIDEBAR_TABS.map(({ to, label, icon: Icon }) => {
             const isActive =
               to === '/'
                 ? location.pathname === '/'
@@ -59,8 +59,8 @@ export function Sidebar() {
       <button
         type="button"
         onClick={() => {
-          const isGroupDetail = /^\/cuentas\/prestamos\/.+/.test(location.pathname)
-          const isLoans = location.pathname.startsWith('/cuentas/prestamos')
+          const isGroupDetail = enGrupo(location.pathname)
+          const isLoans = enPrestamos(location.pathname)
           if (isGroupDetail) useUiStore.getState().openExpenseModal()
           else if (isLoans) useUiStore.getState().openLoanModal()
           else useUiStore.getState().openAddModal('gasto')
@@ -68,9 +68,9 @@ export function Sidebar() {
         className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-text-inverse shadow-card transition-all hover:bg-primary-deep hover:shadow-elevated active:scale-[0.97]"
       >
         <IconPlus size={18} />
-        {/^\/cuentas\/prestamos\/.+/.test(location.pathname)
+        {enGrupo(location.pathname)
           ? 'Agregar gasto'
-          : location.pathname.startsWith('/cuentas/prestamos')
+          : enPrestamos(location.pathname)
             ? 'Agregar préstamo'
             : 'Agregar movimiento'}
       </button>

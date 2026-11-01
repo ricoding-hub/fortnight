@@ -198,7 +198,7 @@ export function MisPrestamos() {
    * side effect of a tap (which also broke before the split migrations).
    */
   function openEntry(e: BalanceEntry) {
-    if (e.groupId) void navigate(`/cuentas/prestamos/${e.groupId}`)
+    if (e.groupId) void navigate(`/prestamos/${e.groupId}`)
     else setContactSheet(e)
   }
 
@@ -453,7 +453,7 @@ export function MisPrestamos() {
               ? async () => {
                   const id = await ensureDirectGroup(contactSheet.contactName ?? contactSheet.name)
                   setContactSheet(null)
-                  void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
+                  void navigate(`/prestamos/${id}`, { state: { invitar: true } })
                 }
               : undefined
           }
@@ -498,7 +498,7 @@ export function MisPrestamos() {
               : `${name} · ${memberDrafts.length + 1} personas`,
           )
           // El formulario promete el enlace: se abre al llegar al grupo.
-          void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
+          void navigate(`/prestamos/${id}`, { state: { invitar: true } })
         }}
       />
     </div>

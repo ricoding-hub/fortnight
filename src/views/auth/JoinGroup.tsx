@@ -63,7 +63,7 @@ export function JoinGroup() {
       try {
         const p = (await callJoin({ action: 'preview' })) as unknown as JoinPreview
         if (p.alreadyMember) {
-          navigate(`/cuentas/prestamos/${p.groupId}`, { replace: true })
+          navigate(`/prestamos/${p.groupId}`, { replace: true })
           return
         }
         setPreview(p)
@@ -87,7 +87,7 @@ export function JoinGroup() {
     setError('')
     try {
       const res = await callJoin(body)
-      navigate(`/cuentas/prestamos/${res.groupId as string}`, { replace: true })
+      navigate(`/prestamos/${res.groupId as string}`, { replace: true })
     } catch (e) {
       const codigo = e instanceof Error ? e.message : ''
       setError(

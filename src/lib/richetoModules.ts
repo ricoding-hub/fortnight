@@ -10,7 +10,7 @@ export type RichetoModule = 'home' | 'plan' | 'movimientos' | 'prestamos' | 'cue
 
 export function moduleKey(pathname: string): RichetoModule {
   if (pathname.startsWith('/cuentas/movimientos')) return 'movimientos'
-  if (pathname.startsWith('/cuentas/prestamos')) return 'prestamos'
+  if (pathname.startsWith('/prestamos') || pathname.startsWith('/cuentas/prestamos')) return 'prestamos'
   if (pathname.startsWith('/cuentas')) return 'cuentas'
   if (pathname.startsWith('/plan')) return 'plan'
   if (pathname === '/') return 'home'

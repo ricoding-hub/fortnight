@@ -810,7 +810,7 @@ export function Resumen() {
             right={
               <button
                 type="button"
-                onClick={() => navigate('/cuentas/prestamos')}
+                onClick={() => navigate('/prestamos')}
                 className="text-[11px] font-bold text-primary transition-colors hover:text-primary-deep"
               >
                 Ver todos
@@ -830,7 +830,7 @@ export function Resumen() {
                 onOpen={() => {
                   // A real group has its own screen; a local contact opens their
                   // sheet instead of landing on the generic list.
-                  if (e.groupId) navigate(`/cuentas/prestamos/${e.groupId}`)
+                  if (e.groupId) navigate(`/prestamos/${e.groupId}`)
                   else setContactSheet(e)
                 }}
                 onOpenLoan={loanActions.openDetail}
@@ -891,7 +891,7 @@ export function Resumen() {
               ? async () => {
                   const id = await ensureDirectGroup(contactSheet.contactName ?? contactSheet.name)
                   setContactSheet(null)
-                  void navigate(`/cuentas/prestamos/${id}`, { state: { invitar: true } })
+                  void navigate(`/prestamos/${id}`, { state: { invitar: true } })
                 }
               : undefined
           }

@@ -374,7 +374,7 @@ export function Proyeccion() {
               toast.error('No se pudo marcar', e instanceof Error ? e.message : 'Inténtalo de nuevo')
             }
           }}
-          onVerPlan={(id) => void navigate(`/cuentas/mis?msi=${id}`)}
+          onVerPlan={(id) => void navigate(`/cuentas/msi?msi=${id}`)}
           onOpenAccount={() => void navigate('/cuentas/mis')}
         />
       </div>

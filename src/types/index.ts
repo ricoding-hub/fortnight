@@ -490,7 +490,7 @@ export interface Notification {
   account_id: string | null
   dedup_key: string
   email_sent: boolean
-  /** In-app destination (e.g. /cuentas/prestamos/{id} or /invite/{token}). */
+  /** In-app destination (e.g. /prestamos/{id} or /invite/{token}). */
   link: string | null
   created_at: string
 }

@@ -101,7 +101,7 @@ export function createCuentasTour(onDone: () => void): Driver {
         popover: {
           title: 'Tus tarjetas de crédito',
           description:
-            'Cada tarjeta muestra "pago mín." (lo que el banco exige este mes) y "libre" (el saldo que genera intereses si no pagas todo). Toca el monto para actualizarlo.',
+            'Cada tarjeta muestra su deuda y sus fechas de corte y pago. Toca el monto para actualizarlo; si lo bajas, te pregunta si fue un pago.',
           side: 'bottom',
           align: 'center',
         },
@@ -111,7 +111,7 @@ export function createCuentasTour(onDone: () => void): Driver {
         popover: {
           title: '¿Compraste algo a meses sin interés?',
           description:
-            'Regístralo aquí. El app calcula tu mensualidad fija, la resta de la deuda futura de tu tarjeta y la suma al chip "Deuda a la vista" del Resumen. Así siempre sabes qué es exigible este mes y qué es deuda futura.',
+            'Regístralo en la pestaña MSI. La app calcula tu mensualidad, la separa de la deuda futura de tu tarjeta y te dice en cuál vas cada mes.',
           side: 'top',
           align: 'center',
         },

@@ -144,7 +144,7 @@ try {
     const page = await ctx.newPage()
     const errores = []
     page.on('pageerror', (e) => errores.push(e.message))
-    await page.goto(`${BASE}/cuentas/mis`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${BASE}/cuentas/msi`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('text=Meses sin intereses', { timeout: 30_000 })
     await page.waitForTimeout(800)
     const lista = await page.evaluate(medir)

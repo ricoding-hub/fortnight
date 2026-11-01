@@ -52,7 +52,7 @@ export async function POST(req: Request): Promise<Response> {
         title: 'Invitación rechazada',
         body: `${decliner?.display_name ?? 'Alguien'} rechazó tu invitación al grupo`,
         dedup_key: `invite-declined:${invite.id}`,
-        link: `/cuentas/prestamos/${invite.group_id}`,
+        link: `/prestamos/${invite.group_id}`,
       })
       return json({ ok: true, declined: true })
     }

@@ -313,7 +313,7 @@ export function PrestamoGrupo() {
           title="No encontrado"
           description="No existe o fue eliminado."
           action={
-            <Button compact onClick={() => void navigate('/cuentas/prestamos')}>
+            <Button compact onClick={() => void navigate('/prestamos')}>
               <IconArrowLeft size={14} /> Volver a préstamos
             </Button>
           }
@@ -410,7 +410,7 @@ export function PrestamoGrupo() {
         isDirect ? 'Conexión eliminada' : 'Grupo eliminado',
         'Los préstamos que se habían sincronizado vuelven a tu lista',
       )
-      void navigate('/cuentas/prestamos')
+      void navigate('/prestamos')
     } catch {
       toast.error('Error', `No se pudo eliminar la ${noun}`)
     }
@@ -421,7 +421,7 @@ export function PrestamoGrupo() {
     try {
       await leaveGroup(groupId)
       toast.success('Saliste del grupo', 'Ya no verás su actividad')
-      void navigate('/cuentas/prestamos')
+      void navigate('/prestamos')
     } catch {
       toast.error('Error', 'No se pudo salir del grupo')
     }
@@ -434,7 +434,7 @@ export function PrestamoGrupo() {
       <div className="flex items-center gap-2 px-4 pt-2">
         <button
           type="button"
-          onClick={() => void navigate('/cuentas/prestamos')}
+          onClick={() => void navigate('/prestamos')}
           aria-label="Volver"
           className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-bg-secondary"
         >

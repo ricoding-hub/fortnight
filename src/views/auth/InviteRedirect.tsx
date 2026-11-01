@@ -41,7 +41,7 @@ export function InviteRedirect() {
         })
         const payload = (await res.json().catch(() => ({}))) as { groupId?: string; error?: string }
         if (res.ok && payload.groupId) {
-          navigate(`/cuentas/prestamos/${payload.groupId}`, { replace: true })
+          navigate(`/prestamos/${payload.groupId}`, { replace: true })
         } else if (payload.error === 'invite_not_pending') {
           setError('Esta invitación ya fue usada o revocada.')
         } else {

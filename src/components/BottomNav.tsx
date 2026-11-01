@@ -2,11 +2,11 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { IconPlus } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { useUiStore } from '@/store/uiStore'
-import { NAV_TABS, type NavTab } from '@/components/nav'
+import { NAV_TABS, enGrupo, enPrestamos, type NavTab } from '@/components/nav'
 
 /**
  * Floating pill tab bar with a raised central "+" FAB.
- * Layout: Resumen · Cuentas · [+] · Plan · Perfil on mobile.
+ * Layout: Inicio · Cuentas · [+] · Préstamos · Plan on mobile.
  * The sidebar handles navigation at ≥lg.
  */
 export function BottomNav() {
@@ -14,11 +14,11 @@ export function BottomNav() {
   const openAddModal = useUiStore((s) => s.openAddModal)
   const openLoanModal = useUiStore((s) => s.openLoanModal)
   const openExpenseModal = useUiStore((s) => s.openExpenseModal)
-  const isGroupDetail = /^\/cuentas\/prestamos\/.+/.test(location.pathname)
-  const isLoansTab = !isGroupDetail && location.pathname.startsWith('/cuentas/prestamos')
+  const isGroupDetail = enGrupo(location.pathname)
+  const isLoansTab = !isGroupDetail && enPrestamos(location.pathname)
 
-  const leftTabs = NAV_TABS.filter((t) => t.to === '/' || t.to === '/cuentas')
-  const rightTabs = NAV_TABS.filter((t) => t.to === '/plan' || t.to === '/perfil')
+  const leftTabs = NAV_TABS.slice(0, 2)
+  const rightTabs = NAV_TABS.slice(2)
 
   return (
     <nav

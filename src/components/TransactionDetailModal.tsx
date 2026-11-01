@@ -223,7 +223,7 @@ export function TransactionDetailModal({
                 type="button"
                 onClick={() => {
                   onClose()
-                  void navigate(`/cuentas/mis?msi=${transaction.installment_id}`)
+                  void navigate(`/cuentas/msi?msi=${transaction.installment_id}`)
                 }}
                 className="mt-1.5 block min-h-[36px] font-bold text-primary-deep"
               >

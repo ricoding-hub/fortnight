@@ -95,7 +95,7 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
     })
 
   return (
-    <section id="tour-cuentas-msi" className="px-4 pb-2 pt-2">
+    <section id="tour-msi" className="px-4 pb-2 pt-2">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">Meses sin intereses</h2>
         <button

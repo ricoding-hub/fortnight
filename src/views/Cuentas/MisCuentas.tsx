@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import {
   IconPlus,
   IconArrowsLeftRight,
   IconArrowsSort,
   IconChevronRight,
   IconRefresh,
-  IconBuildingBank,
 } from '@tabler/icons-react'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useSyncedCredentials } from '@/hooks/useSyncedCredentials'
@@ -21,10 +20,8 @@ import {
 } from '@/components/AccountFormModal'
 import { AddAccountChooserModal } from '@/components/AddAccountChooserModal'
 import { ConnectBankModal } from '@/components/syncfy/ConnectBankModal'
-import { ComingSoonBadge } from '@/components/ComingSoonBadge'
 import { BANK_LINKING_ENABLED } from '@/lib/features'
 import { Segmented } from '@/components/ui/Segmented'
-import { MsiSection } from '@/components/msi/MsiSection'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Card } from '@/components/ui/Card'
 import { useToast } from '@/hooks/useToast'
@@ -132,8 +129,11 @@ export function MisCuentas() {
   const [chooserOpen, setChooserOpen] = useState(false)
   const [chooserType, setChooserType] = useState<AccountType>('debit')
   const { orden, primero, setPrimero } = useOrdenCuentas()
-  // El estado de cuenta de cada tarjeta, para decir qué falta pagar.
-  const { estados } = useInstallments()
+  // El estado de cuenta de cada tarjeta, para decir qué falta pagar, y los
+  // MSI activos para el resumen que lleva a su pestaña.
+  const { estados, active: msiActivos } = useInstallments()
+  const [params] = useSearchParams()
+  const msiPedido = params.get('msi')
   const abrirPago = useUiStore((s) => s.abrirPago)
   const abrirEstado = useUiStore((s) => s.abrirEstado)
   const [bankModalOpen, setBankModalOpen] = useState(false)
@@ -142,7 +142,6 @@ export function MisCuentas() {
   const toast = useToast()
 
   const syncableCredentials = credentials.filter((c) => c.status !== 'disabled' && c.status !== 'error')
-  const hasConnectedBanks = accounts.some((a) => a.source === 'syncfy')
 
   async function handleMove(id: string, direction: -1 | 1) {
     try {
@@ -237,6 +236,9 @@ export function MisCuentas() {
 
   const hasAccounts = accounts.length > 0
 
+  // Enlaces viejos a un plan (`/cuentas/mis?msi=…`): ahora viven en su pestaña.
+  if (msiPedido) return <Navigate to={`/cuentas/msi?msi=${encodeURIComponent(msiPedido)}`} replace />
+
   return (
     <div className="flex flex-col pb-24 animate-[fade-in_300ms_ease-out]">
       {hasAccounts && (
@@ -294,6 +296,25 @@ export function MisCuentas() {
         </div>
       )}
 
+      {msiActivos.length > 0 && !reorderMode && (
+        <div className="px-4 pb-1 pt-1.5">
+          <Link
+            to="/cuentas/msi"
+            className="group flex items-center gap-2.5 rounded-2xl bg-lavender-soft/50 px-3.5 py-2.5 transition-colors hover:bg-lavender-soft active:scale-[0.99]"
+          >
+            <span className="text-[12.5px] font-extrabold text-lavender-deep">MSI</span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-text-secondary">
+              {msiActivos.length} plan{msiActivos.length === 1 ? '' : 'es'} ·{' '}
+              <b className="font-mono text-text">
+                {formatMXN(msiActivos.reduce((t, p) => t + (p.msi.actual?.monto ?? 0), 0))}
+              </b>{' '}
+              este mes
+            </span>
+            <IconChevronRight size={15} className="shrink-0 text-text-tertiary transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </div>
+      )}
+
       {!hasAccounts && (
         <p className="px-4 pb-1 pt-2 text-[13px] leading-snug text-text-secondary">
           Empieza por tus cuentas: débito para tu dinero, crédito para tus tarjetas.
@@ -322,42 +343,6 @@ export function MisCuentas() {
           <Section key="credit" id="tour-cuentas-credito" title="Crédito" type="credit" accounts={credit} total={creditTotal} reorderMode={reorderMode} {...sectionProps} />
         ),
       )}
-
-      <>
-          {!reorderMode && (
-            <div className="px-4 pb-2">
-              {BANK_LINKING_ENABLED && hasConnectedBanks ? (
-                <Link
-                  to="/cuentas/bancos"
-                  className="group flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-primary transition-all hover:border-primary/30 hover:bg-primary/8 active:scale-[0.99]"
-                >
-                  <IconBuildingBank size={16} className="shrink-0" />
-                  <span className="flex-1 text-sm font-semibold">Gestionar bancos conectados</span>
-                  <IconChevronRight size={14} className="shrink-0 text-primary/60 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              ) : !BANK_LINKING_ENABLED ? (
-                // Kept visible on purpose: it's the roadmap, not an error.
-                <div
-                  aria-disabled="true"
-                  className="flex items-center gap-3 rounded-2xl border border-dashed border-lavender/40 bg-lavender-soft/40 px-4 py-3"
-                >
-                  <IconBuildingBank size={16} className="shrink-0 text-lavender-deep" />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-semibold text-text">Conecta tu banco</span>
-                      <ComingSoonBadge />
-                    </span>
-                    <span className="mt-0.5 block text-[11.5px] leading-snug text-text-secondary">
-                      Tus cuentas y movimientos se actualizarán solos, sin capturar nada.
-                    </span>
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          <MsiSection accounts={accounts} updateBalance={updateBalance} />
-      </>
 
       <AddAccountChooserModal
         open={chooserOpen}
