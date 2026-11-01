@@ -39,7 +39,9 @@ interface PagarTarjetaModalProps {
 export function PagarTarjetaModal({ tarjeta, estados, cuentas, montoInicial, onClose, onVerEstado }: PagarTarjetaModalProps) {
   const toast = useToast()
   const { pagar } = usePagarTarjeta()
-  const proximo = estados?.proximo ?? null
+  // Modo ligero (lo normal): sin montos calculados, sólo la fecha y lo que pagues.
+  const ligero = estados?.modo === 'ligero' || !tarjeta.track_statement
+  const proximo = ligero ? null : (estados?.proximo ?? null)
   const saldo = Number(tarjeta.balance) || 0
   const debitos = cuentas.filter((c) => c.type === 'debit')
 
@@ -61,7 +63,9 @@ export function PagarTarjetaModal({ tarjeta, estados, cuentas, montoInicial, onC
   opciones.push({ id: 'otro', titulo: 'Otro monto', monto: 0 })
 
   const coincide = montoInicial != null ? opciones.find((o) => o.id !== 'otro' && Math.abs(o.monto - montoInicial) < 0.01) : undefined
-  const [opcion, setOpcion] = useState<Opcion>(montoInicial != null ? (coincide?.id ?? 'otro') : opciones[0].id)
+  const [opcion, setOpcion] = useState<Opcion>(
+    montoInicial != null ? (coincide?.id ?? 'otro') : ligero ? 'otro' : opciones[0].id,
+  )
   const [otro, setOtro] = useState(montoInicial != null && !coincide ? String(montoInicial) : '')
   const [origen, setOrigen] = useState(() => prefValida('pago:origen', debitos.map((d) => d.id)) ?? debitos[0]?.id ?? '')
   const [fecha, setFecha] = useState(() => toKey(new Date()))
@@ -129,6 +133,18 @@ export function PagarTarjetaModal({ tarjeta, estados, cuentas, montoInicial, onC
             {onVerEstado && (
               <button type="button" onClick={onVerEstado} className="mt-1 min-h-[32px] text-[12.5px] font-bold text-primary-deep">
                 Ver estado de cuenta
+              </button>
+            )}
+          </div>
+        ) : ligero ? (
+          <div className="rounded-2xl bg-bg-secondary px-4 py-3 text-[12.5px] text-text-secondary">
+            {estados?.ligero?.vence
+              ? `Fecha límite: ${fechaCorta(estados.ligero.vence)}${estados.ligero.venceEstimado ? ' (aprox.)' : ''}. `
+              : ''}
+            Escribe lo que pagaste: baja la deuda de {tarjeta.name}.
+            {onVerEstado && (
+              <button type="button" onClick={onVerEstado} className="mt-1 block min-h-[32px] font-bold text-primary-deep">
+                ¿Quieres que la app calcule tu estado de cuenta?
               </button>
             )}
           </div>

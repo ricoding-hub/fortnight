@@ -18,6 +18,8 @@ interface EstadoDeCuentaModalProps {
   onClose: () => void
   /** Abrir el pago con lo que falta de ESTE estado (con dos abiertos, no siempre es el próximo). */
   onPagar: (monto?: number) => void
+  /** Encender o apagar el estado de cuenta calculado de esta tarjeta. */
+  onSeguir?: (seguir: boolean) => Promise<void>
 }
 
 const ESTADO: Record<EstadoDeCuenta['estado'], { texto: string; clase: string }> = {
@@ -33,7 +35,22 @@ const ESTADO: Record<EstadoDeCuenta['estado'], { texto: string; clase: string }>
  * llevas pagado y cuánto te falta. Si tu estado de cuenta dice otra cosa, se
  * captura y manda sobre el cálculo.
  */
-export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose, onPagar }: EstadoDeCuentaModalProps) {
+export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose, onPagar, onSeguir }: EstadoDeCuentaModalProps) {
+  const toast = useToast()
+  const [cambiando, setCambiando] = useState(false)
+  const ligero = estados?.modo === 'ligero' || !tarjeta.track_statement
+  async function seguir(valor: boolean) {
+    if (!onSeguir) return
+    setCambiando(true)
+    try {
+      await onSeguir(valor)
+      toast.success(valor ? 'Estado de cuenta encendido' : 'Modo ligero', tarjeta.name)
+    } catch (err) {
+      toast.error('No se pudo cambiar', err instanceof Error ? err.message : 'Inténtalo de nuevo')
+    } finally {
+      setCambiando(false)
+    }
+  }
   // Los que aún importan: los que no quedaron dentro de un corte más nuevo.
   const visibles = (estados?.estados ?? []).filter((e) => !e.absorbido && e.estado !== 'sin-saldo')
   const porDefecto = estados?.proximo ?? visibles[visibles.length - 1] ?? estados?.ultimo ?? null
@@ -55,7 +72,28 @@ export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose
         )
       }
     >
-      {!estados ? (
+      {ligero ? (
+        <div className="flex flex-col gap-3">
+          <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[13px] leading-snug text-text-secondary">
+            {tarjeta.name} va en <b className="text-text">modo ligero</b>: la app usa su saldo y sus fechas, y tú
+            registras lo que pagas cuando quieras.
+          </p>
+          <p className="text-[12.5px] leading-snug text-text-secondary">
+            Si registras <b className="text-text">todos</b> los movimientos de esta tarjeta, la app puede calcular su estado
+            de cuenta: cuánto pagar para no generar intereses y qué mensualidades MSI cubrieron tus pagos. Si no registras
+            todo, las cifras salen mal: mejor déjalo apagado.
+          </p>
+          {tarjeta.cut_day == null ? (
+            <p className="text-[12.5px] text-text-secondary">Para calcularlo hace falta el día de corte (en los ajustes de la tarjeta).</p>
+          ) : (
+            onSeguir && (
+              <Button variant="secondary" loading={cambiando} onClick={() => void seguir(true)}>
+                Calcular el estado de cuenta de {tarjeta.name}
+              </Button>
+            )
+          )}
+        </div>
+      ) : !estados ? (
         <p className="rounded-2xl bg-bg-secondary px-4 py-3 text-[13px] text-text-secondary">
           Ahora no pude calcular el estado de cuenta de {tarjeta.name} (revisa tu conexión). Vuelve a abrirlo en un momento.
         </p>
@@ -158,6 +196,17 @@ export function EstadoDeCuentaModal({ tarjeta, estados, conCorrecciones, onClose
 
           {/* `key` por corte: lo escrito en una pestaña no se guarda en otra. */}
           {conCorrecciones && <Corregir key={e.corte} tarjeta={tarjeta} estado={e} />}
+
+          {onSeguir && (
+            <button
+              type="button"
+              disabled={cambiando}
+              onClick={() => void seguir(false)}
+              className="min-h-[40px] text-left text-[12.5px] font-semibold text-text-secondary"
+            >
+              Volver al modo ligero (dejar de calcular el estado de cuenta)
+            </button>
+          )}
         </div>
       )}
     </Modal>

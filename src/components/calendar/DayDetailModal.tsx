@@ -103,7 +103,7 @@ export function DayDetailModal({
                       </span>
                     )}
                   </button>
-                  {e.kind === 'card_due' && e.accountId && e.amount < 0 && onPagarTarjeta && (
+                  {e.kind === 'card_due' && e.accountId && (e.amount < 0 || e.tags.includes('Fecha')) && onPagarTarjeta && (
                     <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
                       <button
                         type="button"

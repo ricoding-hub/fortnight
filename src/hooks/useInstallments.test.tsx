@@ -273,3 +273,17 @@ describe('si el estado de cuenta no se puede traer', () => {
     expect(result.current.coberturaLista).toBe(false)
   })
 })
+
+describe('modo ligero (por omisión)', () => {
+  it('sin «Calcular mi estado de cuenta», la tarjeta va en ligero y los MSI por fecha', { timeout: 20_000 }, async () => {
+    const { result } = await montar({ installments: [PLAN], accounts: [{ id: 'c1', ...CICLO, balance: 9000 }] })
+    expect(result.current.estados.c1).toMatchObject({ modo: 'ligero', estados: [] })
+    expect(result.current.data[0].msi.meses.every((m) => !m.porPagos)).toBe(true)
+  })
+
+  it('con la opción encendida, calcula el estado de cuenta', { timeout: 20_000 }, async () => {
+    const { result } = await montar({ installments: [PLAN], accounts: [{ id: 'c1', ...CICLO, balance: 9000, track_statement: true, created_at: '2026-01-01T00:00:00Z' }] })
+    expect(result.current.estados.c1.modo).toBe('estado')
+    expect(result.current.estados.c1.estados.length).toBeGreaterThan(0)
+  })
+})

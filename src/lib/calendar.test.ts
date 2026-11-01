@@ -366,3 +366,20 @@ describe('monthTotals', () => {
     expect(t.paydays).toBe(1)
   })
 })
+
+describe('modo ligero en el calendario', () => {
+  it('el día de pago va sin monto y las mensualidades salen de tu efectivo en su fecha', () => {
+    const tarjeta = account({ payment_due_day: 15, cut_day: 1 })
+    const estados = { a1: { accountId: 'a1', modo: 'ligero' as const, sinCorte: false, estados: [], proximo: null, ultimo: null, siguiente: null } }
+    const ev = buildCalendarEvents(
+      { accounts: [tarjeta], installments: [msi({ months_paid: 0, start_date: '2026-08-20' })], subscriptions: [], transactions: [], goals: [], config: null, estados },
+      d('2026-09-01'),
+      d('2026-10-31'),
+      '2026-09-02',
+    )
+    const pagos = ev.filter((e) => e.kind === 'card_due')
+    expect(pagos.length).toBeGreaterThan(0)
+    expect(pagos.every((e) => e.amount === 0 && !e.countsToCash && e.tags.includes('Fecha'))).toBe(true)
+    expect(ev.filter((e) => e.kind === 'installment' && e.mes?.estado !== 'pagada').every((e) => e.countsToCash)).toBe(true)
+  })
+})

@@ -58,6 +58,11 @@ export interface Account {
   min_payment_pct: number | null
   /** Pre-payment buffer: credited against upcoming MSI monthly amounts. */
   prepay_buffer: number
+  /**
+   * Tarjetas: la app calcula su estado de cuenta (migración 039). Apagado o sin
+   * la columna = modo ligero, sólo saldos y fechas.
+   */
+  track_statement?: boolean
 }
 
 export interface Transaction {

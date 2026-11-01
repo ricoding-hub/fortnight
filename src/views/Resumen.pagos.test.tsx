@@ -36,7 +36,7 @@ const MP = {
   id: 'mp', user_id: 'u-1', name: 'MercadoPago', type: 'credit', balance: '10000', credit_limit: '20000',
   cut_day: 15, payment_due_day: 5, payment_grace_days: null, min_payment_pct: null, cost_type: 'con_costo',
   prepay_buffer: '0', sort_order: 1, source: 'manual', color: null, logo_domain: null,
-  created_at: '2026-01-10T18:00:00Z', updated_at: '',
+  created_at: '2026-01-10T18:00:00Z', updated_at: '', track_statement: true,
 }
 const BBVA = {
   id: 'bbva', user_id: 'u-1', name: 'BBVA', type: 'debit', balance: '15000', credit_limit: null,
@@ -58,9 +58,9 @@ const BASE = [
   mov('t2', 2500, '2026-10-10'),
 ]
 
-function tablas(over: { saldo?: string; movs?: unknown[] } = {}): Filas {
+function tablas(over: { saldo?: string; movs?: unknown[]; ligero?: boolean } = {}): Filas {
   return {
-    accounts: [BBVA, { ...MP, balance: over.saldo ?? MP.balance }],
+    accounts: [BBVA, { ...MP, balance: over.saldo ?? MP.balance, ...(over.ligero ? { track_statement: false } : {}) }],
     transactions: over.movs ?? BASE,
     installments: [PLAN],
     categories: [],
@@ -102,7 +102,7 @@ describe('el aviso de pago de Inicio', () => {
     await montar(tablas())
     const a = aviso()!
     expect(a).toBeTruthy()
-    expect(within(a).getByText('MercadoPago en 2 días')).toBeTruthy()
+    expect(within(a).getByText('MercadoPago vence en 2 días')).toBeTruthy()
     expect(a.textContent).toMatch(/\$5,000\.00 para no generar intereses/)
     expect(a.textContent).not.toMatch(/10,000/)
   })
@@ -155,5 +155,32 @@ describe('el aviso de pago de Inicio', () => {
   it('sin la tabla de correcciones (migración 038) la pantalla no se rompe', { timeout: 30_000 }, async () => {
     await montar(tablas(), { card_statements: { message: 'relation does not exist', code: 'PGRST205' } })
     expect(aviso()?.textContent).toMatch(/\$5,000\.00/)
+  })
+})
+
+describe('modo ligero (lo normal): sin estado de cuenta calculado', () => {
+  it('el aviso sólo dice la fecha, sin monto', { timeout: 30_000 }, async () => {
+    await montar(tablas({ ligero: true }))
+    const a = aviso()!
+    expect(a).toBeTruthy()
+    expect(within(a).getByText('MercadoPago vence en 2 días')).toBeTruthy()
+    expect(a.textContent).not.toMatch(/para no generar intereses/)
+    expect(a.textContent).not.toMatch(/\$/)
+  })
+
+  it('si ya registraste un pago desde el corte, el aviso se va', { timeout: 30_000 }, async () => {
+    await montar(tablas({ ligero: true, saldo: '9000', movs: [...BASE, mov('p', -1000, '2026-10-20', { type: 'transfer', transfer_id: 'x' })] }))
+    expect(aviso()).toBeNull()
+  })
+
+  it('«Pagar» abre el pago con «Otro monto», sin «te faltan»', { timeout: 30_000 }, async () => {
+    await montar(tablas({ ligero: true }))
+    await act(async () => {
+      fireEvent.click(within(aviso()!).getByRole('button', { name: 'Pagar' }))
+    })
+    await asentar(10)
+    expect(screen.getByRole('radio', { name: /Otro monto/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.queryByRole('radio', { name: /Para no generar intereses/ })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/Te falta/)
   })
 })

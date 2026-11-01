@@ -35,11 +35,26 @@ export async function GET(req: Request): Promise<Response> {
   let skipped = 0
 
   for (const cfg of configs ?? []) {
-    const { data: accounts } = await sb
+    // `track_statement` (migración 039): sin la columna, todas van en modo ligero.
+    const columnas = 'id, name, balance, cut_day, payment_due_day, payment_grace_days'
+    let cuentasRes = await sb
       .from('accounts')
-      .select('id, name, balance, cut_day, payment_due_day, payment_grace_days')
+      .select(`${columnas}, track_statement`)
       .eq('user_id', cfg.user_id)
       .eq('type', 'credit')
+    if (cuentasRes.error && ['42703', 'PGRST204'].includes(String(cuentasRes.error.code))) {
+      cuentasRes = (await sb
+        .from('accounts')
+        .select(columnas)
+        .eq('user_id', cfg.user_id)
+        .eq('type', 'credit')) as unknown as typeof cuentasRes
+    }
+    const accounts = (cuentasRes.data ?? []) as (AccountRow & {
+      id: string
+      name: string
+      balance: number | string
+      track_statement?: boolean
+    })[]
 
     for (const account of accounts ?? []) {
       const pago = proximoPago(account, hoy)
@@ -58,7 +73,23 @@ export async function GET(req: Request): Promise<Response> {
       // «Hoy vence»). Con la cifra del banco (migración 038), ésa manda. Si
       // algo no se puede leer, se avisa igual: callar por error es peor.
       let falta: number | null = null
-      if (pago.corte && account.cut_day != null) {
+      if (!account.track_statement) {
+        // Modo ligero: sólo la fecha. Si ya registró un pago desde el corte,
+        // no se le molesta (sin estado de cuenta no se sabe si alcanzó).
+        const desde = pago.corte ?? aClave(new Date(aFecha(pago.vence).getTime() - 30 * 86_400_000))
+        const { data: abonos, error: errAbonos } = await sb
+          .from('transactions')
+          .select('id')
+          .eq('account_id', account.id)
+          .gt('date', desde)
+          .lt('amount', 0)
+          .neq('type', 'installment')
+          .limit(1)
+        if (!errAbonos && (abonos ?? []).length > 0) {
+          skipped++
+          continue
+        }
+      } else if (pago.corte && account.cut_day != null) {
         const corte = pago.corte
         const [movsCompletos, corrRes, planesRes] = await Promise.all([
           sb.from('transactions').select('amount, date, type, installment_id').eq('account_id', account.id).gt('date', corte),
@@ -120,7 +151,12 @@ export async function GET(req: Request): Promise<Response> {
 
       const name = String(account.name)
       const title = days <= 0 ? `Hoy vence: ${name}` : `Mañana vence: ${name}`
-      const cuanto = falta != null ? ` Te faltan ${formatoMXN(falta)} según tu estado de cuenta.` : ' Abre Fortnight para ver cuánto te falta.'
+      const cuanto =
+        falta != null
+          ? ` Te faltan ${formatoMXN(falta)} según tu estado de cuenta.`
+          : account.track_statement
+            ? ' Abre Fortnight para ver cuánto te falta.'
+            : ' Si ya pagaste, regístralo en Fortnight y no te volvemos a avisar.'
       const body = (days <= 0 ? `Hoy vence el pago de tu tarjeta ${name}.` : `Mañana vence el pago de tu tarjeta ${name}.`) + cuanto
 
       await sb.from('notifications').insert({
@@ -140,7 +176,7 @@ export async function GET(req: Request): Promise<Response> {
       const email = authData?.user?.email
       if (!email) continue
 
-      const emailOk = await sendEmail(email, name, falta, days)
+      const emailOk = await sendEmail(email, name, falta, days, !!account.track_statement)
       if (emailOk) {
         await sb
           .from('notifications')
@@ -231,13 +267,16 @@ async function sendEmail(
   accountName: string,
   falta: number | null,
   days: number,
+  conEstado: boolean,
 ): Promise<boolean> {
   const urgencyLabel = days <= 0 ? 'hoy' : 'mañana'
   // Sólo se dice un monto si viene del estado de cuenta del banco. El saldo
   // completo incluye mensualidades MSI que aún no se cobran: no es lo que toca.
   const montoHtml = falta != null
     ? `Te faltan <strong style="color:#EF4444">${formatoMXN(falta)}</strong> para no generar intereses.`
-    : 'Abre Fortnight para ver cuánto te falta para no generar intereses.'
+    : conEstado
+      ? 'Abre Fortnight para ver cuánto te falta para no generar intereses.'
+      : 'Si ya pagaste, regístralo en Fortnight y no te volvemos a avisar.'
 
   const html = `<!DOCTYPE html>
 <html lang="es">

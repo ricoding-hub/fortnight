@@ -25,6 +25,7 @@ import {
   type InstallmentVivo,
 } from '@/lib/msi'
 import {
+  estadoLigero,
   estadosDeCuenta,
   planEdc,
   ventanaDeMovimientos,
@@ -68,6 +69,10 @@ type Fila = Installment & {
 }
 
 const EMPTY: InstallmentVivo[] = []
+
+function soloLigeras(estados: Record<string, EstadosTarjeta>): Record<string, EstadosTarjeta> {
+  return Object.fromEntries(Object.entries(estados).filter(([, e]) => e.modo === 'ligero'))
+}
 const SIN_ESTADOS: Record<string, EstadosTarjeta> = {}
 
 /** Lo que hace falta para el estado de cuenta de cada tarjeta. */
@@ -185,6 +190,7 @@ export function useInstallments() {
   const { user } = useAuth()
   const hoy = useHoy()
   const [filas, setFilas] = useState<Fila[]>([])
+  const [foto, setFoto] = useState<FotoTarjetas>(FOTO_VACIA)
   // Hasta dónde mirar el estado de cuenta de cada tarjeta: la compra más vieja
   // de sus planes activos (un plan de 12 meses rebasa la ventana normal).
   // Un corte antes de la 1ª mensualidad: así cada corte del plan tiene un
@@ -197,8 +203,11 @@ export function useInstallments() {
     // Un plan cuya última mensualidad venció hace más de ~13 meses ya no
     // sostiene la ventana: lo de entonces lo deciden las fechas.
     const limite = toKey(addDays(fromKey(hoyKey), -400))
+    // Sólo las tarjetas con estado de cuenta encendido necesitan historia: en
+    // modo ligero basta con la ventana normal.
+    const conEstado = new Set(foto.tarjetas.filter((t) => t.track_statement).map((t) => t.id))
     for (const f of filas) {
-      if (!f.account_id) continue
+      if (!f.account_id || !conEstado.has(f.account_id)) continue
       const marcas = marcasEfectivas(f)
       const M = Math.max(1, Math.round(Number(f.months_total) || 1))
       let todas = true
@@ -213,12 +222,11 @@ export function useInstallments() {
       if (!out[f.account_id] || desde < out[f.account_id]) out[f.account_id] = desde
     }
     return out
-  }, [filas])
+  }, [filas, foto.tarjetas])
   // Como texto: la carga se repite sólo cuando la fecha cambia, no con cada plan.
   const claveVentana = JSON.stringify(desdePorTarjeta)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<PostgrestError | null>(null)
-  const [foto, setFoto] = useState<FotoTarjetas>(FOTO_VACIA)
 
   /**
    * Las tarjetas, sus movimientos desde el corte más viejo que importa y las
@@ -401,8 +409,10 @@ export function useInstallments() {
       return m ? cargoDesde(m, f) : null
     }
     const planes: PlanEdc[] = filas.map((f) => planEdc(sinEmbebidos(f), ciclo(f), cargo(f), hoy))
+    // El estado de cuenta se calcula sólo para las tarjetas que lo encendieron.
+    // Las demás van en modo ligero: fechas y saldo, sin montos calculados.
     const estados = estadosDeCuenta({
-      tarjetas: foto.tarjetas,
+      tarjetas: foto.tarjetas.filter((t) => t.track_statement),
       movs: foto.movs,
       planes,
       correcciones: foto.correcciones,
@@ -411,6 +421,9 @@ export function useInstallments() {
       desdePorTarjeta: foto.ventana,
       hoy,
     })
+    for (const t of foto.tarjetas) {
+      if (!t.track_statement) estados[t.id] = estadoLigero(t, foto.movs, hoy)
+    }
     // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
     // Sin un estado confiable, no se opina: decide la fecha.
     const coberturas = coberturaLista ? coberturaMsi(estados, planes) : new Map<string, never>()
@@ -820,7 +833,8 @@ export function useInstallments() {
     data: user ? data : EMPTY,
     active: user ? active : EMPTY,
     /** Estado de cuenta por tarjeta (id → estados, próximo pago, siguiente corte). */
-    estados: user && fiables ? estados : SIN_ESTADOS,
+    // Sin movimientos confiables, sólo las tarjetas ligeras (fechas) se muestran.
+    estados: user ? (fiables ? estados : soloLigeras(estados)) : SIN_ESTADOS,
     /** Planes vistos desde su tarjeta, para proyectar pagos. */
     planesTarjeta: planes,
     tarjetas: foto.tarjetas,

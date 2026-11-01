@@ -210,6 +210,35 @@ export function buildCalendarEvents(
 
   for (const a of accounts.filter((x) => x.type === 'credit')) {
     const estado = input.estados?.[a.id]
+    if (estado?.modo === 'ligero') {
+      // Modo ligero: la fecha de pago, sin monto (sin estado de cuenta no se
+      // sabe cuánto). Las mensualidades MSI de la tarjeta salen en su fecha.
+      for (const d of cardDueDates(a, start, end)) {
+        out.push({
+          id: `due:${a.id}:${toKey(d)}`,
+          kind: 'card_due',
+          date: toKey(d),
+          title: `Pago ${a.name}`,
+          amount: 0,
+          countsToCash: false,
+          accountId: a.id,
+          tags: ['Tarjeta', 'Fecha'],
+        })
+      }
+      for (const d of cardCutDates(a, start, end)) {
+        out.push({
+          id: `cut:${a.id}:${toKey(d)}`,
+          kind: 'card_cut',
+          date: toKey(d),
+          title: `Corte ${a.name}`,
+          amount: 0,
+          countsToCash: false,
+          accountId: a.id,
+          tags: ['Tarjeta', 'Corte'],
+        })
+      }
+      continue
+    }
     if (estado && !estado.sinCorte) {
       for (const p of pagosProyectados(estado, a, input.planesTarjeta ?? [], toKey(end), hoy)) {
         if (p.vence < toKey(start) || p.vence > toKey(end)) continue
@@ -336,7 +365,10 @@ export function buildCalendarEvents(
     // cuenta (hay corte), el pago de la tarjeta sale aunque la fecha sea
     // estimada: la mensualidad va dentro y no se cuenta otra vez.
     const estadoT = tarjeta ? input.estados?.[tarjeta.id] : undefined
-    const porTarjeta = (!!estadoT && !estadoT.sinCorte) || tieneVencimiento(tarjeta)
+    // En modo ligero el pago de la tarjeta no lleva monto: la mensualidad es lo
+    // único que se sabe que sale, y sale en su fecha.
+    const porTarjeta =
+      estadoT?.modo === 'ligero' ? false : (!!estadoT && !estadoT.sinCorte) || tieneVencimiento(tarjeta)
     const M = cal.meses.length
     for (const m of cal.meses) {
       if (m.vence < desde || m.vence > hasta) continue

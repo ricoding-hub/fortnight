@@ -229,18 +229,27 @@ export function Resumen() {
         .flatMap((a) => {
           const e = estados[a.id]
           if (!e) return []
+          if (e.modo === 'ligero') {
+            // Modo ligero: sólo la fecha. Se va si ya registraste un pago desde
+            // el corte o si la tarjeta no debe nada.
+            const l = e.ligero
+            if (!l?.vence || l.pagoDesdeCorte || Number(a.balance) <= 0) return []
+            const days = Math.round((fromKey(l.vence).getTime() - fromKey(hoy).getTime()) / 86_400_000)
+            if (days < 0 || days > 5) return []
+            return [{ account: a, days, vencido: false, monto: null as number | null, corregido: false, vence: l.vence as string | null, ligero: true }]
+          }
           if (e.sinCorte) {
             // Sin día de corte no se sabe cuánto: sólo se recuerda la fecha.
             const days = daysUntilPayment(a, fromKey(hoy))
             if (days == null || days > 5 || Number(a.balance) <= 0) return []
-            return [{ account: a, days, vencido: false, monto: null as number | null, corregido: false, vence: null as string | null }]
+            return [{ account: a, days, vencido: false, monto: null as number | null, corregido: false, vence: null as string | null, ligero: false }]
           }
           const p = e.proximo
           if (!p) return []
           const days = Math.round((fromKey(p.vence).getTime() - fromKey(hoy).getTime()) / 86_400_000)
           const vencido = p.estado === 'vencido'
           if (!vencido && days > 5) return []
-          return [{ account: a, days, vencido, monto: p.falta as number | null, corregido: p.corregido, vence: p.vence as string | null }]
+          return [{ account: a, days, vencido, monto: p.falta as number | null, corregido: p.corregido, vence: p.vence as string | null, ligero: false }]
         })
         .sort((a, b) => Number(b.vencido) - Number(a.vencido) || a.days - b.days)
     : []
@@ -249,13 +258,15 @@ export function Resumen() {
     ? nextUrgent.vencido
       ? `${nextUrgent.account.name}: venció el ${nextUrgent.vence ? fechaCorta(nextUrgent.vence) : 'pago'}`
       : nextUrgent.days <= 0
-        ? `Paga ${nextUrgent.account.name} hoy`
-        : `${nextUrgent.account.name} en ${nextUrgent.days} día${nextUrgent.days === 1 ? '' : 's'}`
+        ? `${nextUrgent.account.name} vence hoy`
+        : `${nextUrgent.account.name} vence en ${nextUrgent.days} día${nextUrgent.days === 1 ? '' : 's'}`
     : ''
   const urgentDetalle = nextUrgent
-    ? nextUrgent.monto == null
-      ? 'Agrega su día de corte para saber cuánto'
-      : `${formatMXN(nextUrgent.monto)} para no generar intereses${nextUrgent.corregido ? '' : ' · aprox.'}`
+    ? nextUrgent.monto != null
+      ? `${formatMXN(nextUrgent.monto)} para no generar intereses${nextUrgent.corregido ? '' : ' · aprox.'}`
+      : nextUrgent.ligero && nextUrgent.vence
+        ? `Fecha límite: ${fechaCorta(nextUrgent.vence)}`
+        : 'Fecha límite de pago'
     : ''
 
   const streak = gami.streak_days

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   compraParecida,
   cortesParaEstados,
+  estadoLigero,
   estadosDeCuenta,
   pagosProyectados,
   planEdc,
@@ -285,5 +286,24 @@ describe('compraParecida', () => {
   it('no confunde montos distintos ni gastos que ya son de un plan', () => {
     expect(compraParecida(movs, { accountId: 'mp', total: 6002, fecha: '2026-10-20' })).toBeNull()
     expect(compraParecida([movs[1]], { accountId: 'mp', total: 6000, fecha: '2026-10-20' })).toBeNull()
+  })
+})
+
+describe('modo ligero: sólo fechas', () => {
+  it('la fecha que toca y nada de montos', () => {
+    const e = estadoLigero(MP, BASE, '2026-11-03')
+    expect(e).toMatchObject({ modo: 'ligero', estados: [], proximo: null, ligero: { corte: '2026-10-15', vence: '2026-11-05', pagoDesdeCorte: false } })
+  })
+  it('sabe si registraste un pago desde el corte', () => {
+    const e = estadoLigero(MP, [...BASE, mov('p', -500, '2026-10-20', { type: 'transfer', transfer_id: 'x' })], '2026-11-03')
+    expect(e.ligero?.pagoDesdeCorte).toBe(true)
+  })
+  it('con gracia larga va primero la fecha límite más cercana', () => {
+    const plata = { ...MP, cut_day: 1, payment_due_day: null, payment_grace_days: 60 }
+    expect(estadoLigero(plata, [], '2026-10-20').ligero).toMatchObject({ corte: '2026-09-01', vence: '2026-10-31' })
+  })
+  it('sin corte, la fecha de pago y el mes anterior como ventana', () => {
+    const sinCorte = { ...MP, cut_day: null }
+    expect(estadoLigero(sinCorte, [], '2026-11-03').ligero).toMatchObject({ vence: '2026-11-05', corte: '2026-10-06' })
   })
 })

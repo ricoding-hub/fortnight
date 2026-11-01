@@ -51,6 +51,7 @@ const accountSchema = z
     cut_day: z.string(),
     payment_due_day: z.string(),
     payment_grace_days: z.string(),
+    min_payment_pct: z.string(),
   })
   .superRefine((v, ctx) => {
     const falla = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message })
@@ -71,6 +72,10 @@ const accountSchema = z
     }
     if (v.modo_pago === 'grace_days' && !vacio(v.payment_grace_days) && !isGraceDays(v.payment_grace_days)) {
       falla('payment_grace_days', 'Entre 1 y 365 días')
+    }
+    if (!vacio(v.min_payment_pct)) {
+      const pct = parseMoneyInput(v.min_payment_pct)
+      if (pct == null || pct <= 0 || pct > 100) falla('min_payment_pct', 'Un porcentaje entre 0.1 y 100')
     }
   })
 
@@ -109,6 +114,9 @@ export function AccountFormModal({
   const [logoDomain, setLogoDomain] = useState<string | null>(
     mode.kind === 'edit' ? mode.account.logo_domain : null,
   )
+  // Estado de cuenta calculado: apagado por omisión (modo ligero).
+  const seguirAntes = mode.kind === 'edit' ? !!mode.account.track_statement : false
+  const [seguir, setSeguir] = useState(seguirAntes)
 
   const {
     register,
@@ -132,6 +140,7 @@ export function AccountFormModal({
             cut_day: '',
             payment_due_day: '',
             payment_grace_days: '',
+            min_payment_pct: '',
           }
         : {
             tipo: mode.account.type,
@@ -153,6 +162,7 @@ export function AccountFormModal({
               mode.account.payment_grace_days != null
                 ? String(mode.account.payment_grace_days)
                 : '',
+            min_payment_pct: mode.account.min_payment_pct != null ? String(mode.account.min_payment_pct) : '',
           },
   })
 
@@ -172,6 +182,10 @@ export function AccountFormModal({
       cut_day: isCredit ? num(values.cut_day) : null,
       payment_due_day: isCredit && dueDateMode === 'fixed_day' ? num(values.payment_due_day) : null,
       payment_grace_days: isCredit && dueDateMode === 'grace_days' ? num(values.payment_grace_days) : null,
+      // Vacío = el que usa casi todo banco (1.5 %): el estado de cuenta lo supone.
+      min_payment_pct: isCredit ? dinero(values.min_payment_pct) : null,
+      // Sólo viaja si cambió: así una base sin la migración 039 guarda lo demás.
+      ...(isCredit && seguir !== seguirAntes ? { track_statement: seguir } : {}),
     }
     try {
       if (mode.kind === 'create') {
@@ -194,9 +208,11 @@ export function AccountFormModal({
         toast.success('Cuenta actualizada', 'Los cambios han sido guardados')
       }
       onClose()
-    } catch {
+    } catch (err) {
       setSubmitError(true)
-      toast.error('Error al guardar', 'Hubo un problema al guardar la cuenta')
+      // Mensajes nuestros (p. ej. «corre la migración 039») sí se muestran.
+      const propio = err instanceof Error && /migración/.test(err.message) ? err.message : null
+      toast.error('Error al guardar', propio ?? 'Hubo un problema al guardar la cuenta')
     }
   }
 
@@ -452,6 +468,46 @@ export function AccountFormModal({
                 {...register('payment_grace_days')}
               />
             )}
+
+            <Input
+              label="Pago mínimo (% del saldo)"
+              inputMode="decimal"
+              placeholder="Opcional · 1.5 si no lo sabes"
+              error={errors.min_payment_pct?.message}
+              {...register('min_payment_pct')}
+            />
+
+            <div className="rounded-2xl border border-border px-3.5 py-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={seguir}
+                aria-label="Calcular mi estado de cuenta"
+                onClick={() => setSeguir((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <span className="text-[13.5px] font-semibold text-text">Calcular mi estado de cuenta</span>
+                <span
+                  className={clsx(
+                    'relative h-6 w-10 shrink-0 rounded-full transition-colors',
+                    seguir ? 'bg-primary' : 'bg-border',
+                  )}
+                  aria-hidden
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none',
+                      seguir ? 'translate-x-[18px]' : 'translate-x-0.5',
+                    )}
+                  />
+                </span>
+              </button>
+              <p className="mt-1.5 text-[12px] leading-snug text-text-secondary">
+                {seguir
+                  ? 'La app calcula cuánto pagar para no generar intereses y qué mensualidades MSI cubrieron tus pagos. Sólo sale bien si registras todos los movimientos de esta tarjeta.'
+                  : 'Modo ligero: la app usa el saldo y las fechas, y tú registras lo que pagas cuando quieras.'}
+              </p>
+            </div>
           </>
         )}
 

@@ -143,7 +143,7 @@ export function AccountCard({
       setPregunta({ tipo: 'baja', diff: Math.round((actual - next) * 100) / 100, next })
       return
     }
-    const corte = estado && !estado.sinCorte ? estado.ultimo?.corte : undefined
+    const corte = estado && estado.modo === 'estado' && !estado.sinCorte ? estado.ultimo?.corte : undefined
     if (!forzar && isCredit && corte && next > actual + 0.005) {
       setPregunta({ tipo: 'sube', diff: Math.round((next - actual) * 100) / 100, next, corte })
       return
@@ -364,7 +364,7 @@ export function AccountCard({
         </div>
       )}
 
-      {isCredit && estado && !estado.sinCorte && !editing && (
+      {isCredit && estado && estado.modo === 'estado' && !estado.sinCorte && !editing && (
         <LineaEstado estado={estado} onPagar={onPagar} onVerEstado={onVerEstado} />
       )}
     </div>

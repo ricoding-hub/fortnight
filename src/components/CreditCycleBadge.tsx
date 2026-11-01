@@ -15,7 +15,8 @@ export function CreditCycleBadge({ account, estado }: CreditCycleBadgeProps) {
     return null
   }
 
-  const conEstado = estado && !estado.sinCorte
+  // En modo ligero la insignia va por fechas, como sin estado de cuenta.
+  const conEstado = estado && estado.modo === 'estado' && !estado.sinCorte
   const p = estado?.proximo ?? null
   // Días hasta la fecha límite del estado que toca, o —sin estado— la de calendario.
   const paymentDays = conEstado

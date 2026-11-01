@@ -45,7 +45,7 @@ const pago = Number(dia(2).slice(8))
 const TABLAS = {
   accounts: [
     cuenta({ id: 'a-1', name: 'BBVA débito', type: 'debit', balance: 7430.1, sort_order: 0 }),
-    cuenta({ id: 'a-2', name: 'MercadoPago', type: 'credit', balance: 8110.75, credit_limit: 20000, cut_day: corte, payment_due_day: pago, sort_order: 1, created_at: '2026-01-01T00:00:00Z' }),
+    cuenta({ id: 'a-2', name: 'MercadoPago', type: 'credit', balance: 8110.75, credit_limit: 20000, cut_day: corte, payment_due_day: pago, sort_order: 1, created_at: '2026-01-01T00:00:00Z', track_statement: true }),
   ],
   transactions: [
     { id: 't-1', user_id: 'u-1', account_id: 'a-2', amount: 1200, category_id: 'c-3', description: 'Súper', date: dia(-3), type: 'transaction', transfer_id: null, installment_id: null, created_at: '2026-01-01T00:00:00Z' },

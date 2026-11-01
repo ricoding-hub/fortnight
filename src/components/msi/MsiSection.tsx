@@ -118,11 +118,11 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
         </button>
       ) : (
         <div className="flex flex-col gap-3">
-          {!avisoCerrado && activos.some((p) => p.account_id && accountById.has(p.account_id)) && (
+          {!avisoCerrado && activos.some((p) => p.account_id && accountById.get(p.account_id)?.track_statement) && (
             <div className="flex items-start gap-2 rounded-xl bg-lavender-soft/50 px-3.5 py-2.5">
               <p className="flex-1 text-[12.5px] leading-snug text-text">
-                Tus MSI ahora se marcan con tus pagos: una mensualidad queda pagada cuando lo que pagaste a la tarjeta
-                la cubre, no sólo porque pasó la fecha. Toca un plan para ver el porqué de cada mes.
+                En tus tarjetas con estado de cuenta, los MSI se marcan con tus pagos: una mensualidad queda pagada
+                cuando lo que pagaste la cubre, no sólo porque pasó la fecha. Toca un plan para ver el porqué de cada mes.
               </p>
               <button type="button" onClick={cerrarAviso} aria-label="Entendido" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-text-secondary">
                 <IconX size={15} />
@@ -219,7 +219,11 @@ export function MsiSection({ accounts, updateBalance }: MsiSectionProps) {
           onEdit={() => setEditando(abierto)}
           // En una tarjeta con corte, las mensualidades las deciden tus pagos:
           // liquidar sin saberlo dejaría sin marcar las que no cubriste.
-          estadosListos={coberturaLista || accountById.get(abierto.account_id ?? '')?.cut_day == null}
+          estadosListos={
+            coberturaLista ||
+            accountById.get(abierto.account_id ?? '')?.cut_day == null ||
+            !accountById.get(abierto.account_id ?? '')?.track_statement
+          }
           textoEspera={estadosFallaron ? 'Sin estado de cuenta' : 'Cargando…'}
           onMarcarMes={(n, e) => notificar(marcarMes(abierto.id, n, e))}
           onPagarTarjeta={

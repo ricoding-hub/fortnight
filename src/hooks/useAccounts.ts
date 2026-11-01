@@ -21,6 +21,21 @@ export interface NewAccount {
   apr?: number | null
   min_payment_pct?: number | null
   prepay_buffer?: number
+  /** Seguir el estado de cuenta (migración 039). */
+  track_statement?: boolean
+}
+
+const SIN_039 = 'Para seguir el estado de cuenta de una tarjeta, corre la migración 039 en Supabase.'
+
+/**
+ * Sin la migración 039 no existe `track_statement`. Apagado es lo mismo que no
+ * tenerla: se guarda lo demás. Encendido no se puede fingir: se dice.
+ */
+function sinSeguimiento<T extends { track_statement?: boolean }>(fila: T): Omit<T, 'track_statement'> | null {
+  if (fila.track_statement) return null
+  const { track_statement: _t, ...resto } = fila
+  void _t
+  return resto
 }
 
 export type AccountPatch = Partial<NewAccount>
@@ -118,9 +133,16 @@ export function useAccounts() {
       ...account,
     }
     setData((prev) => [...prev, optimistic])
-    const { error: err } = await supabase
-      .from('accounts')
-      .insert({ ...account, user_id: user.id, sort_order: maxSort + 1 })
+    const fila = { ...account, user_id: user.id, sort_order: maxSort + 1 }
+    let { error: err } = await supabase.from('accounts').insert(fila)
+    if (err && 'track_statement' in fila && esColumnaFaltante(err)) {
+      const resto = sinSeguimiento(fila)
+      if (!resto) {
+        setData((prev) => prev.filter((a) => a.id !== tempId))
+        throw new Error(SIN_039)
+      }
+      ;({ error: err } = await supabase.from('accounts').insert(resto))
+    }
     if (err) {
       setData((prev) => prev.filter((a) => a.id !== tempId))
       throw err
@@ -131,14 +153,23 @@ export function useAccounts() {
     const prev = data.find((a) => a.id === id)
     const now = new Date().toISOString()
     setData((cur) => cur.map((a) => (a.id === id ? { ...a, ...patch, updated_at: now } : a)))
-    const { error: err } = await supabase
+    let { error: err } = await supabase
       .from('accounts')
       .update({ ...patch, updated_at: now })
       .eq('id', id)
+    if (err && 'track_statement' in patch && esColumnaFaltante(err)) {
+      const resto = sinSeguimiento(patch)
+      if (!resto) {
+        if (prev) setData((cur) => cur.map((a) => (a.id === id ? prev : a)))
+        throw new Error(SIN_039)
+      }
+      ;({ error: err } = await supabase.from('accounts').update({ ...resto, updated_at: now }).eq('id', id))
+    }
     if (err) {
       if (prev) setData((cur) => cur.map((a) => (a.id === id ? prev : a)))
       throw err
     }
+    if ('track_statement' in patch) avisarCambioEnTarjetas()
   }
 
   async function deleteAccount(id: string) {

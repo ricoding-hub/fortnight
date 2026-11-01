@@ -32,7 +32,7 @@ afterEach(() => {
 const TARJETA = {
   id: 'c1', user_id: 'u-1', name: 'BBVA', type: 'credit', balance: 9000, credit_limit: 50000,
   cut_day: 15, payment_due_day: 5, payment_grace_days: null, sort_order: 1, source: 'manual',
-  created_at: '2026-01-01T00:00:00Z', updated_at: '',
+  created_at: '2026-01-01T00:00:00Z', updated_at: '', track_statement: true,
 }
 const PLAN = {
   id: 'p1', user_id: 'u-1', account_id: 'c1', name: 'iPhone', total_amount: 12000, monthly_amount: 1000,

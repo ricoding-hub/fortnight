@@ -1,4 +1,4 @@
-import { corteEn, venceDelCorte, type CicloTarjeta } from '@/lib/cardCycle'
+import { corteEn, proximoVencimiento, venceDelCorte, type CicloTarjeta } from '@/lib/cardCycle'
 import { addDays, fromKey, toKey } from '@/lib/localDate'
 import { calendarioMsi, fechaDeCompra, registradoEl, type CalendarioMsi, type CargoMsi, type MesMsi } from '@/lib/msi'
 import type { Account, Installment, TransactionType } from '@/types'
@@ -28,7 +28,17 @@ import type { Account, Installment, TransactionType } from '@/types'
 
 export type TarjetaEdc = Pick<
   Account,
-  'id' | 'name' | 'type' | 'balance' | 'credit_limit' | 'cut_day' | 'payment_due_day' | 'payment_grace_days' | 'min_payment_pct' | 'created_at'
+  | 'id'
+  | 'name'
+  | 'type'
+  | 'balance'
+  | 'credit_limit'
+  | 'cut_day'
+  | 'payment_due_day'
+  | 'payment_grace_days'
+  | 'min_payment_pct'
+  | 'created_at'
+  | 'track_statement'
 >
 
 export interface MovEdc {
@@ -116,6 +126,14 @@ export interface EstadoDeCuenta {
 
 export interface EstadosTarjeta {
   accountId: string
+  /**
+   * 'estado': la app calcula el estado de cuenta (el usuario lo encendió).
+   * 'ligero': sólo saldos y fechas, lo que pasa por omisión. Nada de montos
+   * calculados ni de mensualidades que dependan de los pagos.
+   */
+  modo: 'estado' | 'ligero'
+  /** Modo ligero: la fecha de pago que toca y si ya registraste un pago desde el corte. */
+  ligero?: { corte: string | null; vence: string | null; venceEstimado: boolean; pagoDesdeCorte: boolean }
   sinCorte: boolean
   estados: EstadoDeCuenta[]
   /** El que toca pagar: el de fecha límite más cercana que aún debe algo. */
@@ -297,7 +315,7 @@ export function estadosDeCuenta(i: {
     if (t.type !== 'credit') continue
     const cortes = cortesParaEstados(t, i.hoy, i.desdePorTarjeta?.[t.id])
     if (corteEn(t, 2000, 0) == null) {
-      out[t.id] = { accountId: t.id, sinCorte: true, estados: [], proximo: null, ultimo: null, siguiente: null }
+      out[t.id] = { accountId: t.id, modo: 'estado', sinCorte: true, estados: [], proximo: null, ultimo: null, siguiente: null }
       continue
     }
     const saldo = num(t.balance)
@@ -422,9 +440,57 @@ export function estadosDeCuenta(i: {
       siguiente = { corte: sc, vence: toKey(venceDelCorte(t, fromKey(sc)).vence), estimado }
     }
 
-    out[t.id] = { accountId: t.id, sinCorte: false, estados, proximo, ultimo, siguiente }
+    out[t.id] = { accountId: t.id, modo: 'estado', sinCorte: false, estados, proximo, ultimo, siguiente }
   }
   return out
+}
+
+/**
+ * Una tarjeta en modo ligero: sólo la fecha de pago que toca y si ya
+ * registraste un pago desde su corte. Sin montos: con lo que no se registra,
+ * cualquier cifra calculada sale mal, y eso estorbaba más de lo que ayudaba.
+ */
+export function estadoLigero(t: TarjetaEdc, movs: MovEdc[], hoy: string): EstadosTarjeta {
+  const sinCorte = corteEn(t, 2000, 0) == null
+  let corte: string | null = null
+  let vence: string | null = null
+  let venceEstimado = false
+  if (!sinCorte) {
+    // El estado abierto con la fecha límite más cercana (con gracia larga
+    // puede haber dos abiertos: va primero el más viejo).
+    const h = fromKey(hoy)
+    for (let i = -3; i <= 0 && vence == null; i++) {
+      const c = corteEn(t, h.getFullYear(), h.getMonth() + i)
+      if (!c || toKey(c) > hoy) continue
+      const v = venceDelCorte(t, c)
+      if (toKey(v.vence) >= hoy) {
+        corte = toKey(c)
+        vence = toKey(v.vence)
+        venceEstimado = v.estimado
+      }
+    }
+  } else {
+    const prox = proximoVencimiento(t, fromKey(hoy))
+    if (prox) {
+      vence = toKey(prox.vence)
+      venceEstimado = prox.estimado
+      // Sin corte no se sabe desde cuándo cuenta un pago: el mes antes de la fecha.
+      corte = toKey(addDays(prox.vence, -30))
+    }
+  }
+  const pagoDesdeCorte =
+    corte != null &&
+    movs.some((m) => m.account_id === t.id && num(m.amount) < 0 && m.type !== 'installment' && m.date.slice(0, 10) > corte!)
+  return {
+    accountId: t.id,
+    modo: 'ligero',
+    ligero: { corte, vence, venceEstimado, pagoDesdeCorte },
+    sinCorte,
+    estados: [],
+    proximo: null,
+    ultimo: null,
+    siguiente: null,
+  }
 }
 
 export interface PagoProyectado {
@@ -448,7 +514,7 @@ export function pagosProyectados(
   hasta: string,
   hoy: string,
 ): PagoProyectado[] {
-  if (e.sinCorte) return []
+  if (e.sinCorte || e.modo === 'ligero') return []
   const out: PagoProyectado[] = []
   let asumido = 0
   const abiertos = e.estados.filter((s) => !s.absorbido && s.vence >= hoy).sort((a, b) => a.vence.localeCompare(b.vence))

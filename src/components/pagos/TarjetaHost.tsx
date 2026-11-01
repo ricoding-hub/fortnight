@@ -25,11 +25,12 @@ function TarjetaAbierta({ accountId, vista, monto }: { accountId: string; vista:
   const cerrar = useUiStore((s) => s.cerrarTarjeta)
   const abrirPago = useUiStore((s) => s.abrirPago)
   const abrirEstado = useUiStore((s) => s.abrirEstado)
-  const { data: cuentas, loading } = useAccounts()
+  const { data: cuentas, loading, update } = useAccounts()
   const { estados, estadosListos, conCorrecciones } = useInstallments()
   const tarjeta = cuentas.find((c) => c.id === accountId)
-  // Las opciones de monto dependen del estado de cuenta: se espera a tenerlo.
-  if (loading || !estadosListos || !tarjeta) return null
+  // Con estado de cuenta, las opciones de monto dependen de él: se espera a
+  // tenerlo. En modo ligero no hay nada que esperar.
+  if (loading || !tarjeta || (tarjeta.track_statement && !estadosListos)) return null
 
   return vista === 'pagar' ? (
     <PagarTarjetaModal
@@ -47,6 +48,7 @@ function TarjetaAbierta({ accountId, vista, monto }: { accountId: string; vista:
       conCorrecciones={conCorrecciones}
       onClose={cerrar}
       onPagar={(m) => abrirPago(accountId, m)}
+      onSeguir={(seguir) => update(accountId, { track_statement: seguir })}
     />
   )
 }
