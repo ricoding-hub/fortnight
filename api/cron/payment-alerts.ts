@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { faltaDelEstado, type MovFila, type PlanFila } from '../_lib/estadoTarjeta.js'
+import { esAbonoLigero, faltaDelEstado, pagosDesdeLigero, type MovFila, type PlanFila } from '../_lib/estadoTarjeta.js'
 
 const CRON_SECRET = process.env.CRON_SECRET ?? ''
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
@@ -74,18 +74,32 @@ export async function GET(req: Request): Promise<Response> {
       // algo no se puede leer, se avisa igual: callar por error es peor.
       let falta: number | null = null
       if (!account.track_statement) {
-        // Modo ligero: sólo la fecha. Si ya registró un pago desde el corte,
-        // no se le molesta (sin estado de cuenta no se sabe si alcanzó).
-        const desde = pago.corte ?? aClave(new Date(aFecha(pago.vence).getTime() - 30 * 86_400_000))
-        const { data: abonos, error: errAbonos } = await sb
-          .from('transactions')
-          .select('id')
-          .eq('account_id', account.id)
-          .gt('date', desde)
-          .lt('amount', 0)
-          .neq('type', 'installment')
-          .limit(1)
-        if (!errAbonos && (abonos ?? []).length > 0) {
+        // Modo ligero: sólo la fecha. Si ya registró un pago para este estado,
+        // no se le molesta (sin estado de cuenta no se sabe si alcanzó). Un
+        // reembolso de una compra no es un pago.
+        const desde = pagosDesdeLigero(account, pago)
+        const consulta = (columnas: string) =>
+          sb
+            .from('transactions')
+            .select(columnas)
+            .eq('account_id', account.id)
+            .gt('date', desde)
+            .lt('amount', 0)
+            .neq('type', 'installment')
+            .limit(200)
+        let abonosRes = await consulta('amount, type, category_id, categories(kind)')
+        // Sin la relación embebida (caché de esquema), se cuenta todo como pago.
+        if (abonosRes.error) abonosRes = await consulta('amount, type, category_id')
+        const abonos = (abonosRes.data ?? []) as unknown as {
+          amount: number | string
+          type: string | null
+          category_id: string | null
+          categories?: { kind: string | null } | null
+        }[]
+        const pagado = abonos.some((m) =>
+          esAbonoLigero({ ...m, kind: m.categories === undefined ? undefined : (m.categories?.kind ?? null) }),
+        )
+        if (!abonosRes.error && pagado) {
           skipped++
           continue
         }

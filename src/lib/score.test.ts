@@ -83,6 +83,15 @@ describe('score: posición + avance', () => {
     expect(conIngreso.score).toBeGreaterThanOrEqual(sinIngreso.score)
   })
 
+  it('pagar de más una tarjeta que ya estaba en cero no cuenta como deuda bajada', () => {
+    const otra = { ...credit(-500, 20000), id: 'c2' }
+    const base = { accounts: [debit(5000), credit(10000, 50000), otra], ingresoMensual: 30000, gastosFijosMensuales: 12000 }
+    // La segunda tarjeta pasó de 0 a −500 (saldo a favor).
+    const r = calculateScore({ ...base, desde: '2026-10-01', movimientos: [{ account_id: 'c2', amount: -500, date: '2026-10-15' }] })
+    expect(r.breakdown.deudaHace30).toBe(r.breakdown.deudaHoy)
+    expect(r.breakdown.avance).toBe(0)
+  })
+
   it('una tarjeta sin límite no cuenta como «al tope»', () => {
     const { breakdown } = calculateScore({ accounts: [debit(1000), credit(5000, null)], ingresoMensual: 20000 })
     expect(breakdown.utilizacion).toBeNull()

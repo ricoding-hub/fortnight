@@ -302,8 +302,40 @@ describe('modo ligero: sólo fechas', () => {
     const plata = { ...MP, cut_day: 1, payment_due_day: null, payment_grace_days: 60 }
     expect(estadoLigero(plata, [], '2026-10-20').ligero).toMatchObject({ corte: '2026-09-01', vence: '2026-10-31' })
   })
-  it('sin corte, la fecha de pago y el mes anterior como ventana', () => {
+  it('sin corte, cuenta lo pagado después de la fecha límite anterior', () => {
     const sinCorte = { ...MP, cut_day: null }
-    expect(estadoLigero(sinCorte, [], '2026-11-03').ligero).toMatchObject({ vence: '2026-11-05', corte: '2026-10-06' })
+    expect(estadoLigero(sinCorte, [], '2026-11-03').ligero).toMatchObject({ vence: '2026-11-05', corte: null, pagosDesde: '2026-10-05' })
+  })
+
+  // Plata: corte 15 y 60 días de gracia. Hay dos estados abiertos a la vez y el
+  // pago del viejo cae después del corte del nuevo.
+  const PLATA = { ...MP, id: 'mp', cut_day: 15, payment_due_day: null, payment_grace_days: 60 }
+  it('con gracia larga, el pago del estado anterior no apaga el aviso del siguiente', () => {
+    // 15 ago vence 14 oct (pagado el 12 oct); 15 sep vence 14 nov.
+    const e = estadoLigero(PLATA, [mov('p', -3000, '2026-10-12', { type: 'transfer' })], '2026-11-10')
+    expect(e.ligero).toMatchObject({ corte: '2026-09-15', vence: '2026-11-14', pagosDesde: '2026-10-14', pagoDesdeCorte: false })
+  })
+  it('con gracia larga, un pago después de la fecha límite anterior sí cuenta', () => {
+    const e = estadoLigero(PLATA, [mov('p', -3000, '2026-10-20', { type: 'transfer' })], '2026-11-10')
+    expect(e.ligero?.pagoDesdeCorte).toBe(true)
+  })
+  it('sin corte, el pago de febrero no cuenta para marzo', () => {
+    const sinCorte = { ...MP, cut_day: null }
+    const e = estadoLigero(sinCorte, [mov('p', -800, '2026-02-04', { type: 'transfer' })], '2026-03-02')
+    expect(e.ligero).toMatchObject({ vence: '2026-03-05', pagosDesde: '2026-02-05', pagoDesdeCorte: false })
+    const pagado = estadoLigero(sinCorte, [mov('p', -800, '2026-02-20', { type: 'transfer' })], '2026-03-02')
+    expect(pagado.ligero?.pagoDesdeCorte).toBe(true)
+  })
+  it('un reembolso de una compra no es un pago; una corrección a la baja sí', () => {
+    const deGasto = new Set(['c-comida'])
+    const reembolso = mov('r', -199, '2026-10-20', { category_id: 'c-comida' })
+    expect(estadoLigero(MP, [reembolso], '2026-11-03', deGasto).ligero?.pagoDesdeCorte).toBe(false)
+    const ingreso = mov('i', -2000, '2026-10-20', { category_id: 'c-salario' })
+    expect(estadoLigero(MP, [ingreso], '2026-11-03', deGasto).ligero?.pagoDesdeCorte).toBe(true)
+    const ajuste = mov('a', -1000, '2026-10-20', { type: 'adjustment', category_id: 'c-comida' })
+    expect(estadoLigero(MP, [ajuste], '2026-11-03', deGasto).ligero?.pagoDesdeCorte).toBe(true)
+    // El cargo de un MSI nunca es un pago.
+    const msi = mov('m', -1000, '2026-10-20', { type: 'installment' })
+    expect(estadoLigero(MP, [msi], '2026-11-03', deGasto).ligero?.pagoDesdeCorte).toBe(false)
   })
 })

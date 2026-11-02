@@ -11,14 +11,29 @@ const HAD_SESSION_KEY = 'fortnight:had-session'
  * the URL — so two accounts on one browser would hit the SAME cache entries.
  * Everything here exists to make sure a cache only ever holds one user's data.
  */
+/**
+ * Lo que también es de un usuario: las fotos y los logos (dicen qué bancos y
+ * marcas usa), y el perfil y los logos fallidos guardados en el navegador.
+ */
+export const IMAGE_CACHES = ['logos-cache', 'avatars-cache'] as const
+const CLAVES_DE_IMAGENES = ['fortnight:perfil:', 'fortnight:logos-sin-marca']
+
 export async function purgeDataCache(): Promise<void> {
   try {
-    if ('caches' in globalThis) await caches.delete(DATA_CACHE)
+    if ('caches' in globalThis) {
+      await Promise.all([DATA_CACHE, ...IMAGE_CACHES].map((nombre) => caches.delete(nombre)))
+    }
   } catch {
     // Storage denied: there is nothing cached to leak either.
   }
   try {
     localStorage.removeItem(OWNER_KEY)
+    const claves: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && CLAVES_DE_IMAGENES.some((p) => k.startsWith(p))) claves.push(k)
+    }
+    for (const k of claves) localStorage.removeItem(k)
   } catch {
     /* private mode */
   }

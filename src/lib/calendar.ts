@@ -214,7 +214,9 @@ export function buildCalendarEvents(
 
   for (const a of accounts.filter((x) => x.type === 'credit')) {
     const estado = input.estados?.[a.id]
-    if (estado?.modo === 'ligero') {
+    // También sin entrada todavía (cargando, o la carga falló): una tarjeta que
+    // no sigue su estado de cuenta nunca enseña un pago calculado.
+    if (estado?.modo === 'ligero' || !a.track_statement) {
       // Modo ligero: la fecha de pago, sin monto (sin estado de cuenta no se
       // sabe cuánto). Las mensualidades MSI de la tarjeta salen en su fecha.
       for (const d of cardDueDates(a, start, end)) {
@@ -372,7 +374,9 @@ export function buildCalendarEvents(
     // En modo ligero el pago de la tarjeta no lleva monto: la mensualidad es lo
     // único que se sabe que sale, y sale en su fecha.
     const porTarjeta =
-      estadoT?.modo === 'ligero' ? false : (!!estadoT && !estadoT.sinCorte) || tieneVencimiento(tarjeta)
+      estadoT?.modo === 'ligero' || (tarjeta && !tarjeta.track_statement)
+        ? false
+        : (!!estadoT && !estadoT.sinCorte) || tieneVencimiento(tarjeta)
     const M = cal.meses.length
     for (const m of cal.meses) {
       if (m.vence < desde || m.vence > hasta) continue

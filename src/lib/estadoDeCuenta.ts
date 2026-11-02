@@ -1,5 +1,5 @@
 import { corteEn, proximoVencimiento, venceDelCorte, type CicloTarjeta } from '@/lib/cardCycle'
-import { addDays, fromKey, toKey } from '@/lib/localDate'
+import { addDays, dayInMonth, fromKey, toKey } from '@/lib/localDate'
 import { calendarioMsi, fechaDeCompra, registradoEl, type CalendarioMsi, type CargoMsi, type MesMsi } from '@/lib/msi'
 import type { Account, Installment, TransactionType } from '@/types'
 
@@ -133,7 +133,15 @@ export interface EstadosTarjeta {
    */
   modo: 'estado' | 'ligero'
   /** Modo ligero: la fecha de pago que toca y si ya registraste un pago desde el corte. */
-  ligero?: { corte: string | null; vence: string | null; venceEstimado: boolean; pagoDesdeCorte: boolean }
+  ligero?: {
+    /** El corte del estado que toca (null si la tarjeta no tiene día de corte). */
+    corte: string | null
+    vence: string | null
+    venceEstimado: boolean
+    /** Desde cuándo (exclusivo) un pago cuenta para este estado. */
+    pagosDesde: string | null
+    pagoDesdeCorte: boolean
+  }
   sinCorte: boolean
   estados: EstadoDeCuenta[]
   /** El que toca pagar: el de fecha límite más cercana que aún debe algo. */
@@ -446,15 +454,41 @@ export function estadosDeCuenta(i: {
 }
 
 /**
- * Una tarjeta en modo ligero: sólo la fecha de pago que toca y si ya
- * registraste un pago desde su corte. Sin montos: con lo que no se registra,
- * cualquier cifra calculada sale mal, y eso estorbaba más de lo que ayudaba.
+ * ¿Este movimiento es un abono a la tarjeta? Un monto negativo que no sea el
+ * cargo de un MSI y que sea un pago (transferencia), una corrección de saldo a
+ * la baja, o un movimiento sin categoría o con categoría de ingreso. Con una
+ * categoría de gasto es un reembolso de una compra, no un pago (la misma regla
+ * que `clasificar` en lib/movimiento).
  */
-export function estadoLigero(t: TarjetaEdc, movs: MovEdc[], hoy: string): EstadosTarjeta {
+export function esAbonoATarjeta(m: MovEdc, categoriasDeGasto?: ReadonlySet<string>): boolean {
+  if (num(m.amount) >= 0 || m.type === 'installment') return false
+  if (m.type === 'transfer' || m.type === 'adjustment') return true
+  return !m.category_id || !categoriasDeGasto?.has(m.category_id)
+}
+
+/**
+ * Una tarjeta en modo ligero: sólo la fecha de pago que toca y si ya
+ * registraste un pago para ese estado. Sin montos: con lo que no se registra,
+ * cualquier cifra calculada sale mal, y eso estorbaba más de lo que ayudaba.
+ *
+ * Un pago cuenta para el estado que toca si es posterior a su corte Y a la
+ * fecha límite del estado anterior. Lo segundo importa con gracia larga (Plata,
+ * 60 días): hay dos estados abiertos a la vez, y el pago del viejo cae después
+ * del corte del nuevo. Sin día de corte, cuenta lo pagado después de la fecha
+ * límite del mes anterior (no «30 días antes», que en febrero se comía el pago
+ * del mes pasado).
+ */
+export function estadoLigero(
+  t: TarjetaEdc,
+  movs: MovEdc[],
+  hoy: string,
+  categoriasDeGasto?: ReadonlySet<string>,
+): EstadosTarjeta {
   const sinCorte = corteEn(t, 2000, 0) == null
   let corte: string | null = null
   let vence: string | null = null
   let venceEstimado = false
+  let pagosDesde: string | null = null
   if (!sinCorte) {
     // El estado abierto con la fecha límite más cercana (con gracia larga
     // puede haber dos abiertos: va primero el más viejo).
@@ -467,24 +501,31 @@ export function estadoLigero(t: TarjetaEdc, movs: MovEdc[], hoy: string): Estado
         corte = toKey(c)
         vence = toKey(v.vence)
         venceEstimado = v.estimado
+        const previo = corteEn(t, c.getFullYear(), c.getMonth() - 1)
+        const vencePrevio = previo ? toKey(venceDelCorte(t, previo).vence) : corte
+        pagosDesde = vencePrevio > corte ? vencePrevio : corte
       }
     }
   } else {
     const prox = proximoVencimiento(t, fromKey(hoy))
+    const dia = Number(t.payment_due_day)
     if (prox) {
       vence = toKey(prox.vence)
       venceEstimado = prox.estimado
-      // Sin corte no se sabe desde cuándo cuenta un pago: el mes antes de la fecha.
-      corte = toKey(addDays(prox.vence, -30))
+      pagosDesde = Number.isFinite(dia) && dia >= 1
+        ? toKey(dayInMonth(prox.vence.getFullYear(), prox.vence.getMonth() - 1, dia))
+        : toKey(addDays(prox.vence, -28))
     }
   }
   const pagoDesdeCorte =
-    corte != null &&
-    movs.some((m) => m.account_id === t.id && num(m.amount) < 0 && m.type !== 'installment' && m.date.slice(0, 10) > corte!)
+    pagosDesde != null &&
+    movs.some(
+      (m) => m.account_id === t.id && m.date.slice(0, 10) > pagosDesde! && esAbonoATarjeta(m, categoriasDeGasto),
+    )
   return {
     accountId: t.id,
     modo: 'ligero',
-    ligero: { corte, vence, venceEstimado, pagoDesdeCorte },
+    ligero: { corte, vence, venceEstimado, pagosDesde, pagoDesdeCorte },
     sinCorte,
     estados: [],
     proximo: null,

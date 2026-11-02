@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { faltaDelEstado, msiNoFacturado, type PlanFila } from './estadoTarjeta'
+import { esAbonoLigero, faltaDelEstado, msiNoFacturado, pagosDesdeLigero, type PlanFila } from './estadoTarjeta'
 
 /*
  * El mismo caso que src/lib/estadoDeCuenta.test.ts: MP con corte 15 y pago 5,
@@ -72,5 +72,28 @@ describe('el aviso del cron usa el mismo estado de cuenta que la app', () => {
       movs: [{ amount: -6000, date: '2026-11-01', type: 'adjustment', installment_id: 'p1' }],
     })
     expect(r).toMatchObject({ pagado: 1000, falta: 4000 })
+  })
+})
+
+describe('modo ligero en el correo: desde cuándo cuenta un pago (igual que la app)', () => {
+  it('corte y día de pago normales: desde el corte', () => {
+    expect(pagosDesdeLigero({ cut_day: 15, payment_due_day: 5, payment_grace_days: null }, { corte: '2026-10-15', vence: '2026-11-05' })).toBe('2026-10-15')
+  })
+  it('gracia larga (Plata): desde la fecha límite del estado anterior', () => {
+    expect(pagosDesdeLigero({ cut_day: 15, payment_due_day: null, payment_grace_days: 60 }, { corte: '2026-09-15', vence: '2026-11-14' })).toBe('2026-10-14')
+  })
+  it('sin corte: desde la fecha límite del mes anterior, también en febrero', () => {
+    expect(pagosDesdeLigero({ cut_day: null, payment_due_day: 5, payment_grace_days: null }, { corte: null, vence: '2026-03-05' })).toBe('2026-02-05')
+    expect(pagosDesdeLigero({ cut_day: null, payment_due_day: 31, payment_grace_days: null }, { corte: null, vence: '2026-03-31' })).toBe('2026-02-28')
+  })
+  it('un reembolso no es un pago; una transferencia, un ajuste o un ingreso sí', () => {
+    expect(esAbonoLigero({ amount: -199, type: 'transaction', category_id: 'c', kind: 'variable' })).toBe(false)
+    expect(esAbonoLigero({ amount: -2000, type: 'transaction', category_id: 'c', kind: 'income' })).toBe(true)
+    expect(esAbonoLigero({ amount: -2000, type: 'transaction', category_id: null, kind: null })).toBe(true)
+    expect(esAbonoLigero({ amount: '-500', type: 'transfer' })).toBe(true)
+    expect(esAbonoLigero({ amount: -500, type: 'adjustment', category_id: 'c', kind: 'variable' })).toBe(true)
+    expect(esAbonoLigero({ amount: -500, type: 'installment' })).toBe(false)
+    // Sin poder leer la categoría, cuenta (como antes).
+    expect(esAbonoLigero({ amount: -199, type: 'transaction', category_id: 'c' })).toBe(true)
   })
 })

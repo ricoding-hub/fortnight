@@ -281,6 +281,29 @@ describe('modo ligero (por omisión)', () => {
     expect(result.current.data[0].msi.meses.every((m) => !m.porPagos)).toBe(true)
   })
 
+  it('una tarjeta sin día de corte también ve tus pagos (el aviso se va al pagar)', { timeout: 20_000 }, async () => {
+    const { result } = await montar({
+      installments: [],
+      accounts: [{ id: 'c2', type: 'credit', cut_day: null, payment_due_day: 5, payment_grace_days: null, balance: 3000 }],
+      transactions: [
+        // Del mes pasado (antes de la fecha límite del 5 oct): no cuenta.
+        { id: 'viejo', account_id: 'c2', amount: -800, date: '2026-10-03', type: 'transfer' },
+        { id: 'pago', account_id: 'c2', amount: -500, date: '2026-10-10', type: 'transfer' },
+      ],
+    })
+    expect(result.current.estados.c2).toMatchObject({ modo: 'ligero', ligero: { vence: '2026-11-05', pagosDesde: '2026-10-05', pagoDesdeCorte: true } })
+  })
+
+  it('un reembolso con categoría de gasto no apaga el aviso', { timeout: 20_000 }, async () => {
+    const { result } = await montar({
+      installments: [],
+      accounts: [{ id: 'c1', ...CICLO, balance: 3000 }],
+      categories: [{ id: 'cat-comida', kind: 'variable' }, { id: 'cat-salario', kind: 'income' }],
+      transactions: [{ id: 'r', account_id: 'c1', amount: -199, date: '2026-10-17', type: 'transaction', category_id: 'cat-comida' }],
+    })
+    expect(result.current.estados.c1.ligero?.pagoDesdeCorte).toBe(false)
+  })
+
   it('con la opción encendida, calcula el estado de cuenta', { timeout: 20_000 }, async () => {
     const { result } = await montar({ installments: [PLAN], accounts: [{ id: 'c1', ...CICLO, balance: 9000, track_statement: true, created_at: '2026-01-01T00:00:00Z' }] })
     expect(result.current.estados.c1.modo).toBe('estado')

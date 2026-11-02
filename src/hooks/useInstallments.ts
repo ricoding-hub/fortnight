@@ -81,6 +81,8 @@ interface FotoTarjetas {
   movs: MovEdc[]
   correcciones: CorreccionEdc[]
   conCorrecciones: boolean
+  /** Categorías de gasto: un abono con una de ellas es un reembolso, no un pago. */
+  categoriasDeGasto: string[]
   listo: boolean
   /**
    * No se pudieron traer los movimientos: sin ellos, el estado de cuenta diría
@@ -93,7 +95,7 @@ interface FotoTarjetas {
   falloVentana: string | null
 }
 const FOTO_VACIA: FotoTarjetas = {
-  tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, listo: false, fallo: false, ventana: {}, falloVentana: null,
+  tarjetas: [], movs: [], correcciones: [], conCorrecciones: false, categoriasDeGasto: [], listo: false, fallo: false, ventana: {}, falloVentana: null,
 }
 
 /** ¿La foto trae al menos la ventana pedida (cada tarjeta desde esa fecha o antes)? */
@@ -268,21 +270,28 @@ export function useInstallments() {
     const ventana = JSON.parse(claveVentana) as Record<string, string>
     const hoyKey = toKey(new Date())
     // Cada tarjeta con su propia ventana: un plan viejo en una no obliga a
-    // traer años de movimientos de las demás.
+    // traer años de movimientos de las demás. Una tarjeta sin día de corte no
+    // tiene estados, pero en modo ligero hay que ver si ya pagaste: desde la
+    // fecha límite anterior (sin esto el aviso no se iba nunca).
     const porTarjeta = tarjetas
-      .map((t) => ({ id: t.id, desde: ventanaDeMovimientos([t], hoyKey, ventana) }))
+      .map((t) => ({
+        id: t.id,
+        desde: ventanaDeMovimientos([t], hoyKey, ventana) ?? estadoLigero(t, [], hoyKey).ligero?.pagosDesde ?? null,
+      }))
       .filter((x): x is { id: string; desde: string } => x.desde != null)
     const ids = tarjetas.map((t) => t.id)
     if (porTarjeta.length === 0) {
       if (vigente()) {
         reintentos.current = 0
-        setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, listo: true, fallo: false, ventana, falloVentana: null })
+        setFoto({ tarjetas, movs: [], correcciones: [], conCorrecciones: false, categoriasDeGasto: [], listo: true, fallo: false, ventana, falloVentana: null })
       }
       return
     }
-    const [listas, corrRes] = await Promise.all([
+    const [listas, corrRes, catRes] = await Promise.all([
       Promise.all(porTarjeta.map((x) => movimientosDesde([x.id], x.desde))),
       supabase.from('card_statements').select('*').in('account_id', ids),
+      // Sin las categorías, todo abono cuenta como pago (como antes).
+      supabase.from('categories').select('id, kind'),
     ])
     if (listas.some((l) => l == null)) return fallar()
     if (!vigente()) return
@@ -294,6 +303,9 @@ export function useInstallments() {
       movs: porTarjeta.flatMap((x, i) => (listas[i] ?? []).filter((m) => m.account_id === x.id && m.date > x.desde)),
       correcciones: corrRes.error ? [] : ((corrRes.data ?? []) as CorreccionEdc[]),
       conCorrecciones: !corrRes.error || !esTablaFaltante(corrRes.error),
+      categoriasDeGasto: catRes.error
+        ? []
+        : ((catRes.data ?? []) as { id: string; kind: string }[]).filter((c) => c.kind !== 'income').map((c) => c.id),
       listo: true,
       fallo: false,
       ventana,
@@ -421,8 +433,9 @@ export function useInstallments() {
       desdePorTarjeta: foto.ventana,
       hoy,
     })
+    const deGasto = new Set(foto.categoriasDeGasto)
     for (const t of foto.tarjetas) {
-      if (!t.track_statement) estados[t.id] = estadoLigero(t, foto.movs, hoy)
+      if (!t.track_statement) estados[t.id] = estadoLigero(t, foto.movs, hoy, deGasto)
     }
     // Las mensualidades de tarjeta las cubren los pagos de cada estado de cuenta.
     // Sin un estado confiable, no se opina: decide la fecha.

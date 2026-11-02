@@ -120,15 +120,20 @@ export function calculateScore(input: ScoreInput): ScoreResult {
 
   // Avance: cómo estaban tu deuda y tu efectivo hace 30 días, deshaciendo los
   // movimientos (ajustes de saldo incluidos: es como más se actualiza).
-  let enTarjetas = 0
+  const porTarjeta = new Map<string, number>()
   let enDebito = 0
   for (const m of movimientos) {
     if (desde && m.date.slice(0, 10) < desde) continue
     const tipo = tipoDe.get(m.account_id)
-    if (tipo === 'credit') enTarjetas += num(m.amount)
+    if (tipo === 'credit') porTarjeta.set(m.account_id, (porTarjeta.get(m.account_id) ?? 0) + num(m.amount))
     else if (tipo === 'debit') enDebito += num(m.amount)
   }
-  const deudaHace30 = Math.max(0, deudaHoy - enTarjetas)
+  // Tarjeta por tarjeta: un saldo a favor no es deuda ni hoy ni hace 30 días.
+  // Sumando todo junto, pagar de más una tarjeta en 0 contaba como deuda bajada.
+  const deudaHace30 = credito.reduce(
+    (s, a) => s + Math.max(0, num(a.balance) - (porTarjeta.get(a.id) ?? 0)),
+    0,
+  )
   const efectivoHace30 = efectivoHoy - enDebito
   const base = Math.max(ingresoMensual, deudaHace30 * 0.25, 1000)
   const avance = clamp((4 * (deudaHace30 - deudaHoy) + 1.5 * (efectivoHoy - efectivoHace30)) / base, -1, 1)

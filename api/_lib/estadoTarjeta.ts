@@ -55,6 +55,59 @@ function partes(k: string): [number, number, number] {
   return [y, m - 1, d]
 }
 
+function sumarDias(k: string, n: number): string {
+  const [y, m, d] = partes(k)
+  return new Date(Date.UTC(y, m, d + n)).toISOString().slice(0, 10)
+}
+
+/**
+ * Modo ligero: desde cuándo (exclusivo) un pago cuenta para el estado que vence
+ * en `pago.vence`. Igual que `estadoLigero` en src/lib/estadoDeCuenta.ts:
+ * después del corte Y de la fecha límite del estado anterior (con gracia larga,
+ * como Plata, el pago del estado viejo cae después del corte nuevo). Sin corte,
+ * después de la fecha límite del mes anterior.
+ */
+export function pagosDesdeLigero(
+  a: { cut_day: number | string | null; payment_due_day: number | string | null; payment_grace_days: number | string | null },
+  pago: { vence: string; corte: string | null },
+): string {
+  const cut = a.cut_day != null && a.cut_day !== '' ? Number(a.cut_day) : null
+  const grace = a.payment_grace_days != null && a.payment_grace_days !== '' ? Number(a.payment_grace_days) : null
+  const due = a.payment_due_day != null && a.payment_due_day !== '' ? Number(a.payment_due_day) : null
+  if (pago.corte && cut != null) {
+    const [cy, cm] = partes(pago.corte)
+    const previo = dia(cy, cm - 1, cut)
+    const [py, pm] = partes(previo)
+    const vencePrevio =
+      grace != null && grace >= 0
+        ? sumarDias(previo, grace)
+        : due != null
+          ? due > cut
+            ? dia(py, pm, due)
+            : dia(py, pm + 1, due)
+          : previo
+    return vencePrevio > pago.corte ? vencePrevio : pago.corte
+  }
+  const [vy, vm] = partes(pago.vence)
+  return due != null ? dia(vy, vm - 1, due) : sumarDias(pago.vence, -28)
+}
+
+/**
+ * ¿Es un abono a la tarjeta? Negativo, no el cargo de un MSI, y un pago, una
+ * corrección o un movimiento sin categoría o de ingreso. Con categoría de gasto
+ * es un reembolso. `kind` undefined = no se pudo leer la categoría: cuenta.
+ */
+export function esAbonoLigero(m: {
+  amount: number | string
+  type?: string | null
+  category_id?: string | null
+  kind?: string | null
+}): boolean {
+  if (num(m.amount) >= 0 || m.type === 'installment') return false
+  if (m.type === 'transfer' || m.type === 'adjustment') return true
+  return !m.category_id || m.kind === undefined || m.kind === null || m.kind === 'income'
+}
+
 /** El corte en el que entra una compra de `fecha` (el mismo día cuenta). */
 function primerCorte(cutDay: number, fecha: string): string {
   const [y, m] = partes(fecha)

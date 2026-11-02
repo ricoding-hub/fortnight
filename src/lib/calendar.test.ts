@@ -178,7 +178,8 @@ describe('mensualidades', () => {
   it('el pago de la tarjeta lleva sólo las mensualidades de ese estado de cuenta', () => {
     const corto = msi({ months_total: 3, total_amount: 3000, months_paid: 0 })
     const ev = buildCalendarEvents(
-      { accounts: [account({ cut_day: 1, payment_due_day: 15, balance: 3000 })], installments: [corto], subscriptions: [], transactions: [], goals: [], config: null },
+      // Con «Calcular mi estado de cuenta»: en ligero el pago no lleva monto.
+      { accounts: [account({ cut_day: 1, payment_due_day: 15, balance: 3000, track_statement: true })], installments: [corto], subscriptions: [], transactions: [], goals: [], config: null },
       d('2026-02-01'), d('2026-06-30'), '2026-02-01',
     ).filter((e) => e.kind === 'card_due')
     const porFecha = Object.fromEntries(ev.map((e) => [e.date, -e.amount]))
@@ -213,7 +214,9 @@ describe('buildCalendarEvents', () => {
   // The whole point of the cash model: an MSI is paid THROUGH the card, and the
   // card's due amount already includes it. Counting both would double the money.
   it('does not let an MSI move cash twice', () => {
-    const ev = buildCalendarEvents(base, d('2026-09-01'), d('2026-09-30'))
+    // Con estado de cuenta, el pago de la tarjeta ya trae la mensualidad.
+    const conEstado = { ...base, accounts: [account({ payment_due_day: 15, cut_day: 1, track_statement: true })] }
+    const ev = buildCalendarEvents(conEstado, d('2026-09-01'), d('2026-09-30'))
     expect(ev.filter((e) => e.kind === 'installment').every((e) => !e.countsToCash)).toBe(true)
     expect(ev.filter((e) => e.kind === 'card_due').every((e) => e.countsToCash)).toBe(true)
   })
@@ -380,6 +383,20 @@ describe('modo ligero en el calendario', () => {
     const pagos = ev.filter((e) => e.kind === 'card_due')
     expect(pagos.length).toBeGreaterThan(0)
     expect(pagos.every((e) => e.amount === 0 && !e.countsToCash && e.tags.includes('Fecha'))).toBe(true)
+    expect(ev.filter((e) => e.kind === 'installment' && e.mes?.estado !== 'pagada').every((e) => e.countsToCash)).toBe(true)
+  })
+
+  it('mientras cargan los estados (sin entrada), una tarjeta ligera tampoco enseña un pago calculado', () => {
+    const tarjeta = account({ payment_due_day: 15, cut_day: 1, balance: 9000 })
+    const ev = buildCalendarEvents(
+      { accounts: [tarjeta], installments: [msi({ months_paid: 0, start_date: '2026-08-20' })], subscriptions: [], transactions: [], goals: [], config: null, estados: {} },
+      d('2026-09-01'),
+      d('2026-10-31'),
+      '2026-09-02',
+    )
+    const pagos = ev.filter((e) => e.kind === 'card_due')
+    expect(pagos.length).toBeGreaterThan(0)
+    expect(pagos.every((e) => e.amount === 0 && !e.countsToCash)).toBe(true)
     expect(ev.filter((e) => e.kind === 'installment' && e.mes?.estado !== 'pagada').every((e) => e.countsToCash)).toBe(true)
   })
 })

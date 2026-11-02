@@ -43,7 +43,7 @@ describe('data cache ownership', () => {
   it('purges when a different user signs in', async () => {
     await ensureCacheOwner('user-a')
     await ensureCacheOwner('user-b')
-    expect(deleted).toEqual(['supabase-data-cache'])
+    expect(deleted).toEqual(['supabase-data-cache', 'logos-cache', 'avatars-cache'])
   })
 
   it('ignores a signed-out state instead of clearing the owner', async () => {
@@ -55,10 +55,10 @@ describe('data cache ownership', () => {
   it('purging drops the cache and forgets the owner', async () => {
     await ensureCacheOwner('user-a')
     await purgeDataCache()
-    expect(deleted).toEqual(['supabase-data-cache'])
+    expect(deleted).toEqual(['supabase-data-cache', 'logos-cache', 'avatars-cache'])
     // Owner forgotten, so the next sign-in claims it fresh without purging.
     await ensureCacheOwner('user-b')
-    expect(deleted).toEqual(['supabase-data-cache'])
+    expect(deleted).toEqual(['supabase-data-cache', 'logos-cache', 'avatars-cache'])
   })
 })
 
@@ -75,5 +75,20 @@ describe('had-session marker', () => {
     rememberHadSession(true)
     rememberHadSession(false)
     expect(hadSession()).toBe(false)
+  })
+})
+
+describe('cerrar sesión también borra las imágenes de esa cuenta', () => {
+  beforeEach(install)
+
+  it('el perfil guardado y los logos fallidos se van; lo demás se queda', async () => {
+    localStorage.setItem('fortnight:perfil:user-a', '{"id":"user-a"}')
+    localStorage.setItem('fortnight:logos-sin-marca', '["nu.com.mx"]')
+    localStorage.setItem('fortnight_tour_seen', '1')
+    await purgeDataCache()
+    expect(deleted).toEqual(['supabase-data-cache', 'logos-cache', 'avatars-cache'])
+    expect(localStorage.getItem('fortnight:perfil:user-a')).toBeNull()
+    expect(localStorage.getItem('fortnight:logos-sin-marca')).toBeNull()
+    expect(localStorage.getItem('fortnight_tour_seen')).toBe('1')
   })
 })
